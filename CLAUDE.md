@@ -2,6 +2,15 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+## OpenAGC project notes
+
+- Spec: `docs/SPECIFICATION.md` is the source of truth; beads issue descriptions cite its sections (§N).
+- Toolchain PATH (not in the default shell snapshot): `export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"`.
+- Checks before closing any issue: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo xtask check-deps`, `cargo deny check`.
+- Only `openagc-core` may depend on UniFFI; dependency direction is enforced by `cargo xtask check-deps`.
+- Never touch real Gmail, Google/Apple accounts, or create Claude cloud routines from automation; test against fakes.
+- Overnight work happens on the `overnight` branch; push after each closed issue.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
 
