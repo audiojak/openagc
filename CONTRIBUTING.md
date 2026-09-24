@@ -49,16 +49,34 @@ cargo deny check
 
 ## Security-sensitive code
 
-Changes under `crates/mail-mime/` (HTML sanitization), `crates/permissions/`
-and `crates/agent-mcp/` must keep the golden-file and injection test suites
-passing, and should add a test for the case being changed. Email content is
-untrusted input everywhere, including in agent prompts and logs.
+Changes under `crates/mail-mime/` (HTML sanitization), `crates/permissions/`,
+`crates/agent-mcp/` and `crates/openagc-core/src/agents/` must keep the
+golden-file and injection test suites passing, and should add a test for the
+case being changed. Email content is untrusted input everywhere, including in
+agent prompts and logs. [docs/security.md](docs/security.md) lists each
+control and where it lives.
 
 ## Test fixtures
 
 Every MIME parser bug fix adds a message to `crates/mail-mime/fixtures/`
 that reproduces it. Fixtures must be synthetic or scrubbed: no real
 addresses, names or content.
+
+Tests never touch real accounts. Gmail is `provider_api::fake::FakeProvider`
+(or `wiremock` for the REST client); agents are `agent_api::fake::FakeAgent`
+or fake `claude`/`codex` scripts under each adapter's `tests/`; cloud routines
+use `crates/agent-claude/tests/fake_claude_routines.py`. The Swift tests run
+with scripted agents automatically, and in that mode the core cannot reach a
+real agent CLI. Performance numbers come from the synthetic fixture
+(`cargo xtask fixture`, `cargo xtask perf`).
+
+## Generated files
+
+`docs/mcp.md` is rendered from the tool catalog by `cargo xtask mcp-docs`
+(the gate checks it), `docs/keyboard.md` from
+`macos/OpenAGC/App/KeyboardShortcuts.swift`, and the prompt snapshots under
+`crates/agent-api/src/routines/snapshots/` by insta (`INSTA_UPDATE=always
+cargo test -p agent-api` after reviewing the change).
 
 ## Issue tracking
 

@@ -11,8 +11,11 @@ explicit set of tools, with sending and deleting always gated on your
 approval. You bring your own AI subscription; OpenAGC never sees your AI
 credentials and has no server of its own.
 
-> **Status: pre-alpha.** The architecture is specified and implementation is
-> under way. Nothing here is usable yet.
+> **Status: pre-alpha.** The mail client, the agent integration and routines
+> are implemented and tested — against a synthetic demo mailbox and fake
+> Gmail, fake agent CLIs and a fake Claude routines endpoint. They have not
+> yet been run against a real Gmail account or a real agent login, and there
+> is no signed release. Try it with **Explore a Demo Mailbox** on first run.
 
 ## How it works
 
@@ -34,7 +37,15 @@ Gmail ──HTTPS/OAuth──▶ OpenAGC.app on your Mac
   locally or as a Claude cloud routine created through your own Claude Code
   login.
 
-The full technical specification is in [docs/SPECIFICATION.md](docs/SPECIFICATION.md).
+## Documentation
+
+- [Architecture](docs/architecture.md) — the map: crates, data flow, agents.
+- [Security and threat model](docs/security.md) — each control and where it lives.
+- [Agent tools](docs/mcp.md) — what an agent can do, and at what risk.
+- [Keyboard shortcuts](docs/keyboard.md)
+- [Using your own Google OAuth client](docs/google-oauth-client.md)
+- [Releasing](docs/releasing.md) · [Performance](docs/performance.md)
+- [Specification](docs/SPECIFICATION.md) — the full technical design.
 
 ## Requirements
 
@@ -46,10 +57,14 @@ The full technical specification is in [docs/SPECIFICATION.md](docs/SPECIFICATIO
 ## Building from source
 
 ```bash
-./scripts/bootstrap.sh     # Rust (rustup), XcodeGen; checks for Xcode 27
-cargo build --workspace
-cargo test --workspace
+./scripts/bootstrap.sh          # Rust (rustup), XcodeGen; checks for Xcode 27
+scripts/gate.sh                 # fmt, clippy, Rust tests, dependency rules, cargo deny
+scripts/test-macos.sh test      # builds the core and the app, runs the Swift tests
 ```
+
+The app is at `build/DerivedData/Build/Products/Debug/OpenAGC.app`. Launch it
+with `-OpenAGCDemo YES` to open the demo mailbox directly, or
+`-OpenAGCFakeAgents YES` to try the agent panel without a real CLI.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the app build, tests and workflow.
 

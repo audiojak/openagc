@@ -6,6 +6,7 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+mod mcp_docs;
 mod perf;
 
 fn main() -> Result<()> {
@@ -20,9 +21,10 @@ fn main() -> Result<()> {
         "check-deps" => check_deps(),
         "fixture" => perf::fixture(&root, messages, std::env::args().any(|a| a == "--force")).map(|_| ()),
         "perf" => perf::perf(&root, messages),
+        "mcp-docs" => mcp_docs::run(&root, std::env::args().any(|a| a == "--check")),
         _ => {
             eprintln!(
-                "usage: cargo xtask <command>\n\ncommands:\n  check-deps              enforce the crate dependency direction (spec §3)\n  fixture [--messages N]  build the synthetic performance mailbox (default 100k)\n  perf [--messages N]     measure store operations against §1.3 budgets"
+                "usage: cargo xtask <command>\n\ncommands:\n  check-deps              enforce the crate dependency direction (spec §3)\n  fixture [--messages N]  build the synthetic performance mailbox (default 100k)\n  perf [--messages N]     measure store operations against §1.3 budgets\n  mcp-docs [--check]      render the agent tool catalog to docs/mcp.md"
             );
             std::process::exit(2);
         }
@@ -64,7 +66,7 @@ fn allowed_internal_deps() -> BTreeMap<&'static str, &'static [&'static str]> {
         ),
         ("openagc-mcp", &["mail-domain", "agent-api", "permissions", "agent-mcp"][..]),
         ("uniffi-bindgen-swift", &[][..]),
-        ("xtask", &["mail-domain", "mail-store"][..]),
+        ("xtask", &["mail-domain", "mail-store", "agent-mcp", "agent-api", "permissions"][..]),
     ])
 }
 
