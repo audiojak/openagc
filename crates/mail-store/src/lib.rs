@@ -3,8 +3,13 @@
 //! that changes messages also maintains the denormalized thread data and
 //! search index in the same transaction.
 
+pub mod consistency;
 mod db;
 mod error;
+pub mod read;
+mod write;
 
 pub use db::{Db, READER_COUNT, schema_version};
 pub use error::{StoreError, StoreResult};
+pub use read::ThreadPage;
+pub use write::{ARCHIVE_LABEL, IncomingAttachment, IncomingMessage, MailWriter, MailboxChange, ThreadChanges};

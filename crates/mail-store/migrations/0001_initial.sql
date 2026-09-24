@@ -92,6 +92,14 @@ CREATE TABLE thread_labels (
 ) WITHOUT ROWID;
 CREATE INDEX thread_labels_by_thread ON thread_labels (thread_id);
 
+-- Per-label thread counts for sidebar badges, updated by deltas when
+-- threads are recomputed, so no COUNT(*) over large mailboxes.
+CREATE TABLE label_stats (
+  label_id            INTEGER PRIMARY KEY REFERENCES labels (id) ON DELETE CASCADE,
+  thread_count        INTEGER NOT NULL DEFAULT 0,
+  unread_thread_count INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE participants (
   message_id INTEGER NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
   role       TEXT NOT NULL CHECK (role IN ('from', 'to', 'cc', 'bcc', 'reply_to')),
