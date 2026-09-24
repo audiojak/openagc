@@ -6,13 +6,20 @@ import OpenAGCCore
 final class CoreClient: Sendable {
     private let core: Core
 
+    /// Events from the core, already coalesced in Rust (spec §4.3). One
+    /// consumer; stores fan out on the main actor.
+    let events: AsyncStream<CoreClientEvent>
+
     convenience init(dataDirectory: URL) throws(CoreClientError) {
         try self.init(dataDirectoryPath: dataDirectory.path)
     }
 
     init(dataDirectoryPath: String) throws(CoreClientError) {
+        let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.self, bufferingPolicy: .unbounded)
+        events = stream
         do {
-            core = try Core(config: CoreConfig(dataDir: dataDirectoryPath))
+            core = try Core(config: CoreConfig(dataDir: dataDirectoryPath),
+                            listener: EventBridge(continuation))
         } catch let error as CoreError {
             throw CoreClientError(error)
         } catch {
@@ -34,6 +41,11 @@ final class CoreClient: Sendable {
         } catch {
             throw CoreClientError(kind: .internalError, message: String(describing: error))
         }
+    }
+
+    /// Diagnostics hook: ask Rust to emit one ThreadsChanged per id.
+    func debugEmitThreadsChanged(mailboxID: String, threadIDs: [String]) {
+        core.debugEmitThreadsChanged(mailboxId: mailboxID, threadIds: threadIDs)
     }
 
     /// `~/Library/Application Support/OpenAGC`, created if missing.
@@ -80,6 +92,72 @@ private extension CoreClientError.Kind {
         case .permissionDenied: self = .permissionDenied
         case .cancelled: self = .cancelled
         case .internal: self = .internalError
+        }
+    }
+}
+
+// MARK: - Events
+
+/// What changed in a mailbox's thread list (spec §4.3).
+struct ThreadChangeHint: Sendable, Equatable {
+    var inserted: [String] = []
+    var updated: [String] = []
+    var removed: [String] = []
+    /// Too much changed to describe; re-query the visible window.
+    var invalidate = false
+}
+
+enum CoreClientEvent: Sendable, Equatable {
+    enum SyncState: Sendable, Equatable { case idle, bootstrapping, syncing, offline, error }
+    enum LogLevel: Sendable, Equatable { case warn, error }
+
+    case threadsChanged(mailboxID: String, hint: ThreadChangeHint)
+    case syncStatus(SyncState, pending: UInt32)
+    case outboxStatus(pending: UInt32, failed: UInt32)
+    case error(CoreClientError)
+    case log(LogLevel, target: String, message: String)
+}
+
+/// Receives events on a Rust runtime thread and hands them to the stream.
+private final class EventBridge: EventListener, Sendable {
+    private let continuation: AsyncStream<CoreClientEvent>.Continuation
+
+    init(_ continuation: AsyncStream<CoreClientEvent>.Continuation) {
+        self.continuation = continuation
+    }
+
+    func onEvent(event: CoreEvent) {
+        continuation.yield(CoreClientEvent(event))
+    }
+}
+
+private extension CoreClientEvent {
+    init(_ event: CoreEvent) {
+        switch event {
+        case let .threadsChanged(mailboxId, hint):
+            self = .threadsChanged(mailboxID: mailboxId, hint: ThreadChangeHint(
+                inserted: hint.inserted, updated: hint.updated,
+                removed: hint.removed, invalidate: hint.invalidate))
+        case let .syncStatus(state, pending):
+            self = .syncStatus(SyncState(state), pending: pending)
+        case let .outboxStatus(pending, failed):
+            self = .outboxStatus(pending: pending, failed: failed)
+        case let .error(kind, message):
+            self = .error(CoreClientError(kind: .init(kind), message: message))
+        case let .log(level, target, message):
+            self = .log(level == .warn ? .warn : .error, target: target, message: message)
+        }
+    }
+}
+
+private extension CoreClientEvent.SyncState {
+    init(_ state: OpenAGCCore.SyncState) {
+        switch state {
+        case .idle: self = .idle
+        case .bootstrapping: self = .bootstrapping
+        case .syncing: self = .syncing
+        case .offline: self = .offline
+        case .error: self = .error
         }
     }
 }

@@ -17,6 +17,7 @@
 		ACA4618DFA7FBAF468B9AF9C /* OpenAGCCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */; };
 		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
+		F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +64,7 @@
 		AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTests.swift; sourceTree = "<group>"; };
 		DE83811F68C4EBD9E870E49B /* CoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
 		E4C676A513B753ECEBB6FF97 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEventTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -169,6 +171,7 @@
 			children = (
 				AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */,
 				6EA889A74036D5319EED2E94 /* CoreClientTests.swift */,
+				FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */,
 			);
 			path = OpenAGCTests;
 			sourceTree = "<group>";
@@ -393,6 +396,7 @@
 			files = (
 				4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */,
 				1970C5710634017B9B3E926B /* CoreClientTests.swift in Sources */,
+				F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -327,8 +327,11 @@ pub enum CoreEvent {
 Swift wraps the listener in an `AsyncStream<CoreEvent>` delivered on the
 main actor. Change events are **coalesced** in Rust (max one
 `ThreadsChanged` per mailbox per 50 ms) so a sync of 500 messages produces a
-handful of UI refreshes, not 500. Events carry hints (`Inserted(ids)`,
-`Updated(ids)`, `Invalidate`) so the list can patch rows in place.
+handful of UI refreshes, not 500. Events carry a `ChangeHint { inserted,
+updated, removed, invalidate }` so the list can patch rows in place. Hints
+merge within a window (insert-then-remove cancels; update-after-insert stays
+an insert) and degrade to `invalidate` above 200 ids. Warn/error `tracing`
+records also arrive as `CoreEvent::Log` for Swift to log (§17).
 
 ### 4.4 Async runtime **(Verified gotcha)**
 

@@ -6,9 +6,11 @@ use std::sync::Arc;
 uniffi::setup_scaffolding!();
 
 mod error;
+mod events;
 mod runtime;
 
 pub use error::{CoreError, ErrorKind};
+pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, SyncState};
 
 /// Configuration the app passes when it creates the core.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -22,16 +24,18 @@ pub struct CoreConfig {
 #[derive(uniffi::Object)]
 pub struct Core {
     config: CoreConfig,
+    events: EventBus,
 }
 
 #[uniffi::export]
 impl Core {
     #[uniffi::constructor]
-    pub fn new(config: CoreConfig) -> Result<Arc<Self>, CoreError> {
+    pub fn new(config: CoreConfig, listener: Arc<dyn EventListener>) -> Result<Arc<Self>, CoreError> {
         if config.data_dir.is_empty() {
             return Err(CoreError::new(ErrorKind::InvalidInput, "data_dir must not be empty"));
         }
-        Ok(Arc::new(Self { config }))
+        let events = EventBus::start(listener, runtime::runtime().handle());
+        Ok(Arc::new(Self { config, events }))
     }
 
     /// Round-trip check used by the app at launch and by tests.
@@ -58,6 +62,17 @@ impl Core {
     pub fn data_dir(&self) -> String {
         self.config.data_dir.clone()
     }
+
+    /// Diagnostics hook: emit `ThreadsChanged` events as if a sync had
+    /// inserted `thread_ids`, one event per id, to exercise coalescing.
+    pub fn debug_emit_threads_changed(&self, mailbox_id: String, thread_ids: Vec<String>) {
+        for id in thread_ids {
+            self.events.emit(CoreEvent::ThreadsChanged {
+                mailbox_id: mailbox_id.clone(),
+                hint: ChangeHint { inserted: vec![id], ..ChangeHint::default() },
+            });
+        }
+    }
 }
 
 #[cfg(test)]
@@ -68,16 +83,25 @@ mod tests {
         CoreConfig { data_dir: "/tmp/openagc-test".into() }
     }
 
+    struct NoopListener;
+    impl EventListener for NoopListener {
+        fn on_event(&self, _: CoreEvent) {}
+    }
+
+    fn core() -> Arc<Core> {
+        Core::new(config(), Arc::new(NoopListener)).unwrap()
+    }
+
     #[test]
     fn ping_round_trips() {
-        let core = Core::new(config()).unwrap();
+        let core = core();
         assert_eq!(core.ping("hi".into()), "pong: hi");
     }
 
     /// Awaited from a plain thread with a non-tokio executor, as Swift does.
     #[test]
     fn async_exports_run_on_the_core_runtime_from_any_executor() {
-        let core = Core::new(config()).unwrap();
+        let core = core();
         let reply = std::thread::spawn(move || futures::executor::block_on(core.ping_async("hi".into())))
             .join()
             .unwrap()
@@ -87,7 +111,7 @@ mod tests {
 
     #[test]
     fn empty_data_dir_is_rejected() {
-        let err = Core::new(CoreConfig { data_dir: String::new() }).err().unwrap();
+        let err = Core::new(CoreConfig { data_dir: String::new() }, Arc::new(NoopListener)).err().unwrap();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }
