@@ -21,7 +21,7 @@ impl Locator {
     /// The app's default: the login shell's `PATH` (a GUI app does not
     /// inherit it), then the usual install locations.
     pub fn standard() -> Self {
-        let mut dirs: Vec<PathBuf> = login_shell_path().iter().cloned().collect();
+        let mut dirs: Vec<PathBuf> = login_shell_path().to_vec();
         if let Some(home) = std::env::var_os("HOME") {
             dirs.push(Path::new(&home).join(".local/bin"));
             dirs.push(Path::new(&home).join(".claude/local"));
