@@ -70,10 +70,8 @@ pub fn parse(raw: &[u8]) -> Result<ParsedMessage, ParseError> {
     // otherwise synthesizes HTML from the text part.
     let mut real_html = Vec::new();
     for &id in &msg.html_body {
-        if let Some(part) = msg.parts.get(id as usize) {
-            if let PartType::Html(h) = &part.body {
-                real_html.push(h.to_string());
-            }
+        if let Some(PartType::Html(h)) = msg.parts.get(id as usize).map(|p| &p.body) {
+            real_html.push(h.to_string());
         }
     }
     let html = if real_html.is_empty() { None } else { Some(real_html.join("\n<hr>\n")) };
