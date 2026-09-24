@@ -173,7 +173,7 @@ final class RoutinesStore {
                 message = "Published to Claude."
                 await load()
             } catch {
-                logger.warning("publish failed: \(error.message, privacy: .public)")
+                logger.warning("publish failed: \(error.message, privacy: .private)")
                 self.error = "Couldn't publish through Claude Code: \(error.message). You can set it up by hand instead."
                 handoff = try? await core?.routineHandoff(id)
             }

@@ -579,7 +579,9 @@ private final class EventBridge: EventListener, Sendable {
     func onEvent(event: CoreEvent) {
         // Rust warn/error records are logged here rather than delivered to
         // stores; Swift owns unified-logging privacy (spec §17). Rust has
-        // already kept secrets and mail content out of these messages.
+        // already kept secrets and mail content out, and scrubbed addresses
+        // and tokens (logging::scrub), so they can be public. Messages from
+        // core *errors* can quote user data and are logged `.private`.
         if case let .log(level, target, message) = event {
             let logger = Logger(subsystem: "ai.actual.openagc", category: target)
             switch level {

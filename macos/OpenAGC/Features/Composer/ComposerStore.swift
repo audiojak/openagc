@@ -162,7 +162,7 @@ final class ComposerStore {
         } catch {
             isDirty = true
             saveError = error.message
-            logger.error("draft save failed: \(error.message, privacy: .public)")
+            logger.error("draft save failed: \(error.message, privacy: .private)")
         }
     }
 
@@ -189,7 +189,7 @@ final class ComposerStore {
                 attachments.append(DraftAttachmentInfo(path: copy.path, filename: url.lastPathComponent,
                                                        mimeType: type, size: size))
             } catch {
-                logger.error("attach failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("attach failed: \(error.localizedDescription, privacy: .private)")
             }
         }
         edited()

@@ -69,7 +69,11 @@ impl<S: Subscriber> Layer<S> for ForwardLayer {
             Sink::Fixed(bus) => Some(bus.clone()),
         };
         if let Some(bus) = bus {
-            bus.emit(CoreEvent::Log { level, target: event.metadata().target().to_owned(), message: message.0 });
+            bus.emit(CoreEvent::Log {
+                level,
+                target: event.metadata().target().to_owned(),
+                message: scrub(&message.0),
+            });
         }
     }
 }
@@ -91,6 +95,67 @@ impl Visit for MessageVisitor {
             let _ = write!(self.0, " {}={value:?}", field.name());
         }
     }
+}
+
+/// Last line of defense for diagnostics (spec §17): error text can quote
+/// an address or, in the worst case, a token. Email addresses become
+/// `<email>`; Google access (`ya29.…`) and refresh (`1//…`) tokens become
+/// `<token>`. Secrets are also kept out by `Redacted` at the source.
+pub(crate) fn scrub(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let local = |c: char| c.is_ascii_alphanumeric() || "._%+-".contains(c);
+    let domain = |c: char| c.is_ascii_alphanumeric() || ".-".contains(c);
+    let token = |c: char| c.is_ascii_alphanumeric() || "._-".contains(c);
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        let rest: String = chars[i..chars.len().min(i + 5)].iter().collect();
+        let starts_word = i == 0 || !token(chars[i - 1]);
+        if starts_word && rest.starts_with("ya29.") {
+            let mut j = i + 5;
+            while j < chars.len() && token(chars[j]) {
+                j += 1;
+            }
+            out.push_str("<token>");
+            i = j;
+            continue;
+        }
+        if starts_word && rest.starts_with("1//") {
+            let mut j = i + 3;
+            while j < chars.len() && token(chars[j]) {
+                j += 1;
+            }
+            if j - i >= 23 {
+                out.push_str("<token>");
+                i = j;
+                continue;
+            }
+        }
+        if chars[i] == '@' {
+            // Back up over the local part already written.
+            let mut start = i;
+            while start > 0 && local(chars[start - 1]) {
+                start -= 1;
+            }
+            let mut end = i + 1;
+            while end < chars.len() && domain(chars[end]) {
+                end += 1;
+            }
+            let domain_part: String = chars[i + 1..end].iter().collect::<String>().trim_end_matches('.').to_owned();
+            if start < i && domain_part.contains('.') && !domain_part.starts_with('.') {
+                let written = i - start;
+                for _ in 0..written {
+                    out.pop();
+                }
+                out.push_str("<email>");
+                i += 1 + domain_part.chars().count();
+                continue;
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
 }
 
 /// `core.log`, rotated to `core.log.1 … core.log.{MAX_FILES-1}` when it
@@ -146,9 +211,11 @@ impl Write for RotatingWriter<'_> {
         if self.current.len > 0 && self.current.len + buf.len() as u64 > self.owner.max_bytes {
             self.owner.rotate(&mut self.current)?;
         }
-        let n = self.current.file.write(buf)?;
-        self.current.len += n as u64;
-        Ok(n)
+        // Each formatted record arrives in one write; scrub it whole.
+        let clean = scrub(&String::from_utf8_lossy(buf));
+        self.current.file.write_all(clean.as_bytes())?;
+        self.current.len += clean.len() as u64;
+        Ok(buf.len())
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -172,6 +239,29 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("openagc-log-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn diagnostics_are_scrubbed_of_addresses_and_tokens() {
+        assert_eq!(scrub("invalid address \"alex.rivera+x@mail.example.org\""), "invalid address \"<email>\"");
+        assert_eq!(scrub("from <a@b.co>, cc c.d@e-f.io."), "from <<email>>, cc <email>.");
+        assert_eq!(scrub("Bearer ya29.a0AfB_byC-xyz123 expired"), "Bearer <token> expired");
+        assert_eq!(scrub("refresh 1//0gAbcdefghijklmnopqrstuvwx rejected"), "refresh <token> rejected");
+        assert_eq!(scrub("retry 1//2 in 3s; me@localhost; 5 @ noon"), "retry 1//2 in 3s; me@localhost; 5 @ noon");
+        assert_eq!(scrub("résumé for ünïcode@exämple.com"), "résumé for ünïcode@exämple.com", "non-ASCII left alone");
+    }
+
+    #[test]
+    fn the_log_file_is_scrubbed() {
+        let dir = temp_dir("scrub");
+        let file = RotatingFile::with_limits(&dir, 10_000, 2).unwrap();
+        {
+            let mut w = file.make_writer();
+            writeln!(w, "WARN outbox op failed: invalid address sam@example.org").unwrap();
+        }
+        let text = fs::read_to_string(dir.join("core.log")).unwrap();
+        assert!(text.contains("invalid address <email>"), "{text}");
+        assert!(!text.contains("sam@"));
     }
 
     #[test]

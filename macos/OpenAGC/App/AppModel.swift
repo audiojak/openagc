@@ -126,7 +126,7 @@ final class AppModel {
             await open(accountID: account.accountID)
         } catch {
             signInSession = nil
-            logger.error("sign-in failed: \(error.message, privacy: .public)")
+            logger.error("sign-in failed: \(error.message, privacy: .private)")
             signInError = error.message
             accountState = .noAccount
         }
@@ -161,7 +161,7 @@ final class AppModel {
                 observeLifecycle()
             }
         } catch {
-            logger.error("opening account failed: \(error.message, privacy: .public)")
+            logger.error("opening account failed: \(error.message, privacy: .private)")
             accountState = .failed(error.message)
         }
     }
@@ -193,7 +193,7 @@ final class AppModel {
         do {
             try core?.setAgentPolicy(tools)
         } catch {
-            logger.error("agent policy rejected: \(error.message, privacy: .public)")
+            logger.error("agent policy rejected: \(error.message, privacy: .private)")
         }
     }
 
@@ -326,7 +326,7 @@ final class AppModel {
         do {
             try await body()
         } catch {
-            logger.error("action failed: \(String(describing: error), privacy: .public)")
+            logger.error("action failed: \(String(describing: error), privacy: .private)")
             // The store was not changed; bring the list back in line.
             await threads.refresh()
         }
@@ -378,7 +378,7 @@ final class AppModel {
                 await threads.apply(hint)
             }
         case let .error(error):
-            logger.error("core error: \(error.message, privacy: .public)")
+            logger.error("core error: \(error.message, privacy: .private)")
             if error.kind == .auth { needsReauthentication = true }
         case let .syncStatus(state, pending):
             switch state {
