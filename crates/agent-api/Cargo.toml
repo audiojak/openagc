@@ -1,6 +1,6 @@
 [package]
 name = "agent-api"
-description = "AgentProvider trait, sessions and agent events."
+description = "AgentProvider trait, sessions, agent events and the session manager."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,6 +9,15 @@ publish.workspace = true
 
 [dependencies]
 mail-domain.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true
