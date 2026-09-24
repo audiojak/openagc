@@ -13,7 +13,7 @@ use async_trait::async_trait;
 
 pub use detect::{MINIMUM_VERSION, auth_probe_args};
 pub use session::{mcp_config, turn_args};
-pub use stream::{StreamParser, summarize_args};
+pub use stream::StreamParser;
 
 pub struct ClaudeProvider {
     locator: Locator,

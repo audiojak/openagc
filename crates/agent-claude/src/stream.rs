@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use agent_api::{AgentEvent, Usage};
+use agent_api::{AgentEvent, Usage, shorten, summarize_args};
 use serde_json::Value;
 
 const TOOL_PREFIX: &str = "mcp__openagc__";
@@ -17,32 +17,6 @@ pub struct StreamParser {
     started_tools: HashSet<String>,
     finished: bool,
     mcp_checked: bool,
-}
-
-/// A short, single-line rendering of a tool's arguments for the transcript.
-pub fn summarize_args(input: &Value) -> String {
-    let text = match input {
-        Value::Object(map) if map.is_empty() => String::new(),
-        Value::Object(map) => map
-            .iter()
-            .map(|(k, v)| match v {
-                Value::String(s) => format!("{k}: {s}"),
-                Value::Array(a) => format!("{k}: {} item{}", a.len(), if a.len() == 1 { "" } else { "s" }),
-                other => format!("{k}: {other}"),
-            })
-            .collect::<Vec<_>>()
-            .join(", "),
-        other => other.to_string(),
-    };
-    shorten(&text, 120)
-}
-
-fn shorten(text: &str, max: usize) -> String {
-    let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    match one_line.char_indices().nth(max) {
-        Some((cut, _)) => format!("{}…", &one_line[..cut]),
-        None => one_line,
-    }
 }
 
 fn tool_name(name: &str) -> String {

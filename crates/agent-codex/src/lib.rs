@@ -11,6 +11,7 @@ use agent_api::{AgentProvider, AgentResult, AgentSession, AgentStatus, EventSink
 use async_trait::async_trait;
 
 pub use detect::MINIMUM_VERSION;
+pub use session::{DISABLED_FEATURES, server_args};
 
 pub struct CodexProvider {
     locator: Locator,

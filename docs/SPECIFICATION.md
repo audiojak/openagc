@@ -818,7 +818,16 @@ claude -p <prompt>
 
 Transport: one long-lived `codex app-server` subprocess per app launch
 (started lazily), JSON-RPC 2.0 over stdio, newline-delimited, `"jsonrpc"`
-field omitted on the wire as the protocol specifies. This is the protocol
+field omitted on the wire as the protocol specifies.
+
+*(Amended in M3, verified against codex-cli 0.145: one app-server per
+OpenAGC **session**, since the MCP server's `--session` binding is
+process-level configuration. `--ignore-user-config` does not exist; the
+adapter replaces the whole `mcp_servers` table with `-c` and turns off the
+shell, exec, browser, apps, plugins, hooks and other features with
+`--disable`. `tools.web_search`/`tools.view_image` are not valid keys;
+`web_search="disabled"` is. The flag set was checked with
+`--strict-config`; see `crates/agent-codex/schema/README.md`.)* This is the protocol
 the VS Code extension uses. It is labelled experimental by OpenAI but is
 the only path that gives host-mediated approvals and interruption;
 `codex exec` has neither and `codex mcp-server` was removed in 0.154.
