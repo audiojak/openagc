@@ -6,7 +6,7 @@ This file provides instructions and context for AI coding agents working on this
 
 - Spec: `docs/SPECIFICATION.md` is the source of truth; beads issue descriptions cite its sections (§N).
 - Toolchain PATH (not in the default shell snapshot): `export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"`.
-- Checks before closing any issue: `scripts/gate.sh` (wraps `scripts/check.sh` without hiding its exit status) (fmt, clippy -D warnings, tests, check-deps, deny; exits non-zero) and `scripts/test-macos.sh` for the app.
+- Checks before closing any issue: `scripts/gate.sh` (wraps `scripts/check.sh` without hiding its exit status) (fmt, clippy -D warnings, tests, check-deps, deny; exits non-zero) and `scripts/test-macos.sh` for the app. Never pipe the gate into `grep`/`tail` before `&& git commit`: the pipe's status wins and a failed gate commits anyway. Use `if scripts/gate.sh >log 2>&1; then …; fi`.
 - Only `openagc-core` may depend on UniFFI; dependency direction is enforced by `cargo xtask check-deps`.
 - Never touch real Gmail, Google/Apple accounts, or create Claude cloud routines from automation; test against fakes.
 - Overnight work happens on the `overnight` branch; push after each closed issue.
