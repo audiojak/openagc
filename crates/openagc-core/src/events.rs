@@ -136,6 +136,8 @@ pub enum CoreEvent {
     NewMail {
         messages: Vec<NewMailInfo>,
     },
+    /// A routine was saved, deleted, ran or finished; re-read the list.
+    RoutinesChanged,
     /// One agent session's events from one 16 ms frame (spec §9.5).
     AgentEvents {
         session_id: String,

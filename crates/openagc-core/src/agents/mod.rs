@@ -35,6 +35,8 @@ pub(crate) struct ToolSession {
     /// The quoted original of reply drafts this session made, so updating
     /// the body keeps it.
     pub draft_quotes: HashMap<i64, String>,
+    /// A routine preview: only read tools (spec §11.5 dry run).
+    pub read_only: bool,
     /// Where `mail_present_threads` shows results; set by the agent manager.
     pub sink: Option<EventSink>,
 }
@@ -49,6 +51,11 @@ pub(crate) struct AgentHub {
     pub(crate) runtime: OnceLock<sessions::AgentRuntime>,
     pub(crate) fake_providers: sessions::FakeProviders,
     pub(crate) approvals: approvals::Approvals,
+    /// Agent sessions that are routine runs or previews.
+    pub(crate) routine_sessions: Mutex<HashMap<String, crate::routines::RoutineSession>>,
+    /// Finished previews, by session.
+    pub(crate) previews: Mutex<HashMap<String, Vec<crate::routines::RoutinePreviewRow>>>,
+    pub(crate) scheduler: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 /// The real agent adapters (spec §9.3, §9.4).
@@ -58,7 +65,8 @@ pub(crate) fn adapters() -> Vec<Arc<dyn AgentProvider>> {
 
 impl AgentHub {
     pub(crate) fn register(&self, session: &str, scope: Scope, sink: Option<EventSink>) {
-        let state = ToolSession { guard: SessionGuard::new(scope), draft_quotes: HashMap::new(), sink };
+        let state =
+            ToolSession { guard: SessionGuard::new(scope), draft_quotes: HashMap::new(), read_only: false, sink };
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session.to_owned(), state);
     }
 
@@ -70,7 +78,7 @@ impl AgentHub {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).get_mut(session).map(f)
     }
 
-    fn has(&self, session: &str) -> bool {
+    pub(crate) fn has(&self, session: &str) -> bool {
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).contains_key(session)
     }
 }
@@ -146,6 +154,17 @@ impl Core {
     pub fn set_text_extractor(&self, extractor: Arc<dyn TextExtractor>) {
         *self.agents.text.write().unwrap_or_else(|e| e.into_inner()) = Some(extractor);
     }
+}
+
+/// Test hook for other modules' tests.
+#[cfg(test)]
+pub(crate) async fn tools_call_for_tests(
+    core: &Arc<Core>,
+    session: &str,
+    tool: Tool,
+    arguments: serde_json::Value,
+) -> Outcome {
+    tools::call(core, session, tool, arguments).await
 }
 
 #[cfg(test)]

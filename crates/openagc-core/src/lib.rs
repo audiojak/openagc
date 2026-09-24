@@ -30,7 +30,7 @@ pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};
 pub use mutations::OutboxStatus;
-pub use routines::RoutineInfo;
+pub use routines::{RoutineInfo, RoutinePreviewRow, RoutineRunInfo};
 pub use secrets::SecretStore;
 
 /// Configuration the app passes when it creates the core.

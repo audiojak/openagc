@@ -61,6 +61,7 @@ impl Core {
                 .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))??;
             tracing::info!(account = %account_id, "account opened");
             *core.account.write().unwrap_or_else(|e| e.into_inner()) = Some(Account { id: account_id, db });
+            core.start_routine_scheduler();
             Ok(())
         })
         .await

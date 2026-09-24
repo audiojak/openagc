@@ -273,6 +273,47 @@ final class CoreClient: Sendable {
     /// Development: scripted agents instead of the real CLIs.
     func useFakeAgents() { core.debugUseFakeAgents() }
 
+    // MARK: Routines
+
+    func routines() async throws(CoreClientError) -> [RoutineInfo] {
+        try await call { try await core.listRoutines() }
+    }
+
+    func createRoutineFromTemplate(runner: String) async throws(CoreClientError) -> RoutineInfo {
+        try await call { try await core.createRoutineFromTemplate(runner: runner) }
+    }
+
+    func saveRoutine(json: String) async throws(CoreClientError) -> RoutineInfo {
+        try await call { try await core.saveRoutine(definitionJson: json) }
+    }
+
+    func deleteRoutine(_ id: String) async throws(CoreClientError) {
+        try await call { try await core.deleteRoutine(id: id) }
+    }
+
+    func routinePrompt(_ id: String) async throws(CoreClientError) -> String {
+        try await call { try await core.routinePrompt(id: id) }
+    }
+
+    func runRoutineNow(_ id: String) async throws(CoreClientError) -> String {
+        try await call { try await core.runRoutineNow(id: id) }
+    }
+
+    func previewRoutine(_ id: String) async throws(CoreClientError) -> String {
+        try await call { try await core.previewRoutine(id: id) }
+    }
+
+    func routinePreview(_ sessionID: String) -> [RoutinePreviewRow]? {
+        core.routinePreview(sessionId: sessionID)
+    }
+
+    func routineRuns(_ id: String, limit: UInt32 = 20) async throws(CoreClientError) -> [RoutineRunInfo] {
+        try await call { try await core.listRoutineRuns(id: id, limit: limit) }
+    }
+
+    func describeSchedule(_ rrule: String) -> String { core.describeSchedule(rrule: rrule) }
+    func nextRunAt(_ rrule: String) -> Int64? { core.nextRunAt(rrule: rrule) }
+
     // MARK: Accounts and sync
 
     struct SignInStart: Sendable {
@@ -418,6 +459,9 @@ typealias AgentTranscriptItem = OpenAGCCore.AgentTranscriptItem
 typealias AgentStatusInfo = OpenAGCCore.AgentStatusInfo
 typealias AttachmentInfo = OpenAGCCore.AttachmentInfo
 typealias PromptContextInfo = OpenAGCCore.PromptContextInfo
+typealias RoutineInfo = OpenAGCCore.RoutineInfo
+typealias RoutinePreviewRow = OpenAGCCore.RoutinePreviewRow
+typealias RoutineRunInfo = OpenAGCCore.RoutineRunInfo
 typealias DraftAttachmentInfo = OpenAGCCore.DraftAttachmentInfo
 typealias DraftInfo = OpenAGCCore.DraftInfo
 typealias DraftStatus = OpenAGCCore.DraftStatus
@@ -458,6 +502,7 @@ enum CoreClientEvent: Sendable, Equatable {
     case outboxStatus(pending: UInt32, failed: UInt32)
     case newMail([NewMail])
     case agent(sessionID: String, events: [AgentEventInfo])
+    case routinesChanged
     case error(CoreClientError)
 }
 
@@ -532,6 +577,8 @@ private extension CoreClientEvent {
             self = .outboxStatus(pending: pending, failed: failed)
         case let .error(kind, message):
             self = .error(CoreClientError(kind: .init(kind), message: message))
+        case .routinesChanged:
+            self = .routinesChanged
         case let .agentEvents(sessionId, events):
             self = .agent(sessionID: sessionId, events: events)
         case let .newMail(messages):

@@ -176,6 +176,9 @@ final class AppModel {
         searchFocusRequests += 1
     }
 
+    /// Bumped when routines change, so their views reload.
+    private(set) var routinesRevision = 0
+
     // MARK: Agent
 
     static let agentApprovalKey = "agentApproveTools"
@@ -386,6 +389,8 @@ final class AppModel {
             notifier.announce(mail)
         case let .agent(sessionID, events):
             await agent.apply(sessionID: sessionID, events: events)
+        case .routinesChanged:
+            routinesRevision += 1
         }
     }
 }

@@ -169,8 +169,19 @@ async fn forward(mut rx: mpsc::UnboundedReceiver<(SessionId, AgentEvent)>, event
         }
         for (sid, list) in sessions {
             let list = agent_api::coalesce(list);
+            let ended = list.iter().find_map(|e| match e {
+                AgentEvent::TurnCompleted { .. } => Some(true),
+                AgentEvent::TurnFailed { .. } => Some(false),
+                _ => None,
+            });
             if let Some(core) = core.upgrade() {
                 core.persist_agent_events(&sid, &list).await;
+                // Routine runs finish when their turn does (off this task, so
+                // the event stream keeps flowing while the run is recorded).
+                if let Some(succeeded) = ended {
+                    let session = sid.0.clone();
+                    tokio::spawn(async move { core.routine_turn_ended(&session, succeeded).await });
+                }
             }
             events
                 .emit(CoreEvent::AgentEvents { session_id: sid.0, events: list.into_iter().map(Into::into).collect() });

@@ -51,6 +51,8 @@ wiremock = "0.6"
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 zip = { version = "8", default-features = false, features = ["deflate"] }
 insta = "1"
+rrule = "0.14"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rmcp = { version = "3.4", default-features = false, features = ["server", "transport-io"] }
 
 [workspace.lints.rust]

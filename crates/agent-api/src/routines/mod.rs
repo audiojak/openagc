@@ -2,6 +2,7 @@
 //! cadence labels. A routine is data; its prompt is generated from it.
 
 mod prompt;
+pub mod schedule;
 
 use serde::{Deserialize, Serialize};
 

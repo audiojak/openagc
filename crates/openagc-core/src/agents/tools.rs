@@ -51,6 +51,10 @@ pub(crate) async fn call(core: &Arc<Core>, session: &str, tool: Tool, arguments:
         ProposedAction { tool, thread_ids: thread_ids_of(tool, &arguments), draft_id: arguments["draft_id"].as_i64() };
     let now = mail_sync::now_millis();
     let checked = core.agents.with_session(session, |s| s.guard.check(&action, now));
+    let read_only = core.agents.with_session(session, |s| s.read_only).unwrap_or(false);
+    if read_only && tool.risk() != permissions::Risk::ReadOnly {
+        return Outcome::error("denied", "this is a preview: nothing may be changed");
+    }
     let refusal = match checked {
         None => return Outcome::error("unknown_session", "this agent session has ended"),
         Some(Err(reason)) => Some(reason.to_string()),
