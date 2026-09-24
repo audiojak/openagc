@@ -59,6 +59,7 @@
 		E65B21770ED2B172D35054C7 /* SyncStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5846BE9A95C68C7383B2B7C /* SyncStatusView.swift */; };
 		F1C67B7F56BB5793575AA7DB /* ReaderStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BFDFDE09CC5207A0A048D0 /* ReaderStore.swift */; };
 		F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */; };
+		F9BBF95D9CBEC5F60BC4CD61 /* agent-system-prompt.md in Resources */ = {isa = PBXBuildFile; fileRef = 6D322E3E16D6E19FF3D99CBF /* agent-system-prompt.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -113,6 +114,7 @@
 		5D0633FEBD199D3028E73DAA /* ThreadListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadListView.swift; sourceTree = "<group>"; };
 		6407F10744C6609C6D77A3E9 /* EmailDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailDocument.swift; sourceTree = "<group>"; };
 		662ED4D20063A892C72301EF /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
+		6D322E3E16D6E19FF3D99CBF /* agent-system-prompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "agent-system-prompt.md"; sourceTree = "<group>"; };
 		6EA889A74036D5319EED2E94 /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		700730FD7CE20073EC4E05F4 /* KeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTests.swift; sourceTree = "<group>"; };
 		7491CD8B391923F8E19F565D /* MailReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailReadTests.swift; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 		21B1FEBF552FD39C8F00118E /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				6D322E3E16D6E19FF3D99CBF /* agent-system-prompt.md */,
 				19F04E00E0E6BE9B7678CEDB /* GoogleOAuth.plist */,
 				D11E72641F92131C1AC579D7 /* Info.plist */,
 				448D8466905D410325058CE5 /* OpenAGC.entitlements */,
@@ -506,6 +509,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				23F77D5789CFA8F3CBE1F3D0 /* GoogleOAuth.plist in Resources */,
+				F9BBF95D9CBEC5F60BC4CD61 /* agent-system-prompt.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

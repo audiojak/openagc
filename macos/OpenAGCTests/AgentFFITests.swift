@@ -33,3 +33,23 @@ struct AgentFFITests {
         try await core.closeAgentSession(session)
     }
 }
+
+struct SystemPromptTests {
+    @Test func theSystemPromptShipsAndCoversTheRules() throws {
+        let url = try #require(Bundle.main.url(forResource: "agent-system-prompt", withExtension: "md"))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.contains("untrusted"))
+        #expect(text.contains("mail_present_threads"))
+        #expect(text.contains("rejected_by_user"))
+        #expect(text.utf8.count < 4_000, "every word costs every turn")
+        // Every tool the prompt names exists.
+        let named = text.matches(of: /`(mail_[a-z_]+)`/).map { String($0.1) }
+        #expect(!named.isEmpty)
+        let known: Set<String> = ["mail_search", "mail_get_thread", "mail_get_message", "mail_list_labels",
+                                  "mail_get_attachment_text", "mail_present_threads", "mail_create_draft",
+                                  "mail_update_draft", "mail_archive", "mail_mark_read", "mail_mark_unread",
+                                  "mail_add_label", "mail_remove_label", "mail_create_label", "mail_send",
+                                  "mail_forward", "mail_delete"]
+        for name in named { #expect(known.contains(name), "\(name)") }
+    }
+}
