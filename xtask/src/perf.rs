@@ -149,6 +149,26 @@ pub fn perf(root: &Path, messages: u32) -> Result<()> {
         })?,
     });
 
+    // Search: each query as typed, the store's share of "keystroke →
+    // results < 30 ms".
+    for (name, query) in [
+        ("search: free text \"roadmap\"", "roadmap"),
+        ("search: prefix as typed \"quar\"", "quar"),
+        ("search: from:rivera", "from:rivera"),
+        ("search: structured is:unread in:inbox", "is:unread in:inbox"),
+        ("search: text + filters", "invoice has:attachment newer_than:1y"),
+    ] {
+        let expr = mail_store::search::parse(query)?;
+        let now = inbox.rows[0].last_message_at;
+        results.push(Measure {
+            name,
+            budget: Duration::from_millis(20),
+            samples: time(20, |_| {
+                db.read_blocking(|c| mail_store::search::search(c, &expr, now, None, 100)).map_err(Into::into)
+            })?,
+        });
+    }
+
     let (total_threads, total_messages): (i64, i64) = db.read_blocking(|c| {
         Ok(c.query_row("SELECT (SELECT COUNT(*) FROM threads), (SELECT COUNT(*) FROM messages)", [], |r| {
             Ok((r.get(0)?, r.get(1)?))

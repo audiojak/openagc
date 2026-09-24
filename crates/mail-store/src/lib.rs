@@ -10,6 +10,7 @@ mod error;
 pub mod outbox;
 pub mod queue;
 pub mod read;
+pub mod search;
 mod write;
 
 pub use db::{Db, READER_COUNT, schema_version};

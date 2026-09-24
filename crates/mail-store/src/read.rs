@@ -248,6 +248,11 @@ struct ParticipantJson {
     email: String,
 }
 
+/// A summary from a row shaped `id, gmail_id, subject, … label_ids_json`.
+pub(crate) fn thread_summary_row(r: &Row<'_>) -> rusqlite::Result<StoreResult<ThreadSummary>> {
+    thread_summary(r, 1)
+}
+
 /// Build a summary from columns starting at `offset` (gmail_id first).
 fn thread_summary(r: &Row<'_>, offset: usize) -> rusqlite::Result<StoreResult<ThreadSummary>> {
     let participants: String = r.get(offset + 8)?;
@@ -291,11 +296,11 @@ fn fill_participants(conn: &Connection, message_rowid: i64, m: &mut Message) -> 
     Ok(())
 }
 
-fn encode_cursor(at: i64, id: i64) -> String {
+pub(crate) fn encode_cursor(at: i64, id: i64) -> String {
     format!("{at}:{id}")
 }
 
-fn decode_cursor(c: &str) -> StoreResult<(i64, i64)> {
+pub(crate) fn decode_cursor(c: &str) -> StoreResult<(i64, i64)> {
     let (a, b) = c.split_once(':').ok_or_else(|| StoreError::Invalid(format!("bad cursor {c:?}")))?;
     let parse = |s: &str| s.parse::<i64>().map_err(|_| StoreError::Invalid(format!("bad cursor {c:?}")));
     Ok((parse(a)?, parse(b)?))
