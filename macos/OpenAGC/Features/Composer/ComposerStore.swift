@@ -158,6 +158,13 @@ final class ComposerStore {
         }
     }
 
+    /// The window is closing: save, then push the draft to Gmail at once.
+    func close() async {
+        guard phase == .editing else { return }
+        await save()
+        core?.flushDrafts()
+    }
+
     // MARK: Attachments
 
     /// Copies files into the app's data directory so the draft keeps them

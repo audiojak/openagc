@@ -312,7 +312,7 @@ impl SyncEngine {
         }
     }
 
-    pub(crate) fn db(&self) -> &Db {
+    pub fn db(&self) -> &Db {
         &self.db
     }
 

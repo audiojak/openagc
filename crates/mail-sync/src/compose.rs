@@ -93,16 +93,16 @@ pub async fn forward_draft(db: &Db, message_id: &MessageId) -> SyncResult<DraftR
     })
 }
 
-/// Freeze a saved draft into MIME and queue it (or, with no provider,
-/// "send" it locally). An optimistic copy appears in Sent at once.
-pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool) -> SyncResult<ThreadChanges> {
-    let draft = db
-        .read(move |c| drafts::get(c, draft_id))
-        .await?
-        .ok_or_else(|| StoreError::NotFound(format!("draft {draft_id}")))?;
-    if draft.state == DraftState::Sending {
-        return Err(StoreError::Invalid("this draft is already being sent".into()).into());
-    }
+/// The MIME message for a draft: quote merged into the body, threading
+/// headers from the parent, attachment bytes read from disk. Returns the
+/// merged draft alongside.
+async fn outgoing_message(
+    db: &Db,
+    draft: DraftRecord,
+    from: &EmailAddress,
+    rfc822_id: String,
+    now: Millis,
+) -> SyncResult<(DraftRecord, OutgoingMessage)> {
     let parent = match &draft.in_reply_to {
         Some(id) => {
             let id = MessageId(id.clone());
@@ -115,14 +115,11 @@ pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool)
         let data = std::fs::read(&a.path).map_err(|e| StoreError::Io(format!("{}: {e}", a.filename)))?;
         attachments.push(OutgoingAttachment { filename: a.filename.clone(), mime_type: a.mime_type.clone(), data });
     }
-    let domain = from.email.rsplit('@').next().unwrap_or("localhost").to_owned();
     let draft = DraftRecord {
         body_html: format!("{}{}", draft.body_html, draft.quoted_html),
         quoted_html: String::new(),
         ..draft
     };
-    let rfc822_id = format!("{}.openagc@{domain}", random_token());
-    let now = now_millis();
     let outgoing = OutgoingMessage {
         from: from.clone(),
         to: draft.to.clone(),
@@ -131,7 +128,7 @@ pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool)
         subject: draft.subject.clone(),
         html: draft.body_html.clone(),
         text: None,
-        message_id: rfc822_id.clone(),
+        message_id: rfc822_id,
         in_reply_to: parent.as_ref().and_then(|p| p.rfc822_message_id.clone()),
         references: parent
             .as_ref()
@@ -140,6 +137,32 @@ pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool)
         attachments,
         date: now,
     };
+    Ok((draft, outgoing))
+}
+
+/// RFC 5322 bytes for a draft being mirrored to the server. Unlike a send,
+/// a draft may have no recipients yet.
+pub(crate) async fn draft_raw(db: &Db, draft: DraftRecord, from: &EmailAddress) -> SyncResult<Vec<u8>> {
+    let domain = from.email.rsplit('@').next().unwrap_or("localhost").to_owned();
+    let (_, outgoing) =
+        outgoing_message(db, draft, from, format!("{}.openagc@{domain}", random_token()), now_millis()).await?;
+    mail_mime::build_draft(&outgoing).map_err(|e| SyncError::Store(StoreError::Invalid(e.to_string())))
+}
+
+/// Freeze a saved draft into MIME and queue it (or, with no provider,
+/// "send" it locally). An optimistic copy appears in Sent at once.
+pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool) -> SyncResult<ThreadChanges> {
+    let draft = db
+        .read(move |c| drafts::get(c, draft_id))
+        .await?
+        .ok_or_else(|| StoreError::NotFound(format!("draft {draft_id}")))?;
+    if draft.state == DraftState::Sending {
+        return Err(StoreError::Invalid("this draft is already being sent".into()).into());
+    }
+    let domain = from.email.rsplit('@').next().unwrap_or("localhost").to_owned();
+    let rfc822_id = format!("{}.openagc@{domain}", random_token());
+    let now = now_millis();
+    let (draft, outgoing) = outgoing_message(db, draft, &from, rfc822_id.clone(), now).await?;
     let raw = mail_mime::build(&outgoing).map_err(|e| SyncError::Store(StoreError::Invalid(e.to_string())))?;
     let text = mail_mime::html_to_text(&draft.body_html);
     let sanitized = mail_mime::sanitize_html(&draft.body_html);
@@ -183,9 +206,28 @@ pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool)
                 drafts::set_rfc822_id(tx, draft_id, &rfc822_id)?;
                 outbox::enqueue(tx, &op, now)?;
             } else {
-                drafts::delete(tx, draft_id)?;
+                drafts::discard(tx, draft_id, now)?;
             }
             Ok(changes)
+        })
+        .await?)
+}
+
+/// Queue a mirror op for every draft edited since the last one (spec
+/// §14.5: every 30 s while editing, and when the composer closes). Returns
+/// how many were queued.
+pub async fn schedule_draft_sync(db: &Db, from: EmailAddress) -> SyncResult<usize> {
+    let now = now_millis();
+    Ok(db
+        .write(move |tx| {
+            let mut queued = 0;
+            for draft_id in drafts::take_dirty(tx)? {
+                if !outbox::has_pending_draft_sync(tx, draft_id)? {
+                    outbox::enqueue(tx, &OutboxOp::SyncDraft { draft_id, from: from.clone() }, now)?;
+                    queued += 1;
+                }
+            }
+            Ok(queued)
         })
         .await?)
 }

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use mail_domain::{EmailAddress, LabelId, MessageId, ThreadId};
 use mail_store::drafts::{self, DraftState};
 use mail_store::{Db, ThreadChanges, consistency, read};
-use mail_sync::{SyncEngine, SyncObserver, forward_draft, reply_draft, send_draft};
+use mail_sync::{SyncEngine, SyncObserver, forward_draft, reply_draft, schedule_draft_sync, send_draft};
 use provider_api::fake::FakeProvider;
-use provider_api::{FetchedBody, FetchedMessage, ProviderError};
+use provider_api::{FetchedBody, FetchedMessage, MailProvider, ProviderError};
 
 const NOW: i64 = 1_790_000_000_000;
 
@@ -155,4 +155,109 @@ async fn sending_without_recipients_is_refused_and_changes_nothing() {
     assert!(send_draft(&db, id, me(), true).await.is_err());
     assert!(sent(&db).await.is_empty());
     assert_eq!(db.read(move |c| drafts::get(c, id)).await.unwrap().unwrap().state, DraftState::Editing);
+}
+
+async fn outbox_count(engine: &SyncEngine) -> u32 {
+    engine.outbox_counts().await.unwrap().pending
+}
+
+#[tokio::test]
+async fn drafts_are_mirrored_once_per_batch_of_edits_and_replaced_in_place() {
+    let (fake, db, engine) = setup("mirror").await;
+    let mut d = reply_draft(&db, &MessageId::new("m1"), false, &["me@example.com".into()]).await.unwrap();
+    d.body_html = "<p>WIP</p>".into();
+    d.id = save(&db, d.clone()).await;
+    // Several saves before the tick: one op.
+    save(&db, d.clone()).await;
+    assert_eq!(schedule_draft_sync(&db, me()).await.unwrap(), 1);
+    assert_eq!(schedule_draft_sync(&db, me()).await.unwrap(), 0, "nothing new to mirror");
+    engine.drain_outbox().await.unwrap();
+    let server = fake.drafts();
+    assert_eq!(server.len(), 1);
+    let (gmail_id, (raw, thread)) = server.into_iter().next().unwrap();
+    assert_eq!(thread, Some(ThreadId::new("t1")), "threaded with the parent");
+    let parsed = mail_mime::parse(&raw).unwrap();
+    assert_eq!(parsed.headers.subject, "Re: Q3 planning");
+    assert_eq!(parsed.headers.in_reply_to.as_deref(), Some("plan.1@example.org"));
+    assert!(parsed.html.unwrap().contains("<blockquote>"), "the quote is part of the server copy");
+    let stored = db.read(move |c| drafts::get(c, d.id)).await.unwrap().unwrap();
+    assert_eq!(stored.gmail_draft_id.as_deref(), Some(gmail_id.as_str()));
+
+    // An edit replaces the same server draft.
+    let mut edited = stored.clone();
+    edited.subject = "Re: Q3 planning (v2)".into();
+    save(&db, edited).await;
+    schedule_draft_sync(&db, me()).await.unwrap();
+    engine.drain_outbox().await.unwrap();
+    let server = fake.drafts();
+    assert_eq!(server.keys().cloned().collect::<Vec<_>>(), vec![gmail_id.clone()]);
+    assert_eq!(mail_mime::parse(&server[&gmail_id].0).unwrap().headers.subject, "Re: Q3 planning (v2)");
+
+    // Deleted in Gmail's web UI: recreated rather than failing.
+    fake.delete_draft(&gmail_id).await.unwrap();
+    save(&db, stored.clone()).await;
+    schedule_draft_sync(&db, me()).await.unwrap();
+    engine.drain_outbox().await.unwrap();
+    assert_eq!(fake.drafts().len(), 1);
+    assert_eq!(outbox_count(&engine).await, 0);
+}
+
+#[tokio::test]
+async fn discarding_or_sending_removes_the_server_copy() {
+    let (fake, db, engine) = setup("discard").await;
+    let draft = drafts::DraftRecord {
+        to: vec![EmailAddress::new(None, "sam@example.org")],
+        subject: "Mirror me".into(),
+        body_html: "<p>Hi</p>".into(),
+        ..Default::default()
+    };
+    let a = save(&db, draft.clone()).await;
+    let b = save(&db, draft).await;
+    assert_eq!(schedule_draft_sync(&db, me()).await.unwrap(), 2);
+    engine.drain_outbox().await.unwrap();
+    assert_eq!(fake.drafts().len(), 2);
+
+    db.write(move |tx| drafts::discard(tx, a, NOW)).await.unwrap();
+    send_draft(&db, b, me(), true).await.unwrap();
+    engine.drain_outbox().await.unwrap();
+    assert!(fake.drafts().is_empty(), "both server drafts deleted");
+    assert_eq!(outbox_count(&engine).await, 0);
+    assert!(db.read(drafts::list).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_draft_discarded_before_its_upload_runs_leaves_nothing_behind() {
+    let (fake, db, engine) = setup("discard-early").await;
+    let id = save(&db, drafts::DraftRecord { subject: "Gone".into(), ..Default::default() }).await;
+    schedule_draft_sync(&db, me()).await.unwrap();
+    db.write(move |tx| drafts::discard(tx, id, NOW)).await.unwrap();
+    engine.drain_outbox().await.unwrap();
+    assert!(fake.drafts().is_empty());
+    assert_eq!(outbox_count(&engine).await, 0);
+}
+
+#[tokio::test]
+async fn a_draft_whose_attachment_vanished_fails_without_blocking_the_queue() {
+    let (fake, db, engine) = setup("missing-attachment").await;
+    let id = save(
+        &db,
+        drafts::DraftRecord {
+            subject: "Broken".into(),
+            attachments: vec![drafts::DraftAttachment {
+                path: "/nonexistent/openagc/file.pdf".into(),
+                filename: "file.pdf".into(),
+                mime_type: "application/pdf".into(),
+                size: 1,
+            }],
+            ..Default::default()
+        },
+    )
+    .await;
+    let ok = save(&db, drafts::DraftRecord { subject: "Fine".into(), ..Default::default() }).await;
+    schedule_draft_sync(&db, me()).await.unwrap();
+    let report = engine.drain_outbox().await.unwrap();
+    assert_eq!((report.sent, report.failed), (1, 1));
+    assert_eq!(fake.drafts().len(), 1);
+    assert!(db.read(move |c| drafts::get(c, ok)).await.unwrap().unwrap().gmail_draft_id.is_some());
+    assert!(db.read(move |c| drafts::get(c, id)).await.unwrap().is_some(), "the local draft is kept");
 }

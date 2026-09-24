@@ -2,7 +2,8 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use mail_domain::{LabelId, Millis, ThreadId, system_labels};
+use mail_domain::{EmailAddress, LabelId, Millis, ThreadId, system_labels};
+use mail_store::drafts::{self, DraftState};
 use mail_store::outbox::{self, OutboxCounts, OutboxOp};
 use mail_store::{Db, MailWriter, ThreadChanges};
 use provider_api::{LabelOp, ProviderError};
@@ -143,6 +144,8 @@ impl SyncEngine {
                     Some(bytes) => self.provider().send(&bytes, thread_id.as_ref()).await.map(|_| ()),
                     None => Err(ProviderError::Invalid("queued message is corrupt".into())),
                 },
+                OutboxOp::SyncDraft { draft_id, from } => self.mirror_draft(*draft_id, from).await?,
+                OutboxOp::DeleteDraft { gmail_draft_id } => self.provider().delete_draft(gmail_draft_id).await,
             };
             let id = queued.id;
             match result {
@@ -175,6 +178,49 @@ impl SyncEngine {
                 }
             }
         }
+    }
+
+    /// Create or replace a draft's server copy. A draft deleted or being
+    /// sent by now needs nothing; a server copy deleted elsewhere is
+    /// recreated.
+    async fn mirror_draft(&self, draft_id: i64, from: &EmailAddress) -> SyncResult<Result<(), ProviderError>> {
+        let Some(draft) = self.db().read(move |c| drafts::get(c, draft_id)).await? else {
+            return Ok(Ok(()));
+        };
+        if draft.state == DraftState::Sending {
+            return Ok(Ok(()));
+        }
+        let existing = draft.gmail_draft_id.clone();
+        let thread = draft.thread_id.clone().map(ThreadId);
+        // A draft that cannot be built (an attachment file gone) fails this
+        // op rather than stalling the queue behind it.
+        let raw = match crate::compose::draft_raw(self.db(), draft, from).await {
+            Ok(raw) => raw,
+            Err(e) => return Ok(Err(ProviderError::Invalid(e.to_string()))),
+        };
+        let provider = self.provider();
+        let saved = match provider.save_draft(existing.as_deref(), &raw, thread.as_ref()).await {
+            Err(ProviderError::NotFound(_)) if existing.is_some() => {
+                provider.save_draft(None, &raw, thread.as_ref()).await
+            }
+            other => other,
+        };
+        let gmail_id = match saved {
+            Ok(id) => id,
+            Err(e) => return Ok(Err(e)),
+        };
+        let now = now_millis();
+        self.db()
+            .write(move |tx| {
+                if drafts::get(tx, draft_id)?.is_some() {
+                    drafts::set_gmail_draft_id(tx, draft_id, Some(&gmail_id))
+                } else {
+                    // Discarded while we were uploading: remove the copy too.
+                    outbox::enqueue(tx, &OutboxOp::DeleteDraft { gmail_draft_id: gmail_id }, now).map(|_| ())
+                }
+            })
+            .await?;
+        Ok(Ok(()))
     }
 
     /// When the next op waiting on a retry becomes ready.

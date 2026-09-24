@@ -20,6 +20,7 @@ use crate::{CoreError, ErrorKind};
 
 pub const ACTIVE_POLL: Duration = Duration::from_secs(30);
 pub const BACKGROUND_POLL: Duration = Duration::from_secs(300);
+pub const DRAFT_MIRROR_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
 
 /// Turns engine output into UI events.
@@ -59,6 +60,7 @@ pub(crate) struct SyncService {
     poll_now: Notify,
     backfill_wake: Notify,
     outbox_wake: Notify,
+    drafts_wake: Notify,
     tasks: std::sync::Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -71,6 +73,7 @@ impl SyncService {
             poll_now: Notify::new(),
             backfill_wake: Notify::new(),
             outbox_wake: Notify::new(),
+            drafts_wake: Notify::new(),
             tasks: std::sync::Mutex::new(Vec::new()),
         });
         let main = handle.spawn(service.clone().run());
@@ -92,6 +95,11 @@ impl SyncService {
     /// A change was queued; push it now.
     pub fn outbox_changed(&self) {
         self.outbox_wake.notify_one();
+    }
+
+    /// Mirror edited drafts to the server now (the composer closed).
+    pub fn flush_drafts(&self) {
+        self.drafts_wake.notify_one();
     }
 
     pub fn sync_now(&self) {
@@ -134,7 +142,9 @@ impl SyncService {
         let backfill = tokio::spawn(async move { backfiller.backfill_loop().await });
         let pusher = self.clone();
         let outbox = tokio::spawn(async move { pusher.outbox_loop().await });
-        self.tasks.lock().unwrap_or_else(|e| e.into_inner()).extend([backfill, outbox]);
+        let mirror = self.clone();
+        let drafts = tokio::spawn(async move { mirror.drafts_loop().await });
+        self.tasks.lock().unwrap_or_else(|e| e.into_inner()).extend([backfill, outbox, drafts]);
         self.poll_loop().await;
     }
 
@@ -189,6 +199,31 @@ impl SyncService {
             tokio::select! {
                 () = self.outbox_wake.notified() => {}
                 () = tokio::time::sleep(wait) => {}
+            }
+        }
+    }
+
+    /// Every 30 s (or when a composer closes), queue a server update for
+    /// each draft edited since the last one (spec §14.5).
+    async fn drafts_loop(self: Arc<Self>) {
+        loop {
+            tokio::select! {
+                () = self.drafts_wake.notified() => {}
+                () = tokio::time::sleep(DRAFT_MIRROR_INTERVAL) => {}
+            }
+            let db = self.engine.db().clone();
+            let email: String = match db.read(|c| mail_store::read::sync_state(c, "account_email")).await {
+                Ok(Some(email)) => email,
+                Ok(None) => continue,
+                Err(e) => {
+                    tracing::warn!(error = %e, "reading the account address failed");
+                    continue;
+                }
+            };
+            match mail_sync::schedule_draft_sync(&db, mail_domain::EmailAddress::new(None, &email)).await {
+                Ok(0) => {}
+                Ok(_) => self.outbox_wake.notify_one(),
+                Err(e) => tracing::warn!(error = %e, "scheduling draft sync failed"),
             }
         }
     }

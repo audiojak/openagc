@@ -84,6 +84,8 @@ impl From<DraftInfo> for DraftRecord {
     fn from(d: DraftInfo) -> Self {
         let addrs = |v: Vec<AddressInfo>| v.into_iter().map(Into::into).collect();
         Self {
+            // Owned by the store; saving never changes it.
+            gmail_draft_id: None,
             id: d.id,
             thread_id: d.thread_id,
             in_reply_to: d.in_reply_to_message_id,
@@ -91,9 +93,8 @@ impl From<DraftInfo> for DraftRecord {
             cc: addrs(d.cc),
             bcc: addrs(d.bcc),
             subject: d.subject,
-            // A quote not yet merged is saved as part of the body.
-            body_html: format!("{}{}", d.body_html, d.quoted_html),
-            quoted_html: String::new(),
+            body_html: d.body_html,
+            quoted_html: d.quoted_html,
             attachments: d
                 .attachments
                 .into_iter()
@@ -157,9 +158,23 @@ impl Core {
         runtime::run(async move { Ok(db.read(drafts::list).await?.into_iter().map(Into::into).collect()) }).await
     }
 
+    /// Discard a draft, and its server copy if it was mirrored.
     pub async fn delete_draft(&self, id: i64) -> Result<(), CoreError> {
         let db = self.db()?;
-        runtime::run(async move { Ok(db.write(move |tx| drafts::delete(tx, id)).await?) }).await
+        let now = mail_sync::now_millis();
+        runtime::run(async move { Ok(db.write(move |tx| drafts::discard(tx, id, now)).await?) }).await?;
+        if let Some(service) = self.accounts.sync_service() {
+            service.outbox_changed();
+        }
+        Ok(())
+    }
+
+    /// A composer closed: mirror its edits to the server now rather than
+    /// at the next 30 s tick. Does nothing without a connected account.
+    pub fn flush_drafts(&self) {
+        if let Some(service) = self.accounts.sync_service() {
+            service.flush_drafts();
+        }
     }
 
     /// Send a saved draft. With Gmail connected it goes through the outbox
@@ -257,5 +272,54 @@ mod tests {
                 .all(|a| a.email.contains("rive") || a.name.as_deref().unwrap_or("").to_lowercase().contains("rive"))
         );
         assert!(block_on(core.suggest_contacts("".into(), 5)).unwrap().is_empty());
+    }
+
+    fn wait_until(mut done: impl FnMut() -> bool) -> bool {
+        for _ in 0..250 {
+            if done() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        false
+    }
+
+    #[test]
+    fn closing_a_composer_mirrors_the_draft_and_discarding_removes_it() {
+        let dir = std::env::temp_dir().join(format!("openagc-core-mirror-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let core = Core::new(
+            CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(Noop),
+        )
+        .unwrap();
+        block_on(core.clone().open_account("acct".into())).unwrap();
+        let fake = Arc::new(provider_api::fake::FakeProvider::new("me@example.com", 1_790_000_000_000, 50));
+        core.start_sync_with(fake.clone()).unwrap();
+        assert!(wait_until(|| block_on(core.account_address()).is_ok_and(|a| a == "me@example.com")));
+
+        let draft = super::DraftInfo {
+            id: 0,
+            thread_id: None,
+            in_reply_to_message_id: None,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "Plans".into(),
+            body_html: "<p>Draft</p>".into(),
+            quoted_html: String::new(),
+            attachments: vec![],
+            status: super::DraftStatus::Editing,
+            error: None,
+            updated_at: 0,
+        };
+        let id = block_on(core.save_draft(draft)).unwrap();
+        core.flush_drafts();
+        assert!(wait_until(|| fake.drafts().len() == 1), "mirrored without waiting for the 30 s tick");
+        assert!(wait_until(|| block_on(core.get_draft(id)).unwrap().is_some()));
+        block_on(core.delete_draft(id)).unwrap();
+        assert!(wait_until(|| fake.drafts().is_empty()), "server copy deleted");
+        core.stop_sync();
     }
 }

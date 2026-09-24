@@ -48,6 +48,8 @@ pub struct DraftAttachment {
 pub struct DraftRecord {
     /// 0 for a draft not saved yet.
     pub id: i64,
+    /// The server copy's id, once mirrored.
+    pub gmail_draft_id: Option<String>,
     /// Provider thread id when this is a reply or forward.
     pub thread_id: Option<String>,
     /// Provider message id of the message being replied to.
@@ -68,7 +70,7 @@ pub struct DraftRecord {
 }
 
 const COLUMNS: &str = "id, thread_id, in_reply_to_message_id, to_json, cc_json, bcc_json, subject, body_html, \
-                       attachments_json, updated_at, state, last_error";
+                       attachments_json, updated_at, state, last_error, gmail_draft_id";
 
 fn from_row(r: &Row<'_>) -> rusqlite::Result<(DraftRecord, [String; 4])> {
     Ok((
@@ -81,6 +83,7 @@ fn from_row(r: &Row<'_>) -> rusqlite::Result<(DraftRecord, [String; 4])> {
             updated_at: r.get(9)?,
             state: DraftState::parse(&r.get::<_, String>(10)?),
             last_error: r.get(11)?,
+            gmail_draft_id: r.get(12)?,
             ..Default::default()
         },
         [r.get(3)?, r.get(4)?, r.get(5)?, r.get(8)?],
@@ -95,8 +98,10 @@ fn finish((mut d, [to, cc, bcc, att]): (DraftRecord, [String; 4])) -> StoreResul
     Ok(d)
 }
 
-/// Insert (id 0) or update a draft that is still being edited. Returns its id.
+/// Insert (id 0) or update a draft that is still being edited. Returns its
+/// id. A quote still held apart is stored as part of the body.
 pub fn save(tx: &Transaction<'_>, d: &DraftRecord, now: Millis) -> StoreResult<i64> {
+    let body_html = format!("{}{}", d.body_html, d.quoted_html);
     let values = (
         serde_json::to_string(&d.to)?,
         serde_json::to_string(&d.cc)?,
@@ -116,7 +121,7 @@ pub fn save(tx: &Transaction<'_>, d: &DraftRecord, now: Millis) -> StoreResult<i
             values.1,
             values.2,
             d.subject,
-            d.body_html,
+            body_html,
             values.3,
             now
         ])?;
@@ -134,7 +139,7 @@ pub fn save(tx: &Transaction<'_>, d: &DraftRecord, now: Millis) -> StoreResult<i
            attachments_json = ?7, updated_at = ?8, dirty = 1, state = 'editing', last_error = NULL
          WHERE id = ?1",
     )?
-    .execute(params![d.id, values.0, values.1, values.2, d.subject, d.body_html, values.3, now])?;
+    .execute(params![d.id, values.0, values.1, values.2, d.subject, body_html, values.3, now])?;
     Ok(d.id)
 }
 
@@ -159,6 +164,33 @@ pub fn list(conn: &Connection) -> StoreResult<Vec<DraftRecord>> {
 
 pub fn delete(tx: &Transaction<'_>, id: i64) -> StoreResult<()> {
     tx.execute("DELETE FROM drafts WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+/// Delete a draft, queueing deletion of its server copy if it has one.
+pub fn discard(tx: &Transaction<'_>, id: i64, now: Millis) -> StoreResult<()> {
+    let gmail_id: Option<String> =
+        tx.query_row("SELECT gmail_draft_id FROM drafts WHERE id = ?1", [id], |r| r.get(0)).optional()?.flatten();
+    delete(tx, id)?;
+    if let Some(gmail_draft_id) = gmail_id {
+        crate::outbox::enqueue(tx, &crate::outbox::OutboxOp::DeleteDraft { gmail_draft_id }, now)?;
+    }
+    Ok(())
+}
+
+/// Drafts edited since they were last mirrored, marked clean. Drafts being
+/// sent are left alone: the send replaces the server copy.
+pub fn take_dirty(tx: &Transaction<'_>) -> StoreResult<Vec<i64>> {
+    let ids: Vec<i64> = tx
+        .prepare_cached("SELECT id FROM drafts WHERE dirty = 1 AND state != 'sending' ORDER BY id")?
+        .query_map([], |r| r.get(0))?
+        .collect::<Result<_, _>>()?;
+    tx.execute("UPDATE drafts SET dirty = 0 WHERE dirty = 1 AND state != 'sending'", [])?;
+    Ok(ids)
+}
+
+pub fn set_gmail_draft_id(tx: &Transaction<'_>, id: i64, gmail_draft_id: Option<&str>) -> StoreResult<()> {
+    tx.execute("UPDATE drafts SET gmail_draft_id = ?2 WHERE id = ?1", params![id, gmail_draft_id])?;
     Ok(())
 }
 

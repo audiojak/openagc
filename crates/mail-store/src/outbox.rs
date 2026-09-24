@@ -3,7 +3,7 @@
 //! (which reads the store) and the queue never disagree. Each op records
 //! exactly the messages it changed, so a permanent failure can be undone.
 
-use mail_domain::{LabelId, MessageId, Millis};
+use mail_domain::{EmailAddress, LabelId, MessageId, Millis};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +26,11 @@ pub enum OutboxOp {
         thread_id: Option<mail_domain::ThreadId>,
         local_message_id: MessageId,
     },
+    /// Mirror a local draft to the server's drafts (create or replace).
+    /// Reads the draft when it runs, so one op covers any number of edits.
+    SyncDraft { draft_id: i64, from: EmailAddress },
+    /// Delete a server draft (discarded, or sent as a new message).
+    DeleteDraft { gmail_draft_id: String },
 }
 
 impl OutboxOp {
@@ -34,6 +39,8 @@ impl OutboxOp {
             Self::ModifyLabels { .. } => "modify_labels",
             Self::Trash { .. } => "trash",
             Self::Send { .. } => "send",
+            Self::SyncDraft { .. } => "sync_draft",
+            Self::DeleteDraft { .. } => "delete_draft",
         }
     }
 }
@@ -83,12 +90,16 @@ pub fn next_retry_at(conn: &Connection) -> StoreResult<Option<Millis>> {
     Ok(conn.query_row("SELECT MIN(next_attempt_at) FROM outbox WHERE state = 'pending'", [], |r| r.get(0))?)
 }
 
-/// The provider accepted the op. A sent draft is deleted now.
+/// The provider accepted the op. A sent draft is deleted now, along with
+/// its server copy.
 pub fn complete(tx: &Transaction<'_>, id: i64) -> StoreResult<()> {
-    let json: Option<String> =
-        tx.query_row("SELECT payload_json FROM outbox WHERE id = ?1", [id], |r| r.get(0)).optional()?;
-    if let Some(OutboxOp::Send { draft_id, .. }) = json.map(|j| serde_json::from_str(&j)).transpose()? {
-        crate::drafts::delete(tx, draft_id)?;
+    let row: Option<(String, Millis)> = tx
+        .query_row("SELECT payload_json, created_at FROM outbox WHERE id = ?1", [id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()?;
+    if let Some((json, created_at)) = row
+        && let OutboxOp::Send { draft_id, .. } = serde_json::from_str(&json)?
+    {
+        crate::drafts::discard(tx, draft_id, created_at)?;
     }
     tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
     Ok(())
@@ -125,10 +136,22 @@ pub fn fail(tx: &Transaction<'_>, id: i64, error: &str) -> StoreResult<ThreadCha
             w.delete_message(local_message_id)?;
             crate::drafts::set_state(tx, *draft_id, crate::drafts::DraftState::Failed, Some(error))?;
         }
+        // Nothing local to undo: the local draft is the source of truth.
+        OutboxOp::SyncDraft { .. } | OutboxOp::DeleteDraft { .. } => {}
     }
     let changes = w.finish()?;
     tx.execute("UPDATE outbox SET state = 'failed', last_error = ?2 WHERE id = ?1", params![id, error])?;
     Ok(changes)
+}
+
+/// Whether a mirror op for this draft is already waiting.
+pub fn has_pending_draft_sync(tx: &Transaction<'_>, draft_id: i64) -> StoreResult<bool> {
+    Ok(tx
+        .prepare_cached(
+            "SELECT 1 FROM outbox WHERE kind = 'sync_draft' AND state = 'pending'
+               AND json_extract(payload_json, '$.draft_id') = ?1",
+        )?
+        .exists([draft_id])?)
 }
 
 pub fn counts(conn: &Connection) -> StoreResult<OutboxCounts> {

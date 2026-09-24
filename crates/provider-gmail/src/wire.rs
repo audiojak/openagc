@@ -160,6 +160,11 @@ pub struct SentMessage {
     pub id: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct Draft {
+    pub id: String,
+}
+
 /// Gmail uses URL-safe base64, sometimes padded, sometimes not.
 pub fn decode_base64url(data: &str) -> Option<Vec<u8>> {
     let trimmed = data.trim();

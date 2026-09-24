@@ -35,6 +35,7 @@ pub mod cost {
     pub const TRASH: u32 = 5;
     pub const SEND: u32 = 100;
     pub const ATTACHMENT_GET: u32 = 20;
+    pub const DRAFTS_WRITE: u32 = 10;
 }
 
 /// Concurrent `messages.get` calls; the rate limiter paces them.
@@ -240,5 +241,35 @@ impl MailProvider for GmailProvider {
         let data: wire::AttachmentData =
             self.http.json(cost::ATTACHMENT_GET, Priority::Interactive, |c| c.get(&url)).await?;
         decode_base64url(&data.data).ok_or_else(|| ProviderError::Invalid("attachment data is not base64url".into()))
+    }
+
+    async fn save_draft(
+        &self,
+        existing: Option<&str>,
+        raw: &[u8],
+        thread: Option<&ThreadId>,
+    ) -> ProviderResult<String> {
+        let mut message = json!({ "raw": encode_base64url(raw) });
+        if let Some(t) = thread {
+            message["threadId"] = json!(t.as_str());
+        }
+        let draft: wire::Draft = match existing {
+            Some(id) => {
+                let url = self.url(&format!("drafts/{id}"));
+                let body = json!({ "id": id, "message": message });
+                self.http.json(cost::DRAFTS_WRITE, Priority::Interactive, |c| c.put(&url).json(&body)).await?
+            }
+            None => {
+                let url = self.url("drafts");
+                let body = json!({ "message": message });
+                self.http.json(cost::DRAFTS_WRITE, Priority::Interactive, |c| c.post(&url).json(&body)).await?
+            }
+        };
+        Ok(draft.id)
+    }
+
+    async fn delete_draft(&self, draft_id: &str) -> ProviderResult<()> {
+        let url = self.url(&format!("drafts/{draft_id}"));
+        self.http.empty(cost::DRAFTS_WRITE, Priority::Interactive, |c| c.delete(&url)).await
     }
 }

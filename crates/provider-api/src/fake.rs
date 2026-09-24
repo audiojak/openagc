@@ -35,6 +35,9 @@ struct State {
     next_history: u64,
     oldest_history: u64,
     sent_counter: u64,
+    /// Server drafts: id → (raw, thread).
+    drafts: BTreeMap<String, (Vec<u8>, Option<ThreadId>)>,
+    draft_counter: u64,
 }
 
 impl FakeProvider {
@@ -69,6 +72,11 @@ impl FakeProvider {
 
     fn state(&self) -> std::sync::MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The server's drafts, by id: raw bytes and thread.
+    pub fn drafts(&self) -> BTreeMap<String, (Vec<u8>, Option<ThreadId>)> {
+        self.state().drafts.clone()
     }
 
     pub fn set_labels(&self, labels: Vec<Label>) {
@@ -264,5 +272,33 @@ impl MailProvider for FakeProvider {
             .and_then(|b| b.attachments.iter().find(|a| a.attachment_id.as_deref() == Some(attachment_id)))
             .ok_or_else(|| ProviderError::NotFound(attachment_id.to_owned()))?;
         Ok(format!("fake bytes of {}", found.filename).into_bytes())
+    }
+
+    async fn save_draft(
+        &self,
+        existing: Option<&str>,
+        raw: &[u8],
+        thread: Option<&ThreadId>,
+    ) -> ProviderResult<String> {
+        self.injected_failure()?;
+        let mut s = self.state();
+        let id = match existing {
+            Some(id) if !s.drafts.contains_key(id) => return Err(ProviderError::NotFound(format!("draft {id}"))),
+            Some(id) => id.to_owned(),
+            None => {
+                s.draft_counter += 1;
+                format!("r-draft{}", s.draft_counter)
+            }
+        };
+        s.drafts.insert(id.clone(), (raw.to_vec(), thread.cloned()));
+        Ok(id)
+    }
+
+    async fn delete_draft(&self, draft_id: &str) -> ProviderResult<()> {
+        self.injected_failure()?;
+        match self.state().drafts.remove(draft_id) {
+            Some(_) => Ok(()),
+            None => Err(ProviderError::NotFound(format!("draft {draft_id}"))),
+        }
     }
 }

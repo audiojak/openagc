@@ -6,8 +6,8 @@ mod parse;
 mod sanitize;
 
 pub use build::{
-    BuildError, OutgoingAttachment, OutgoingMessage, build, forward_subject, reply_recipients, reply_references,
-    reply_subject,
+    BuildError, OutgoingAttachment, OutgoingMessage, build, build_draft, forward_subject, reply_recipients,
+    reply_references, reply_subject,
 };
 pub use parse::{
     ParseError, ParsedAttachment, ParsedHeaders, ParsedMessage, decode_text_part, html_to_text, parse, parse_headers,

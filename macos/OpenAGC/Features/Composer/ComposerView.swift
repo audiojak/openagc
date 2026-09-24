@@ -38,8 +38,8 @@ struct ComposerView: View {
             if phase == .sent { dismiss() }
         }
         .onDisappear {
-            guard let store, store.phase == .editing else { return }
-            Task { await store.save() }
+            guard let store else { return }
+            Task { await store.close() }
         }
     }
 

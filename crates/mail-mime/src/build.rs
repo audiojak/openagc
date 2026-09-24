@@ -69,6 +69,11 @@ pub fn build(m: &OutgoingMessage) -> Result<Vec<u8>, BuildError> {
     if m.to.is_empty() && m.cc.is_empty() && m.bcc.is_empty() {
         return Err(BuildError::NoRecipients);
     }
+    build_draft(m)
+}
+
+/// Like [`build`], but a draft may have no recipients yet.
+pub fn build_draft(m: &OutgoingMessage) -> Result<Vec<u8>, BuildError> {
     let text = m.text.clone().unwrap_or_else(|| crate::html_to_text(&m.html));
     let mut b = MessageBuilder::new()
         .from(address(&m.from)?)
@@ -220,6 +225,8 @@ mod tests {
         m.cc.clear();
         m.bcc.clear();
         assert_eq!(build(&m).unwrap_err(), BuildError::NoRecipients);
+        let draft = crate::parse(&build_draft(&m).unwrap()).unwrap();
+        assert!(draft.headers.to.is_empty(), "a draft may have no recipients yet");
     }
 
     #[test]

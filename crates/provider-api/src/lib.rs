@@ -135,4 +135,9 @@ pub trait MailProvider: Send + Sync {
     /// Send raw RFC 5322 bytes, threaded into `thread` when given.
     async fn send(&self, raw: &[u8], thread: Option<&ThreadId>) -> ProviderResult<MessageId>;
     async fn fetch_attachment(&self, message: &MessageId, attachment_id: &str) -> ProviderResult<Vec<u8>>;
+    /// Create a server draft (`existing` = `None`) or replace one; returns
+    /// the draft id. [`ProviderError::NotFound`] if `existing` is gone.
+    async fn save_draft(&self, existing: Option<&str>, raw: &[u8], thread: Option<&ThreadId>)
+    -> ProviderResult<String>;
+    async fn delete_draft(&self, draft_id: &str) -> ProviderResult<()>;
 }

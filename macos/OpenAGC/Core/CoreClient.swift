@@ -143,6 +143,9 @@ final class CoreClient: Sendable {
         try await call { try await core.sendDraft(id: id) }
     }
 
+    /// Mirror edited drafts to Gmail now instead of at the next 30 s tick.
+    func flushDrafts() { core.flushDrafts() }
+
     /// Synchronous, for the recipient token field's completion callback.
     func suggestContactsNow(_ text: String, limit: UInt32 = 8) -> [AddressInfo] {
         core.suggestContactsNow(text: text, limit: limit)

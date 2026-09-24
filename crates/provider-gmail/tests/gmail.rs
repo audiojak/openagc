@@ -267,6 +267,41 @@ async fn send_posts_base64url_raw_with_the_thread() {
 }
 
 #[tokio::test]
+async fn drafts_are_created_replaced_and_deleted() {
+    let (server, gmail) = setup().await;
+    let raw = b"From: me@example.com\r\nSubject: Draft\r\n\r\nWIP";
+    Mock::given(method("POST"))
+        .and(path("/users/me/drafts"))
+        .and(body_json(json!({"message": {"raw": encode_base64url(raw), "threadId": "t1"}})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "r-1", "message": {"id": "m9"}})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/users/me/drafts/r-1"))
+        .and(body_json(json!({"id": "r-1", "message": {"raw": encode_base64url(raw)}})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"id": "r-1", "message": {"id": "m10"}})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/users/me/drafts/r-1"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/users/me/drafts/gone"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    assert_eq!(gmail.save_draft(None, raw, Some(&ThreadId::new("t1"))).await.unwrap(), "r-1");
+    assert_eq!(gmail.save_draft(Some("r-1"), raw, None).await.unwrap(), "r-1");
+    gmail.delete_draft("r-1").await.unwrap();
+    assert!(matches!(gmail.delete_draft("gone").await, Err(ProviderError::NotFound(_))));
+}
+
+#[tokio::test]
 async fn attachments_are_decoded() {
     let (server, gmail) = setup().await;
     Mock::given(path("/users/me/messages/m1/attachments/ANGjdJ_deck"))
