@@ -1,0 +1,527 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		116A2EC55EB66E0F8E5ACCF0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C676A513B753ECEBB6FF97 /* SettingsView.swift */; };
+		4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */; };
+		751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */; };
+		B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */; };
+		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FAD17EA64C72CD5EDF1ACFA2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 74D97FBC20E6E452C2351EE4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 982F5821420F29993571F6A2;
+			remoteInfo = OpenAGC;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		2C8458B42683B1FC4F0EBB64 /* OpenAGC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenAGC.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		448D8466905D410325058CE5 /* OpenAGC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenAGC.entitlements; sourceTree = "<group>"; };
+		88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAGCApp.swift; sourceTree = "<group>"; };
+		9036B10AEDC12CF3CF3416BD /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
+		948C111ADD342515B7C70DDB /* OpenAGCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenAGCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTests.swift; sourceTree = "<group>"; };
+		E4C676A513B753ECEBB6FF97 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0781FA7C871F00A219C50ECD /* Components */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		1256AAEC04D116859F4845BE /* MessageView */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = MessageView;
+			sourceTree = "<group>";
+		};
+		1D30BC16B523BE0C4B1F7695 /* Agent */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Agent;
+			sourceTree = "<group>";
+		};
+		2006356414270232896E2924 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */,
+				9036B10AEDC12CF3CF3416BD /* MainWindow.swift */,
+				88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		21B1FEBF552FD39C8F00118E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				448D8466905D410325058CE5 /* OpenAGC.entitlements */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		69C4720C0FA23E101118BEBF /* Sidebar */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Sidebar;
+			sourceTree = "<group>";
+		};
+		7775276806229C17EF4F389C /* Search */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Search;
+			sourceTree = "<group>";
+		};
+		806C2EB88EDA92BAFBE5AC1A /* Core */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		84FAC93793B5EC1C8F00EF34 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				2C8458B42683B1FC4F0EBB64 /* OpenAGC.app */,
+				948C111ADD342515B7C70DDB /* OpenAGCTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		89D5CBF0512B9AEB8BE8E232 /* OpenAGCTests */ = {
+			isa = PBXGroup;
+			children = (
+				AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */,
+			);
+			path = OpenAGCTests;
+			sourceTree = "<group>";
+		};
+		8A7408779DD1060A1ED75B09 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				E4C676A513B753ECEBB6FF97 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		B755F7DDAB76557EFF1EA484 /* ThreadList */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = ThreadList;
+			sourceTree = "<group>";
+		};
+		C0D306EC85151A114481493B /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				1D30BC16B523BE0C4B1F7695 /* Agent */,
+				CE7481F262DA91540E01D859 /* Composer */,
+				1256AAEC04D116859F4845BE /* MessageView */,
+				7775276806229C17EF4F389C /* Search */,
+				8A7408779DD1060A1ED75B09 /* Settings */,
+				69C4720C0FA23E101118BEBF /* Sidebar */,
+				B755F7DDAB76557EFF1EA484 /* ThreadList */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		CE7481F262DA91540E01D859 /* Composer */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Composer;
+			sourceTree = "<group>";
+		};
+		DD42BD42C84471844AD41C80 /* OpenAGC */ = {
+			isa = PBXGroup;
+			children = (
+				2006356414270232896E2924 /* App */,
+				0781FA7C871F00A219C50ECD /* Components */,
+				806C2EB88EDA92BAFBE5AC1A /* Core */,
+				C0D306EC85151A114481493B /* Features */,
+				21B1FEBF552FD39C8F00118E /* Resources */,
+			);
+			path = OpenAGC;
+			sourceTree = "<group>";
+		};
+		E458C12428F8850BEEB621C7 = {
+			isa = PBXGroup;
+			children = (
+				DD42BD42C84471844AD41C80 /* OpenAGC */,
+				89D5CBF0512B9AEB8BE8E232 /* OpenAGCTests */,
+				84FAC93793B5EC1C8F00EF34 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8C028A5FF1B3DC8D34D09AF2 /* OpenAGCTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B01404E026D789ACE328092E /* Build configuration list for PBXNativeTarget "OpenAGCTests" */;
+			buildPhases = (
+				A0F25CA2E57E9092748E4C46 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				61E1A5BCA6FF55C6712D7372 /* PBXTargetDependency */,
+			);
+			name = OpenAGCTests;
+			packageProductDependencies = (
+			);
+			productName = OpenAGCTests;
+			productReference = 948C111ADD342515B7C70DDB /* OpenAGCTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		982F5821420F29993571F6A2 /* OpenAGC */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 94A46F5E7765F2768EAE7307 /* Build configuration list for PBXNativeTarget "OpenAGC" */;
+			buildPhases = (
+				E7B11FE5522E11BD255456FF /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpenAGC;
+			packageProductDependencies = (
+			);
+			productName = OpenAGC;
+			productReference = 2C8458B42683B1FC4F0EBB64 /* OpenAGC.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		74D97FBC20E6E452C2351EE4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					8C028A5FF1B3DC8D34D09AF2 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					982F5821420F29993571F6A2 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = F8443F61A3A3C42F00C81DD0 /* Build configuration list for PBXProject "OpenAGC" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E458C12428F8850BEEB621C7;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 84FAC93793B5EC1C8F00EF34 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				982F5821420F29993571F6A2 /* OpenAGC */,
+				8C028A5FF1B3DC8D34D09AF2 /* OpenAGCTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0F25CA2E57E9092748E4C46 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E7B11FE5522E11BD255456FF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */,
+				DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */,
+				751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */,
+				116A2EC55EB66E0F8E5ACCF0 /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		61E1A5BCA6FF55C6712D7372 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 982F5821420F29993571F6A2 /* OpenAGC */;
+			targetProxy = FAD17EA64C72CD5EDF1ACFA2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		05FAFFEA25A5CCAA15674F25 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.openagc.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAGC.app/Contents/MacOS/OpenAGC";
+			};
+			name = Debug;
+		};
+		108EBEE9822B2F72BAC34856 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		50BA9AE350610950544A919E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = OpenAGC/Resources/OpenAGC.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenAGC;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Actual AI and the OpenAGC contributors. MIT License.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.openagc;
+				PRODUCT_NAME = OpenAGC;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		5A55700A1C3D403F3BA2346B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		9514379046B5350B4AAA1309 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.openagc.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OpenAGC.app/Contents/MacOS/OpenAGC";
+			};
+			name = Release;
+		};
+		FAF7D92B66EC68F7FF8C4462 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "";
+				CODE_SIGN_ENTITLEMENTS = OpenAGC/Resources/OpenAGC.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = OpenAGC;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Actual AI and the OpenAGC contributors. MIT License.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.openagc;
+				PRODUCT_NAME = OpenAGC;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		94A46F5E7765F2768EAE7307 /* Build configuration list for PBXNativeTarget "OpenAGC" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FAF7D92B66EC68F7FF8C4462 /* Debug */,
+				50BA9AE350610950544A919E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B01404E026D789ACE328092E /* Build configuration list for PBXNativeTarget "OpenAGCTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				05FAFFEA25A5CCAA15674F25 /* Debug */,
+				9514379046B5350B4AAA1309 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F8443F61A3A3C42F00C81DD0 /* Build configuration list for PBXProject "OpenAGC" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A55700A1C3D403F3BA2346B /* Debug */,
+				108EBEE9822B2F72BAC34856 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 74D97FBC20E6E452C2351EE4 /* Project object */;
+}

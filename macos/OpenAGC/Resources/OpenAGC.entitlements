@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime, no App Sandbox (spec §16): the app spawns the user's own
+  claude/codex binaries, which a sandboxed process cannot do. WebKit's JIT
+  runs in Apple's XPC service, so no allow-jit entitlement is needed; the
+  Rust core is linked statically, so no disable-library-validation either.
+-->
+<plist version="1.0">
+<dict/>
+</plist>
