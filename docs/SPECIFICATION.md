@@ -297,7 +297,12 @@ Rules:
   must never `block_on` (§4.4).
 - **Pagination is keyset-based** (`after: (sort_key, thread_id)`), never
   offset-based, so scrolling a 100k-thread list stays O(page).
-- **All IDs are newtype records** (`ThreadId(String)`), never bare strings.
+- **Inside Rust, all IDs are newtypes** (`ThreadId(String)`), never bare
+  strings. At the FFI they cross as `String`: UniFFI custom newtypes
+  become Swift typealiases, which add no type safety, so the Swift record
+  field names (`threadId`, `labelIds`) carry the meaning instead. Plain
+  data records are typealiased in `CoreClient.swift` for the app to use;
+  calls into the core still go only through `CoreClient`.
 - Every fallible call returns `CoreError`, a flat `uniffi::Error` enum with a
   `message: String` plus a machine-readable `kind`.
 

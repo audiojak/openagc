@@ -102,6 +102,22 @@ private extension CoreClientError.Kind {
     }
 }
 
+// MARK: - Data records
+
+// Plain data records generated from Rust (spec §4.2). Aliased here so the
+// rest of the app can use them without importing OpenAGCCore; all calls
+// into the core still go through CoreClient.
+typealias AddressInfo = OpenAGCCore.AddressInfo
+typealias AttachmentInfo = OpenAGCCore.AttachmentInfo
+typealias LabelInfo = OpenAGCCore.LabelInfo
+typealias MailboxInfo = OpenAGCCore.MailboxInfo
+typealias MailboxKind = OpenAGCCore.MailboxKind
+typealias MessageInfo = OpenAGCCore.MessageInfo
+typealias RenderedBody = OpenAGCCore.RenderedBody
+typealias ThreadDetail = OpenAGCCore.ThreadDetail
+typealias ThreadPage = OpenAGCCore.ThreadPage
+typealias ThreadRow = OpenAGCCore.ThreadRow
+
 // MARK: - Events
 
 /// What changed in a mailbox's thread list (spec §4.3).

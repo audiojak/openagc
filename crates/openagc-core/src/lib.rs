@@ -7,6 +7,7 @@ uniffi::setup_scaffolding!();
 
 mod error;
 mod events;
+pub mod ffi;
 mod logging;
 mod runtime;
 
