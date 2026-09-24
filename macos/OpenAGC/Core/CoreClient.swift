@@ -61,6 +61,10 @@ final class CoreClient: Sendable {
         try await call { try await core.listThreads(mailboxId: mailboxID, cursor: cursor, limit: limit) }
     }
 
+    func search(_ query: String, after cursor: String? = nil, limit: UInt32 = 150) async throws(CoreClientError) -> ThreadPage {
+        try await call { try await core.searchThreads(query: query, cursor: cursor, limit: limit) }
+    }
+
     func thread(_ threadID: String) async throws(CoreClientError) -> ThreadDetail? {
         try await call { try await core.getThread(threadId: threadID) }
     }

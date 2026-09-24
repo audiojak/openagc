@@ -28,6 +28,7 @@ struct MainWindow: View {
         } detail: {
             detail
         }
+        .searchable(text: Bindable(model).searchText, placement: .toolbar, prompt: "Search mail")
     }
 
     @ViewBuilder private var content: some View {
@@ -43,8 +44,18 @@ struct MainWindow: View {
                 if model.needsReauthentication {
                     ReauthenticationBanner()
                 }
+                if let error = model.threads.searchError {
+                    Label(error, systemImage: "exclamationmark.magnifyingglass")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(8)
+                }
                 if model.threads.rows.isEmpty {
-                    ContentUnavailableView("No Conversations", systemImage: "tray")
+                    if model.threads.searchQuery != nil {
+                        ContentUnavailableView.search(text: model.searchText)
+                    } else {
+                        ContentUnavailableView("No Conversations", systemImage: "tray")
+                    }
                 } else {
                     ThreadListView()
                 }

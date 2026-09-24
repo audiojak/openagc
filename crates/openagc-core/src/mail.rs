@@ -116,6 +116,26 @@ impl Core {
         .await
     }
 
+    /// Threads matching a Gmail-style query (spec §8), newest first.
+    /// A malformed query is an `InvalidInput` error whose message says
+    /// what is wrong.
+    pub async fn search_threads(
+        &self,
+        query: String,
+        cursor: Option<String>,
+        limit: u32,
+    ) -> Result<ThreadPage, CoreError> {
+        let expr =
+            mail_store::search::parse(&query).map_err(|e| CoreError::new(ErrorKind::InvalidInput, e.to_string()))?;
+        let db = self.db()?;
+        runtime::run(async move {
+            let now = mail_sync::now_millis();
+            let page = db.read(move |c| mail_store::search::search(c, &expr, now, cursor.as_deref(), limit)).await?;
+            Ok(ThreadPage { rows: page.rows.into_iter().map(Into::into).collect(), next_cursor: page.next_cursor })
+        })
+        .await
+    }
+
     /// A thread and its messages, oldest first; `None` if unknown.
     pub async fn get_thread(&self, thread_id: String) -> Result<Option<ThreadDetail>, CoreError> {
         let db = self.db()?;

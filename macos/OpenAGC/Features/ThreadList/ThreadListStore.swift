@@ -12,12 +12,19 @@ final class ThreadListStore {
 
     private(set) var rows: [ThreadRow] = []
     private(set) var mailboxID: String?
+    /// Non-nil while showing search results instead of the mailbox.
+    private(set) var searchQuery: String?
+    /// Why the current query could not run (shown under the field).
+    private(set) var searchError: String?
     /// Bumped whenever `rows` is replaced wholesale (new mailbox, refresh),
     /// as opposed to extended; the table view reloads instead of inserting.
     private(set) var generation = 0
 
     @ObservationIgnored private var nextCursor: String?
     @ObservationIgnored private var isLoadingMore = false
+    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var loadGeneration = 0
+    static let searchDebounce: Duration = .milliseconds(40)
     @ObservationIgnored private let core: CoreClient?
 
     init(core: CoreClient?) {
@@ -28,8 +35,32 @@ final class ThreadListStore {
 
     func show(mailboxID: String) async {
         self.mailboxID = mailboxID
+        searchTask?.cancel()
+        searchQuery = nil
+        searchError = nil
         nextCursor = nil
         await load(replacing: true, limit: Self.pageSize)
+    }
+
+    /// As-you-type search: waits briefly for typing to pause, and drops
+    /// results for queries that were superseded. An empty query returns to
+    /// the mailbox.
+    func search(_ text: String) {
+        searchTask?.cancel()
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            if searchQuery != nil, let mailboxID {
+                searchTask = Task { await show(mailboxID: mailboxID) }
+            }
+            return
+        }
+        searchTask = Task {
+            try? await Task.sleep(for: Self.searchDebounce)
+            guard !Task.isCancelled else { return }
+            searchQuery = query
+            nextCursor = nil
+            await load(replacing: true, limit: Self.pageSize)
+        }
     }
 
     /// Called as rows become visible; fetches the next page near the end.
@@ -79,9 +110,25 @@ final class ThreadListStore {
     private func load(replacing: Bool, limit: UInt32) async {
         guard let core, let mailboxID else { return }
         let cursor = replacing ? nil : nextCursor
-        guard let page = try? await core.threads(in: mailboxID, after: cursor, limit: limit) else { return }
-        // The user may have switched mailboxes while this was in flight.
-        guard mailboxID == self.mailboxID else { return }
+        loadGeneration += 1
+        let token = loadGeneration
+        let query = searchQuery
+        let page: ThreadPage
+        do {
+            if let query {
+                page = try await core.search(query, after: cursor, limit: limit)
+            } else {
+                page = try await core.threads(in: mailboxID, after: cursor, limit: limit)
+            }
+        } catch {
+            if query != nil, token == loadGeneration {
+                searchError = error.message
+            }
+            return
+        }
+        // A newer load (another mailbox or query) started meanwhile.
+        guard token == loadGeneration, mailboxID == self.mailboxID, query == searchQuery else { return }
+        searchError = nil
         if replacing {
             if page.rows != rows {
                 rows = page.rows

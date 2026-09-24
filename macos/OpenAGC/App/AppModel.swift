@@ -35,6 +35,10 @@ final class AppModel {
         didSet { if selectedMailboxID != oldValue { mailboxChanged() } }
     }
     var selectedThreadID: String?
+    /// The toolbar search field's text.
+    var searchText = "" {
+        didSet { if searchText != oldValue { threads.search(searchText) } }
+    }
     /// Every selected thread; actions apply to all of them.
     var selectedThreadIDs: Set<String> = []
     /// Failed changes that were undone, shown as a banner.
@@ -253,6 +257,8 @@ final class AppModel {
     private func mailboxChanged() {
         selectedThreadID = nil
         selectedThreadIDs = []
+        searchText = ""
+
         guard case .open = accountState, let id = selectedMailboxID else { return }
         Task { await threads.show(mailboxID: id) }
     }
@@ -270,7 +276,7 @@ final class AppModel {
         switch event {
         case let .threadsChanged(mailboxID, hint):
             await mailboxes.reload()
-            if mailboxID == threads.mailboxID {
+            if mailboxID == threads.mailboxID || threads.searchQuery != nil {
                 await threads.apply(hint)
             }
         case let .error(error):

@@ -9,6 +9,7 @@ import os
 ///   -OpenAGCSnapshotMailbox <id>        switch mailbox first
 ///   -OpenAGCSnapshotSelectIndex <n>     select row n instead
 ///   -OpenAGCSnapshotAppearance dark|light
+///   -OpenAGCSnapshotSearch <query>      type a search first
 ///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
 ///                                       (catches layer-only SwiftUI content)
 @MainActor
@@ -29,6 +30,10 @@ enum Snapshot {
             try? await Task.sleep(for: .seconds(delay / 2))
             if let mailbox = defaults.string(forKey: "OpenAGCSnapshotMailbox") {
                 delegate.model?.selectedMailboxID = mailbox
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            if let query = defaults.string(forKey: "OpenAGCSnapshotSearch") {
+                delegate.model?.searchText = query
                 try? await Task.sleep(for: .milliseconds(500))
             }
             if let rows = delegate.model?.threads.rows, !rows.isEmpty {
