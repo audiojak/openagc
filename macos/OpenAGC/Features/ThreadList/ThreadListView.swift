@@ -93,8 +93,30 @@ struct ThreadListView: NSViewRepresentable {
             let view = tableView.makeView(withIdentifier: ThreadRowView.identifier, owner: nil) as? ThreadRowView
                 ?? ThreadRowView()
             view.configure(with: rows[row])
+            view.setAccessibilityCustomActions(accessibilityActions(for: rows[row]))
             model.threads.rowWillAppear(at: row)
             return view
+        }
+
+        /// VoiceOver's Actions rotor: what swipes and keys do (spec §14.3).
+        func accessibilityActions(for row: ThreadRow) -> [NSAccessibilityCustomAction] {
+            let id = row.id
+            let act = { [weak self] (name: String, perform: @escaping @MainActor (AppModel) -> Void) in
+                NSAccessibilityCustomAction(name: name) {
+                    guard let model = self?.model else { return false }
+                    model.selectedThreadIDs = []
+                    model.selectedThreadID = id
+                    perform(model)
+                    return true
+                }
+            }
+            return [
+                act("Archive") { $0.archiveSelection() },
+                act("Move to Trash") { $0.trashSelection() },
+                act(row.unreadCount > 0 ? "Mark as Read" : "Mark as Unread") { $0.toggleReadSelection() },
+                act(row.isStarred ? "Unstar" : "Star") { $0.toggleStarSelection() },
+                act("Reply") { $0.reply(all: false) },
+            ]
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {

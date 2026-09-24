@@ -6,6 +6,7 @@ struct MainWindow: View {
     @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @FocusState private var searchFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -45,7 +46,7 @@ struct MainWindow: View {
                         .transition(.move(edge: .trailing))
                 }
             }
-            .animation(.snappy(duration: 0.2), value: model.agent.isPresented)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: model.agent.isPresented)
         }
         .searchable(text: Bindable(model).searchText, placement: .toolbar, prompt: "Search mail")
         .searchFocused($searchFocused)

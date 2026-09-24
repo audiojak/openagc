@@ -65,6 +65,7 @@
 		D9D7C636BB9415D3857A891E /* UpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3FE3957640F5FB9A22D3965 /* UpdaterTests.swift */; };
 		DB3DC4EECF705D9820BC3B1E /* RichTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24E3C75C954D3F4970670D2 /* RichTextEditor.swift */; };
 		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
+		E44E3F9A96EE57A2B8F018CF /* KeyboardShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF9BB1ABE76E11F4305E525 /* KeyboardShortcuts.swift */; };
 		E65B21770ED2B172D35054C7 /* SyncStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5846BE9A95C68C7383B2B7C /* SyncStatusView.swift */; };
 		E6C0C4D4E44A1BE9838F0FB8 /* RoutinesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0226B235AA4B7F4515359C61 /* RoutinesStore.swift */; };
 		E84BD27D7D2BF39707A7E276 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601938BEED9E6F66CF748199 /* AccountSettings.swift */; };
@@ -114,6 +115,7 @@
 		190E7BE352B8FB1A5BC8078E /* RoutinesWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutinesWindow.swift; sourceTree = "<group>"; };
 		19F04E00E0E6BE9B7678CEDB /* GoogleOAuth.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = GoogleOAuth.plist; sourceTree = "<group>"; };
 		1CD3817AE3B32FC2F3B89845 /* MessageWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageWebView.swift; sourceTree = "<group>"; };
+		1CF9BB1ABE76E11F4305E525 /* KeyboardShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardShortcuts.swift; sourceTree = "<group>"; };
 		24AC691869E94971A95182AF /* OpenAGCCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = OpenAGCCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		26F65D12222A0363EDB8FFE0 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		2A5694ECC8EA36F2A4119F98 /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
@@ -241,6 +243,7 @@
 			children = (
 				3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */,
 				AB3DFF446CD804B9EB7984C8 /* AppModel.swift */,
+				1CF9BB1ABE76E11F4305E525 /* KeyboardShortcuts.swift */,
 				9036B10AEDC12CF3CF3416BD /* MainWindow.swift */,
 				88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */,
 				662ED4D20063A892C72301EF /* Snapshot.swift */,
@@ -658,6 +661,7 @@
 				36A454FB046BB704125EF7F3 /* CoreClient.swift in Sources */,
 				710081AB6EAF380590EA91BF /* EmailDocument.swift in Sources */,
 				3383C90F028074A9FDD81433 /* GoogleClientConfiguration.swift in Sources */,
+				E44E3F9A96EE57A2B8F018CF /* KeyboardShortcuts.swift in Sources */,
 				3CFA63FC5E129133E7001146 /* KeychainSecretStore.swift in Sources */,
 				73F5C2F69C703EED929AAA94 /* LinkSafety.swift in Sources */,
 				C9F5E1202A2849397390D3AC /* MailboxStore.swift in Sources */,

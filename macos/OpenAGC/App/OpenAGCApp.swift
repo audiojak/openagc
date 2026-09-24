@@ -31,6 +31,11 @@ struct OpenAGCApp: App {
         .defaultSize(width: 720, height: 560)
         .commandsRemoved()
 
+        Window("Keyboard Shortcuts", id: "shortcuts") {
+            KeyboardShortcutsView()
+        }
+        .windowResizability(.contentSize)
+
         Window("Routines", id: "routines") {
             RoutinesWindow()
                 .environment(model)
@@ -79,6 +84,11 @@ struct MailCommands: Commands {
             Button("Search Mail") { model.focusSearch() }
                 .keyboardShortcut("f")
                 .disabled(!mailKey)
+        }
+        CommandGroup(replacing: .help) {
+            Button("Keyboard Shortcuts") { openWindow(id: "shortcuts") }
+                .keyboardShortcut("/", modifiers: [.command, .shift])
+            Link("OpenAGC on GitHub", destination: URL(string: "https://github.com/audiojak/openagc")!)
         }
         CommandGroup(after: .windowList) {
             Button("Routines") { openWindow(id: "routines") }

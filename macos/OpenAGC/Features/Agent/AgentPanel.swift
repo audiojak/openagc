@@ -31,6 +31,7 @@ struct AgentPromptBar: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .help("Choose the agent")
+            .accessibilityLabel("Choose the agent")
 
             TextField("Ask \(agent.providerName)…", text: $text)
                 .textFieldStyle(.plain)
@@ -101,6 +102,7 @@ struct AgentInspector: View {
                 .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Earlier conversations")
+                .accessibilityLabel("Earlier conversations")
                 .onAppear { Task { await agent.loadHistory() } }
                 Button("New Conversation", systemImage: "square.and.pencil") { agent.newConversation() }
                     .labelStyle(.iconOnly)
