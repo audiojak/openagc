@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import Network
 import Observation
 import os
 
@@ -10,14 +12,25 @@ final class AppModel {
     enum AccountState: Equatable {
         case starting
         case noAccount
+        case signingIn
         case open(accountID: String)
         case failed(String)
+    }
+
+    enum SyncDisplay: Equatable {
+        case idle, syncing(pending: UInt32), offline, error
     }
 
     static let demoAccountID = "demo"
     static let demoThreadCount: UInt32 = 2_000
 
     private(set) var accountState: AccountState = .starting
+    private(set) var syncDisplay: SyncDisplay = .idle
+    /// Set when Google rejected the stored credentials; shows a banner.
+    private(set) var needsReauthentication = false
+    /// Why the last sign-in attempt failed, for the onboarding screen.
+    private(set) var signInError: String?
+    private(set) var accountEmail: String? = UserDefaults.standard.string(forKey: "accountEmail")
     var selectedMailboxID: String? = "INBOX" {
         didSet { if selectedMailboxID != oldValue { mailboxChanged() } }
     }
@@ -30,6 +43,9 @@ final class AppModel {
 
     private let logger = Logger(subsystem: "ai.actual.openagc", category: "app")
     private var eventTask: Task<Void, Never>?
+    private var signInSession: String?
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private let networkMonitor = NWPathMonitor()
 
     init(core: CoreClient?) {
         self.core = core
@@ -68,6 +84,48 @@ final class AppModel {
         }
     }
 
+    // MARK: Sign-in
+
+    func signIn(with client: GoogleClientConfiguration) async {
+        guard let core, client.isUsable else { return }
+        signInError = nil
+        accountState = .signingIn
+        do {
+            let start = try await core.beginGmailSignIn(clientID: client.clientID, clientSecret: client.clientSecret,
+                                                        loginHint: accountEmail)
+            signInSession = start.sessionID
+            NSWorkspace.shared.open(start.authorizationURL)
+            let account = try await core.completeGmailSignIn(start.sessionID)
+            signInSession = nil
+            UserDefaults.standard.set(account.accountID, forKey: "accountID")
+            UserDefaults.standard.set(account.email, forKey: "accountEmail")
+            accountEmail = account.email
+            needsReauthentication = false
+            await open(accountID: account.accountID)
+        } catch {
+            signInSession = nil
+            logger.error("sign-in failed: \(error.message, privacy: .public)")
+            signInError = error.message
+            accountState = .noAccount
+        }
+    }
+
+    func cancelSignIn() {
+        if let session = signInSession { core?.cancelGmailSignIn(session) }
+        signInSession = nil
+        accountState = .noAccount
+    }
+
+    func signOut() async {
+        guard let core, case let .open(accountID) = accountState else { return }
+        try? await core.signOut(accountID)
+        UserDefaults.standard.removeObject(forKey: "accountID")
+        selectedThreadID = nil
+        accountState = .noAccount
+    }
+
+    // MARK: Account
+
     private func open(accountID: String) async {
         guard let core else { return }
         do {
@@ -75,10 +133,33 @@ final class AppModel {
             accountState = .open(accountID: accountID)
             await mailboxes.reload()
             await threads.show(mailboxID: selectedMailboxID ?? "INBOX")
+            if accountID != Self.demoAccountID, core.accountHasCredentials(accountID) {
+                try core.startSync()
+                observeLifecycle()
+            }
         } catch {
             logger.error("opening account failed: \(error.message, privacy: .public)")
             accountState = .failed(error.message)
         }
+    }
+
+    /// Poll faster while active; sync at once on activation, wake from
+    /// sleep, and when the network comes back (spec §7.4).
+    private func observeLifecycle() {
+        guard lifecycleObservers.isEmpty, let core else { return }
+        let center = NotificationCenter.default
+        lifecycleObservers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            core.setAppActive(true)
+        })
+        lifecycleObservers.append(center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { _ in
+            core.setAppActive(false)
+        })
+        lifecycleObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { _ in core.syncNow() })
+        networkMonitor.pathUpdateHandler = { path in
+            if path.status == .satisfied { core.syncNow() }
+        }
+        networkMonitor.start(queue: DispatchQueue(label: "ai.actual.openagc.network"))
     }
 
     private func mailboxChanged() {
@@ -105,7 +186,15 @@ final class AppModel {
             }
         case let .error(error):
             logger.error("core error: \(error.message, privacy: .public)")
-        case .syncStatus, .outboxStatus:
+            if error.kind == .auth { needsReauthentication = true }
+        case let .syncStatus(state, pending):
+            switch state {
+            case .idle: syncDisplay = .idle
+            case .bootstrapping, .syncing: syncDisplay = pending > 0 || state == .bootstrapping ? .syncing(pending: pending) : .idle
+            case .offline: syncDisplay = .offline
+            case .error: syncDisplay = .error
+            }
+        case .outboxStatus:
             break
         }
     }

@@ -9,6 +9,8 @@ import os
 ///   -OpenAGCSnapshotMailbox <id>        switch mailbox first
 ///   -OpenAGCSnapshotSelectIndex <n>     select row n instead
 ///   -OpenAGCSnapshotAppearance dark|light
+///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
+///                                       (catches layer-only SwiftUI content)
 @MainActor
 enum Snapshot {
     private static let logger = Logger(subsystem: "ai.actual.openagc", category: "snapshot")
@@ -37,6 +39,11 @@ enum Snapshot {
                 }
             }
             try? await Task.sleep(for: .seconds(delay / 2))
+            if let model = delegate.model {
+                FileHandle.standardError.write(Data("snapshot state: \(model.accountState) rows=\(model.threads.rows.count)\n".utf8))
+            } else {
+                FileHandle.standardError.write(Data("snapshot state: no model\n".utf8))
+            }
             capture(to: URL(filePath: path))
             NSApp.terminate(nil)
         }
@@ -50,7 +57,14 @@ enum Snapshot {
             logger.error("no window to snapshot")
             return
         }
-        view.cacheDisplay(in: view.bounds, to: rep)
+        if UserDefaults.standard.string(forKey: "OpenAGCSnapshotMode") == "layer",
+           let layer = view.layer, let context = NSGraphicsContext(bitmapImageRep: rep) {
+            context.cgContext.scaleBy(x: CGFloat(rep.pixelsWide) / view.bounds.width,
+                                      y: CGFloat(rep.pixelsHigh) / view.bounds.height)
+            layer.render(in: context.cgContext)
+        } else {
+            view.cacheDisplay(in: view.bounds, to: rep)
+        }
         guard let png = rep.representation(using: .png, properties: [:]) else { return }
         do {
             try png.write(to: url)

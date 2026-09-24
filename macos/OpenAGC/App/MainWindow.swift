@@ -6,6 +6,19 @@ struct MainWindow: View {
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
+        Group {
+            switch model.accountState {
+            case .noAccount, .signingIn:
+                OnboardingView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            default:
+                mailWindow
+            }
+        }
+        .task { if model.accountState == .starting { await model.start() } }
+    }
+
+    private var mailWindow: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220)
@@ -15,28 +28,26 @@ struct MainWindow: View {
         } detail: {
             detail
         }
-        .task { if model.accountState == .starting { await model.start() } }
     }
 
     @ViewBuilder private var content: some View {
         switch model.accountState {
         case .starting:
             ProgressView().controlSize(.small)
-        case .noAccount:
-            ContentUnavailableView {
-                Label("No Account", systemImage: "envelope")
-            } description: {
-                Text("Connect a Gmail account to get started.")
-            } actions: {
-                Button("Explore a Demo Mailbox") { Task { await model.openDemoMailbox() } }
-            }
+        case .noAccount, .signingIn:
+            EmptyView()
         case let .failed(message):
             ContentUnavailableView("Something Went Wrong", systemImage: "exclamationmark.triangle", description: Text(message))
         case .open:
-            if model.threads.rows.isEmpty {
-                ContentUnavailableView("No Conversations", systemImage: "tray")
-            } else {
-                ThreadListView()
+            VStack(spacing: 0) {
+                if model.needsReauthentication {
+                    ReauthenticationBanner()
+                }
+                if model.threads.rows.isEmpty {
+                    ContentUnavailableView("No Conversations", systemImage: "tray")
+                } else {
+                    ThreadListView()
+                }
             }
         }
     }
@@ -47,5 +58,23 @@ struct MainWindow: View {
         } else {
             ContentUnavailableView("No Message Selected", systemImage: "envelope.open")
         }
+    }
+}
+
+/// Google rejected the stored credentials (revoked or expired).
+private struct ReauthenticationBanner: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.crop.circle.badge.exclamationmark")
+            Text("Gmail needs you to sign in again.").font(.callout)
+            Spacer()
+            Button("Sign In") { Task { await model.signIn(with: .effective()) } }
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.yellow.opacity(0.15))
     }
 }

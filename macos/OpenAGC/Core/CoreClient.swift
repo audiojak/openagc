@@ -69,6 +69,62 @@ final class CoreClient: Sendable {
         try await call { try await core.getRenderedBody(messageId: messageID) }
     }
 
+    // MARK: Accounts and sync
+
+    struct SignInStart: Sendable {
+        let sessionID: String
+        let authorizationURL: URL
+    }
+
+    struct ConnectedAccount: Sendable, Equatable {
+        let accountID: String
+        let email: String
+    }
+
+    /// Start Gmail sign-in; open the returned URL in the user's browser.
+    func beginGmailSignIn(clientID: String, clientSecret: String?, loginHint: String? = nil) async throws(CoreClientError) -> SignInStart {
+        let start = try await call {
+            try await core.beginGmailSignIn(client: OAuthClientConfig(clientId: clientID, clientSecret: clientSecret),
+                                            loginHint: loginHint)
+        }
+        guard let url = URL(string: start.authorizationUrl) else {
+            throw CoreClientError(kind: .internalError, message: "invalid authorization URL")
+        }
+        return SignInStart(sessionID: start.sessionId, authorizationURL: url)
+    }
+
+    /// Wait for the browser to finish and create the account.
+    func completeGmailSignIn(_ sessionID: String) async throws(CoreClientError) -> ConnectedAccount {
+        let account = try await call { try await core.completeGmailSignIn(sessionId: sessionID) }
+        return ConnectedAccount(accountID: account.accountId, email: account.email)
+    }
+
+    func cancelGmailSignIn(_ sessionID: String) {
+        core.cancelGmailSignIn(sessionId: sessionID)
+    }
+
+    func accountHasCredentials(_ accountID: String) -> Bool {
+        core.accountHasCredentials(accountId: accountID)
+    }
+
+    func startSync() throws(CoreClientError) {
+        do {
+            try core.startSync()
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
+    }
+
+    func stopSync() { core.stopSync() }
+    func setAppActive(_ active: Bool) { core.setAppActive(active: active) }
+    func syncNow() { core.syncNow() }
+
+    func signOut(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.signOut(accountId: accountID) }
+    }
+
     /// Development hook: fill the open account with a synthetic mailbox.
     @discardableResult
     func seedDemoMailbox(threads: UInt32) async throws(CoreClientError) -> UInt32 {
