@@ -1350,6 +1350,9 @@ name = "permissions"
 version = "0.1.0"
 dependencies = [
  "mail-domain",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]
