@@ -1124,6 +1124,7 @@ dependencies = [
 name = "mail-store"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "mail-domain",
  "rusqlite",
  "serde",
@@ -1137,6 +1138,8 @@ dependencies = [
 name = "mail-sync"
 version = "0.1.0"
 dependencies = [
+ "base64",
+ "getrandom 0.3.4",
  "mail-domain",
  "mail-mime",
  "mail-store",

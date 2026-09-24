@@ -17,6 +17,15 @@ pub enum OutboxOp {
     ModifyLabels { message_ids: Vec<MessageId>, add: Vec<LabelId>, remove: Vec<LabelId> },
     /// Move these messages to Trash.
     Trash { message_ids: Vec<MessageId>, previous: Vec<(MessageId, Vec<LabelId>)> },
+    /// Send a frozen message. `local_message_id` is the optimistic copy
+    /// shown in Sent until the real one syncs back.
+    Send {
+        draft_id: i64,
+        /// RFC 5322 bytes, base64.
+        raw: String,
+        thread_id: Option<mail_domain::ThreadId>,
+        local_message_id: MessageId,
+    },
 }
 
 impl OutboxOp {
@@ -24,6 +33,7 @@ impl OutboxOp {
         match self {
             Self::ModifyLabels { .. } => "modify_labels",
             Self::Trash { .. } => "trash",
+            Self::Send { .. } => "send",
         }
     }
 }
@@ -73,7 +83,13 @@ pub fn next_retry_at(conn: &Connection) -> StoreResult<Option<Millis>> {
     Ok(conn.query_row("SELECT MIN(next_attempt_at) FROM outbox WHERE state = 'pending'", [], |r| r.get(0))?)
 }
 
+/// The provider accepted the op. A sent draft is deleted now.
 pub fn complete(tx: &Transaction<'_>, id: i64) -> StoreResult<()> {
+    let json: Option<String> =
+        tx.query_row("SELECT payload_json FROM outbox WHERE id = ?1", [id], |r| r.get(0)).optional()?;
+    if let Some(OutboxOp::Send { draft_id, .. }) = json.map(|j| serde_json::from_str(&j)).transpose()? {
+        crate::drafts::delete(tx, draft_id)?;
+    }
     tx.execute("DELETE FROM outbox WHERE id = ?1", [id])?;
     Ok(())
 }
@@ -103,6 +119,11 @@ pub fn fail(tx: &Transaction<'_>, id: i64, error: &str) -> StoreResult<ThreadCha
                 let current = current_labels(tx, m)?;
                 w.modify_message_labels(m, labels, &current)?;
             }
+        }
+        // The optimistic Sent copy goes; the draft comes back with the error.
+        OutboxOp::Send { draft_id, local_message_id, .. } => {
+            w.delete_message(local_message_id)?;
+            crate::drafts::set_state(tx, *draft_id, crate::drafts::DraftState::Failed, Some(error))?;
         }
     }
     let changes = w.finish()?;

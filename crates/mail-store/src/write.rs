@@ -16,6 +16,10 @@ use crate::error::{StoreError, StoreResult};
 /// Local id of the virtual Archive label (see the migration).
 pub const ARCHIVE_LABEL: &str = "@archive";
 
+/// Id prefix of optimistic copies of sent mail, replaced when the provider's
+/// copy syncs back.
+pub const LOCAL_PREFIX: &str = "local-";
+
 /// Maximum distinct senders kept per thread for the list row.
 const MAX_THREAD_PARTICIPANTS: usize = 10;
 
@@ -221,6 +225,7 @@ impl<'t> MailWriter<'t> {
                     ])?;
                 let rowid = self.tx.last_insert_rowid();
                 self.record_contacts(m, is_sent_by_me)?;
+                self.replace_local_copies(m)?;
                 rowid
             }
         };
@@ -240,6 +245,24 @@ impl<'t> MailWriter<'t> {
         }
         self.index_message(message_rowid)?;
         self.dirty.insert(thread_rowid, m.thread_id.0.clone());
+        Ok(())
+    }
+
+    /// A sent message arriving from the provider replaces the optimistic
+    /// local copy made when it was sent (same RFC 5322 Message-ID).
+    fn replace_local_copies(&mut self, m: &IncomingMessage) -> StoreResult<()> {
+        let Some(rfc) = &m.rfc822_message_id else { return Ok(()) };
+        if m.id.as_str().starts_with(LOCAL_PREFIX) {
+            return Ok(());
+        }
+        let stale: Vec<String> = self
+            .tx
+            .prepare_cached("SELECT gmail_id FROM messages WHERE rfc822_message_id = ?1 AND gmail_id LIKE 'local-%'")?
+            .query_map([rfc], |r| r.get(0))?
+            .collect::<Result<_, _>>()?;
+        for id in stale {
+            self.delete_message(&MessageId(id))?;
+        }
         Ok(())
     }
 

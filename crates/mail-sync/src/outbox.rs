@@ -139,6 +139,10 @@ impl SyncEngine {
                     }
                     result
                 }
+                OutboxOp::Send { raw, thread_id, .. } => match crate::compose::decode_raw(raw) {
+                    Some(bytes) => self.provider().send(&bytes, thread_id.as_ref()).await.map(|_| ()),
+                    None => Err(ProviderError::Invalid("queued message is corrupt".into())),
+                },
             };
             let id = queued.id;
             match result {
@@ -147,7 +151,7 @@ impl SyncEngine {
                     report.sent += 1;
                 }
                 // A message deleted on the server: nothing left to change.
-                Err(ProviderError::NotFound(_)) => {
+                Err(ProviderError::NotFound(_)) if !matches!(queued.op, OutboxOp::Send { .. }) => {
                     self.db().write(move |tx| outbox::complete(tx, id)).await?;
                     report.sent += 1;
                 }

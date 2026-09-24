@@ -16,6 +16,12 @@ impl From<d::EmailAddress> for AddressInfo {
     }
 }
 
+impl From<AddressInfo> for d::EmailAddress {
+    fn from(a: AddressInfo) -> Self {
+        d::EmailAddress::new(a.name.as_deref(), &a.email)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum MailboxKind {
     Inbox,

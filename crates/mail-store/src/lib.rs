@@ -6,6 +6,7 @@
 pub mod consistency;
 mod db;
 pub mod demo;
+pub mod drafts;
 mod error;
 pub mod outbox;
 pub mod queue;
@@ -16,4 +17,6 @@ mod write;
 pub use db::{Db, READER_COUNT, schema_version};
 pub use error::{StoreError, StoreResult};
 pub use read::ThreadPage;
-pub use write::{ARCHIVE_LABEL, IncomingAttachment, IncomingMessage, MailWriter, MailboxChange, ThreadChanges};
+pub use write::{
+    ARCHIVE_LABEL, IncomingAttachment, IncomingMessage, LOCAL_PREFIX, MailWriter, MailboxChange, ThreadChanges,
+};

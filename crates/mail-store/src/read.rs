@@ -216,6 +216,16 @@ pub fn get_thread(conn: &Connection, id: &ThreadId) -> StoreResult<Option<(Threa
     Ok(Some((summary, messages)))
 }
 
+/// One message with its thread id, by provider message id.
+pub fn get_message(conn: &Connection, id: &MessageId) -> StoreResult<Option<Message>> {
+    let thread: Option<String> = conn
+        .prepare_cached("SELECT t.gmail_id FROM messages m JOIN threads t ON t.id = m.thread_id WHERE m.gmail_id = ?1")?
+        .query_row([id.as_str()], |r| r.get(0))
+        .optional()?;
+    let Some(thread) = thread else { return Ok(None) };
+    Ok(get_thread(conn, &ThreadId(thread))?.and_then(|(_, messages)| messages.into_iter().find(|m| &m.id == id)))
+}
+
 pub fn get_body(conn: &Connection, id: &MessageId) -> StoreResult<Option<Body>> {
     Ok(conn
         .prepare_cached(
@@ -226,6 +236,34 @@ pub fn get_body(conn: &Connection, id: &MessageId) -> StoreResult<Option<Body>> 
             Ok(Body { text_plain: r.get(0)?, html_sanitized: r.get(1)?, has_remote_images: r.get(2)? })
         })
         .optional()?)
+}
+
+/// Recipient suggestions for the composer: people the user writes to most
+/// and most recently first (spec §14.5). Three or more characters match
+/// anywhere in a name or address (trigram index); fewer match a prefix.
+pub fn suggest_contacts(conn: &Connection, text: &str, limit: u32) -> StoreResult<Vec<EmailAddress>> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(vec![]);
+    }
+    let order = "ORDER BY (c.sent_count * 3 + c.received_count) DESC, c.last_seen DESC LIMIT ?2";
+    let rows = if text.chars().count() >= 3 {
+        let quoted = format!("\"{}\"", text.replace('"', ""));
+        conn.prepare_cached(&format!(
+            "SELECT c.name, c.email FROM contacts_fts f JOIN contacts c ON c.id = f.rowid
+             WHERE contacts_fts MATCH ?1 {order}"
+        ))?
+        .query_map(params![quoted, limit], |r| Ok(EmailAddress { name: r.get(0)?, email: r.get(1)? }))?
+        .collect::<Result<Vec<_>, _>>()?
+    } else {
+        let like = format!("{}%", text.replace(['%', '_'], ""));
+        conn.prepare_cached(&format!(
+            "SELECT c.name, c.email FROM contacts c WHERE c.email LIKE ?1 OR c.name LIKE ?1 {order}"
+        ))?
+        .query_map(params![like, limit], |r| Ok(EmailAddress { name: r.get(0)?, email: r.get(1)? }))?
+        .collect::<Result<Vec<_>, _>>()?
+    };
+    Ok(rows)
 }
 
 pub fn sync_state(conn: &Connection, key: &str) -> StoreResult<Option<String>> {

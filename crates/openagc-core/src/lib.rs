@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 uniffi::setup_scaffolding!();
 
 mod account;
+mod compose;
 mod error;
 mod events;
 pub mod ffi;
@@ -17,6 +18,7 @@ pub mod secrets;
 mod sync;
 
 pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
+pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, SyncState};
 pub use mutations::OutboxStatus;

@@ -226,11 +226,25 @@ impl MailProvider for FakeProvider {
         let id = MessageId(format!("sent{}", s.sent_counter));
         let thread_id = thread.cloned().unwrap_or_else(|| ThreadId(id.0.clone()));
         let text = String::from_utf8_lossy(raw).into_owned();
+        // Just enough header reading to behave like Gmail for tests.
+        let header = |name: &str| {
+            text.lines()
+                .take_while(|l| !l.is_empty())
+                .find(|l| {
+                    l.len() > name.len()
+                        && l[..name.len()].eq_ignore_ascii_case(name)
+                        && l[name.len()..].starts_with(':')
+                })
+                .map(|l| l[name.len() + 1..].trim().to_owned())
+        };
         let m = FetchedMessage {
             id: id.clone(),
             thread_id: thread_id.clone(),
             label_ids: vec![LabelId::new("SENT")],
             internal_date: self.now,
+            message_id_header: header("Message-ID").map(|v| v.trim_matches(['<', '>']).to_owned()),
+            in_reply_to: header("In-Reply-To").map(|v| v.trim_matches(['<', '>']).to_owned()),
+            subject: header("Subject").unwrap_or_default(),
             snippet: text.chars().take(100).collect(),
             body: Some(crate::FetchedBody { text: Some(text), html: None, attachments: vec![] }),
             ..Default::default()
