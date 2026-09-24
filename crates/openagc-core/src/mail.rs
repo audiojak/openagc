@@ -135,9 +135,10 @@ impl Core {
         runtime::run(async move {
             let id = MessageId(message_id.clone());
             let body = db.read(move |c| read::get_body(c, &id)).await?;
+            // Plain-text mail renders through the same reader as HTML.
             Ok(body.map(|b| RenderedBody {
                 message_id,
-                html: b.html_sanitized,
+                html: b.html_sanitized.or_else(|| b.text_plain.as_deref().map(mail_mime::text_to_html)),
                 text: b.text_plain,
                 has_remote_images: b.has_remote_images,
             }))

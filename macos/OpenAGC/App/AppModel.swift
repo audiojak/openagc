@@ -25,6 +25,7 @@ final class AppModel {
 
     let mailboxes: MailboxStore
     let threads: ThreadListStore
+    let reader: ReaderStore
     let core: CoreClient?
 
     private let logger = Logger(subsystem: "ai.actual.openagc", category: "app")
@@ -34,6 +35,7 @@ final class AppModel {
         self.core = core
         mailboxes = MailboxStore(core: core)
         threads = ThreadListStore(core: core)
+        reader = ReaderStore(core: core)
     }
 
     /// Open the remembered account, or the demo when asked for on launch.

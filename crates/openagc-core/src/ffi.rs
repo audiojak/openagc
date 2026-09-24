@@ -231,7 +231,8 @@ pub struct ThreadDetail {
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct RenderedBody {
     pub message_id: String,
-    /// Sanitized HTML; `None` for plain-text messages.
+    /// Sanitized HTML fragment; plain-text mail is converted, so this is
+    /// `None` only for an empty body.
     pub html: Option<String>,
     pub text: Option<String>,
     pub has_remote_images: bool,

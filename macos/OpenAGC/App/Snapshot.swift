@@ -7,6 +7,8 @@ import os
 ///   -OpenAGCSnapshotDelay <seconds>     wait before capturing (default 3)
 ///   -OpenAGCSnapshotSelectFirst YES     select the first thread first
 ///   -OpenAGCSnapshotMailbox <id>        switch mailbox first
+///   -OpenAGCSnapshotSelectIndex <n>     select row n instead
+///   -OpenAGCSnapshotAppearance dark|light
 @MainActor
 enum Snapshot {
     private static let logger = Logger(subsystem: "ai.actual.openagc", category: "snapshot")
@@ -16,14 +18,23 @@ enum Snapshot {
         guard let path = defaults.string(forKey: "OpenAGCSnapshot") else { return }
         let delay = defaults.object(forKey: "OpenAGCSnapshotDelay") as? Double
             ?? Double(defaults.string(forKey: "OpenAGCSnapshotDelay") ?? "") ?? 3
+        switch defaults.string(forKey: "OpenAGCSnapshotAppearance") {
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(delay / 2))
             if let mailbox = defaults.string(forKey: "OpenAGCSnapshotMailbox") {
                 delegate.model?.selectedMailboxID = mailbox
                 try? await Task.sleep(for: .milliseconds(500))
             }
-            if defaults.bool(forKey: "OpenAGCSnapshotSelectFirst"), let first = delegate.model?.threads.rows.first {
-                delegate.model?.selectedThreadID = first.id
+            if let rows = delegate.model?.threads.rows, !rows.isEmpty {
+                if let index = Int(defaults.string(forKey: "OpenAGCSnapshotSelectIndex") ?? ""), rows.indices.contains(index) {
+                    delegate.model?.selectedThreadID = rows[index].id
+                } else if defaults.bool(forKey: "OpenAGCSnapshotSelectFirst") {
+                    delegate.model?.selectedThreadID = rows[0].id
+                }
             }
             try? await Task.sleep(for: .seconds(delay / 2))
             capture(to: URL(filePath: path))

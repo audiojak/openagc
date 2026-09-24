@@ -42,8 +42,8 @@ struct MainWindow: View {
     }
 
     @ViewBuilder private var detail: some View {
-        if let id = model.selectedThreadID {
-            ThreadDetailView(threadID: id)
+        if model.selectedThreadID != nil {
+            ThreadReaderView()
         } else {
             ContentUnavailableView("No Message Selected", systemImage: "envelope.open")
         }
