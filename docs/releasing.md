@@ -18,8 +18,8 @@ maintainer. Nothing here runs in ordinary CI.
    can no longer verify updates. Store it as the `SPARKLE_ED_PRIVATE_KEY`
    secret for `release.yml`.
 2. **Public key.** Put the printed public key in `macos/project.yml` under
-   `SUPublicEDKey`. Until this is set the app's updater is off, and
-   development builds never check for updates.
+   `SUPublicEDKey`. Until this is set the app's updater is off. Debug
+   builds (Xcode runs and tests) never check for updates even with a key.
 3. **Apple credentials.** Install the Developer ID Application certificate.
    Create an App Store Connect API key for `notarytool` and add it to the
    CI secrets (see oagc-qtt).

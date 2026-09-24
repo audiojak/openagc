@@ -3,8 +3,8 @@ import Observation
 import Sparkle
 
 /// Sparkle 2 auto-updates (spec §16). Off unless the build carries an
-/// EdDSA public key, so development builds never check. Betas are a
-/// Sparkle channel the user opts into in Settings.
+/// EdDSA public key and is a Release build, so Debug builds and tests
+/// never check. Betas are a Sparkle channel the user opts into in Settings.
 @MainActor
 @Observable
 final class Updater: NSObject {
@@ -12,6 +12,15 @@ final class Updater: NSObject {
 
     /// Whether this build can update itself at all.
     let isConfigured: Bool
+
+    /// Debug builds (Xcode runs, tests) never talk to the update feed.
+    nonisolated static var isDebugBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
     private(set) var canCheckForUpdates = false
 
     @ObservationIgnored private var controller: SPUStandardUpdaterController?
@@ -20,7 +29,7 @@ final class Updater: NSObject {
     init(bundle: Bundle = .main) {
         let key = bundle.object(forInfoDictionaryKey: "SUPublicEDKey") as? String ?? ""
         let feed = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? ""
-        isConfigured = !key.isEmpty && !feed.isEmpty
+        isConfigured = !key.isEmpty && !feed.isEmpty && !Self.isDebugBuild
         super.init()
         guard isConfigured else { return }
         let controller = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self,
