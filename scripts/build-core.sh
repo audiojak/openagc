@@ -36,10 +36,12 @@ MODULE=openagc_coreFFI
 CARGO_FLAGS=(--package openagc-core --target "$TARGET" --locked)
 [[ "$PROFILE" == "release" ]] && CARGO_FLAGS+=(--release)
 
-# Xcode exports SDK and deployment variables meant for Swift/Clang; keep
-# them away from cargo so Rust builds identically inside and outside Xcode.
-env -u SDKROOT -u IPHONEOS_DEPLOYMENT_TARGET \
-  MACOSX_DEPLOYMENT_TARGET=26.0 cargo build "${CARGO_FLAGS[@]}"
+# Pin the SDK and deployment target so C dependencies (bundled SQLite)
+# compile identically inside Xcode, whose PATH puts the real clang first
+# and so needs SDKROOT, and in a terminal, where cc is the xcrun shim.
+SDKROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+MACOSX_DEPLOYMENT_TARGET=26.0 \
+  env -u IPHONEOS_DEPLOYMENT_TARGET cargo build "${CARGO_FLAGS[@]}"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT

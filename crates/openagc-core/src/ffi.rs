@@ -63,6 +63,8 @@ impl From<MailboxKind> for d::MailboxKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct MailboxInfo {
+    /// What `list_threads` takes: the label id, or `@archive`.
+    pub id: String,
     pub kind: MailboxKind,
     /// `None` only for Archive.
     pub label_id: Option<String>,
@@ -74,6 +76,7 @@ pub struct MailboxInfo {
 impl From<d::Mailbox> for MailboxInfo {
     fn from(m: d::Mailbox) -> Self {
         Self {
+            id: mail_store::read::mailbox_label(&m).to_owned(),
             kind: m.kind.into(),
             label_id: m.label_id.map(|l| l.0),
             name: m.name,

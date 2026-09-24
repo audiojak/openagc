@@ -1,7 +1,7 @@
 //! The Rust core behind the OpenAGC app. This is the only crate that knows
 //! about UniFFI; everything Swift can see is exported from here.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 uniffi::setup_scaffolding!();
 
@@ -9,6 +9,7 @@ mod error;
 mod events;
 pub mod ffi;
 mod logging;
+mod mail;
 mod runtime;
 
 pub use error::{CoreError, ErrorKind};
@@ -30,6 +31,7 @@ pub struct CoreConfig {
 pub struct Core {
     config: CoreConfig,
     events: EventBus,
+    account: RwLock<Option<mail::Account>>,
 }
 
 #[uniffi::export]
@@ -42,7 +44,7 @@ impl Core {
         let events = EventBus::start(listener, runtime::runtime().handle());
         logging::init(config.log_dir.as_deref().map(std::path::Path::new), events.clone());
         tracing::info!(version = env!("CARGO_PKG_VERSION"), "core started");
-        Ok(Arc::new(Self { config, events }))
+        Ok(Arc::new(Self { config, events, account: RwLock::new(None) }))
     }
 
     /// Round-trip check used by the app at launch and by tests.

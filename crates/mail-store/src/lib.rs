@@ -5,6 +5,7 @@
 
 pub mod consistency;
 mod db;
+pub mod demo;
 mod error;
 pub mod read;
 mod write;

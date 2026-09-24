@@ -35,8 +35,47 @@ final class CoreClient: Sendable {
     }
 
     func pingAsync(_ message: String) async throws(CoreClientError) -> String {
+        try await call { try await core.pingAsync(message: message) }
+    }
+
+    // MARK: Account and mail reads (SQLite only; never the network)
+
+    func openAccount(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.openAccount(accountId: accountID) }
+    }
+
+    var currentAccountID: String? { core.currentAccountId() }
+
+    func mailboxes() async throws(CoreClientError) -> [MailboxInfo] {
+        try await call { try await core.listMailboxes() }
+    }
+
+    func labels() async throws(CoreClientError) -> [LabelInfo] {
+        try await call { try await core.listLabels() }
+    }
+
+    func threads(in mailboxID: String, after cursor: String? = nil, limit: UInt32 = 100) async throws(CoreClientError) -> ThreadPage {
+        try await call { try await core.listThreads(mailboxId: mailboxID, cursor: cursor, limit: limit) }
+    }
+
+    func thread(_ threadID: String) async throws(CoreClientError) -> ThreadDetail? {
+        try await call { try await core.getThread(threadId: threadID) }
+    }
+
+    func renderedBody(_ messageID: String) async throws(CoreClientError) -> RenderedBody? {
+        try await call { try await core.getRenderedBody(messageId: messageID) }
+    }
+
+    /// Development hook: fill the open account with a synthetic mailbox.
+    @discardableResult
+    func seedDemoMailbox(threads: UInt32) async throws(CoreClientError) -> UInt32 {
+        try await call { try await core.debugSeedDemoMailbox(threads: threads) }
+    }
+
+    /// Runs a core call, converting generated errors to `CoreClientError`.
+    private func call<T>(_ body: () async throws -> T) async throws(CoreClientError) -> T {
         do {
-            return try await core.pingAsync(message: message)
+            return try await body()
         } catch let error as CoreError {
             throw CoreClientError(error)
         } catch {
