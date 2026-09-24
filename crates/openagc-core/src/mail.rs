@@ -163,7 +163,12 @@ mod tests {
     fn core(name: &str) -> Arc<Core> {
         let dir = std::env::temp_dir().join(format!("openagc-core-mail-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        Core::new(CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None }, Arc::new(Noop)).unwrap()
+        Core::new(
+            CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(Noop),
+        )
+        .unwrap()
     }
 
     #[test]

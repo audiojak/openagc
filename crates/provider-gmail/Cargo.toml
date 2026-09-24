@@ -18,6 +18,10 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true
+sha2.workspace = true
+getrandom.workspace = true
+url.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "time", "sync"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -6,6 +6,7 @@
 //! with bounded concurrency rather than through the multipart batch
 //! endpoint: batching does not reduce quota cost, which is the real limit.
 
+pub mod oauth;
 mod wire;
 
 use std::sync::Arc;

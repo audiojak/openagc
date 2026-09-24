@@ -5,15 +5,20 @@ use std::sync::{Arc, RwLock};
 
 uniffi::setup_scaffolding!();
 
+mod account;
 mod error;
 mod events;
 pub mod ffi;
 mod logging;
 mod mail;
 mod runtime;
+pub mod secrets;
+mod sync;
 
+pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, SyncState};
+pub use secrets::SecretStore;
 
 /// Configuration the app passes when it creates the core.
 #[derive(Debug, Clone, uniffi::Record)]
@@ -31,20 +36,26 @@ pub struct CoreConfig {
 pub struct Core {
     config: CoreConfig,
     events: EventBus,
+    secrets: Arc<dyn SecretStore>,
     account: RwLock<Option<mail::Account>>,
+    accounts: account::AccountState,
 }
 
 #[uniffi::export]
 impl Core {
     #[uniffi::constructor]
-    pub fn new(config: CoreConfig, listener: Arc<dyn EventListener>) -> Result<Arc<Self>, CoreError> {
+    pub fn new(
+        config: CoreConfig,
+        secrets: Arc<dyn SecretStore>,
+        listener: Arc<dyn EventListener>,
+    ) -> Result<Arc<Self>, CoreError> {
         if config.data_dir.is_empty() {
             return Err(CoreError::new(ErrorKind::InvalidInput, "data_dir must not be empty"));
         }
         let events = EventBus::start(listener, runtime::runtime().handle());
         logging::init(config.log_dir.as_deref().map(std::path::Path::new), events.clone());
         tracing::info!(version = env!("CARGO_PKG_VERSION"), "core started");
-        Ok(Arc::new(Self { config, events, account: RwLock::new(None) }))
+        Ok(Arc::new(Self { config, events, secrets, account: RwLock::new(None), accounts: Default::default() }))
     }
 
     /// Round-trip check used by the app at launch and by tests.
@@ -98,7 +109,7 @@ mod tests {
     }
 
     fn core() -> Arc<Core> {
-        Core::new(config(), Arc::new(NoopListener)).unwrap()
+        Core::new(config(), Arc::new(secrets::MemorySecrets::default()), Arc::new(NoopListener)).unwrap()
     }
 
     #[test]
@@ -120,8 +131,13 @@ mod tests {
 
     #[test]
     fn empty_data_dir_is_rejected() {
-        let err =
-            Core::new(CoreConfig { data_dir: String::new(), log_dir: None }, Arc::new(NoopListener)).err().unwrap();
+        let err = Core::new(
+            CoreConfig { data_dir: String::new(), log_dir: None },
+            Arc::new(secrets::MemorySecrets::default()),
+            Arc::new(NoopListener),
+        )
+        .err()
+        .unwrap();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }

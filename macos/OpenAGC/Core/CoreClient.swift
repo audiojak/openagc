@@ -11,15 +11,18 @@ final class CoreClient: Sendable {
     /// consumer; stores fan out on the main actor.
     let events: AsyncStream<CoreClientEvent>
 
-    convenience init(dataDirectory: URL, logDirectory: URL? = nil) throws(CoreClientError) {
-        try self.init(dataDirectoryPath: dataDirectory.path, logDirectoryPath: logDirectory?.path)
+    convenience init(dataDirectory: URL, logDirectory: URL? = nil,
+                     secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
+        try self.init(dataDirectoryPath: dataDirectory.path, logDirectoryPath: logDirectory?.path, secrets: secrets)
     }
 
-    init(dataDirectoryPath: String, logDirectoryPath: String? = nil) throws(CoreClientError) {
+    init(dataDirectoryPath: String, logDirectoryPath: String? = nil,
+         secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
         let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.self, bufferingPolicy: .unbounded)
         events = stream
         do {
             core = try Core(config: CoreConfig(dataDir: dataDirectoryPath, logDir: logDirectoryPath),
+                            secrets: SecretBridge(secrets),
                             listener: EventBridge(continuation))
         } catch let error as CoreError {
             throw CoreClientError(error)
@@ -175,6 +178,27 @@ enum CoreClientEvent: Sendable, Equatable {
     case syncStatus(SyncState, pending: UInt32)
     case outboxStatus(pending: UInt32, failed: UInt32)
     case error(CoreClientError)
+}
+
+/// Rust's view of the Keychain (spec §12). Errors cross as `CoreError`.
+private final class SecretBridge: SecretStore, Sendable {
+    private let keychain: KeychainSecretStore
+
+    init(_ keychain: KeychainSecretStore) {
+        self.keychain = keychain
+    }
+
+    func get(key: String) throws -> String? {
+        do { return try keychain.get(key) } catch { throw CoreError.Failed(kind: .storage, message: error.description) }
+    }
+
+    func set(key: String, value: String) throws {
+        do { try keychain.set(key, value) } catch { throw CoreError.Failed(kind: .storage, message: error.description) }
+    }
+
+    func delete(key: String) throws {
+        do { try keychain.delete(key) } catch { throw CoreError.Failed(kind: .storage, message: error.description) }
+    }
 }
 
 /// Receives events on a Rust runtime thread and hands them to the stream.
