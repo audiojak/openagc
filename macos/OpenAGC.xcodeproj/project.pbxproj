@@ -32,7 +32,9 @@
 		691D6124014BCD1F910B8B27 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F65D12222A0363EDB8FFE0 /* OnboardingView.swift */; };
 		69662C039B9C1E122F754EDE /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5694ECC8EA36F2A4119F98 /* ComposerView.swift */; };
 		6F0DEB707ABBB25DA5066D0D /* openagc_core.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3ECF1113029DF896EFBDA03 /* openagc_core.swift */; };
+		70D4EC96D9BC0BC67EAE0885 /* AgentSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DFBC630572AC27DA6ED8285 /* AgentSettings.swift */; };
 		710081AB6EAF380590EA91BF /* EmailDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6407F10744C6609C6D77A3E9 /* EmailDocument.swift */; };
+		72B799A4785C73464A0783BC /* AgentSettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6106757A4B6B179819362741 /* AgentSettingsTests.swift */; };
 		73F5C2F69C703EED929AAA94 /* LinkSafety.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F2806227B342184B9664E7D /* LinkSafety.swift */; };
 		751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */; };
 		8AE4FC81B09805EFF46AE738 /* ActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA440AC1C73AD0A9E18E993 /* ActionTests.swift */; };
@@ -112,12 +114,14 @@
 		46BFDFDE09CC5207A0A048D0 /* ReaderStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderStore.swift; sourceTree = "<group>"; };
 		56136D185C680F33C31C33A6 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
 		5D0633FEBD199D3028E73DAA /* ThreadListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadListView.swift; sourceTree = "<group>"; };
+		6106757A4B6B179819362741 /* AgentSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsTests.swift; sourceTree = "<group>"; };
 		6407F10744C6609C6D77A3E9 /* EmailDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailDocument.swift; sourceTree = "<group>"; };
 		662ED4D20063A892C72301EF /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
 		6D322E3E16D6E19FF3D99CBF /* agent-system-prompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "agent-system-prompt.md"; sourceTree = "<group>"; };
 		6EA889A74036D5319EED2E94 /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		700730FD7CE20073EC4E05F4 /* KeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTests.swift; sourceTree = "<group>"; };
 		7491CD8B391923F8E19F565D /* MailReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailReadTests.swift; sourceTree = "<group>"; };
+		7DFBC630572AC27DA6ED8285 /* AgentSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettings.swift; sourceTree = "<group>"; };
 		83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAGCApp.swift; sourceTree = "<group>"; };
 		8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipientField.swift; sourceTree = "<group>"; };
@@ -196,6 +200,7 @@
 		1D30BC16B523BE0C4B1F7695 /* Agent */ = {
 			isa = PBXGroup;
 			children = (
+				7DFBC630572AC27DA6ED8285 /* AgentSettings.swift */,
 			);
 			path = Agent;
 			sourceTree = "<group>";
@@ -273,6 +278,7 @@
 			children = (
 				ACA440AC1C73AD0A9E18E993 /* ActionTests.swift */,
 				BE6FF06BED85F5FE72CF32A5 /* AgentFFITests.swift */,
+				6106757A4B6B179819362741 /* AgentSettingsTests.swift */,
 				83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */,
 				AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */,
 				99F36E7595DF6E9B290AE189 /* AttachmentTests.swift */,
@@ -578,6 +584,7 @@
 			files = (
 				8AE4FC81B09805EFF46AE738 /* ActionTests.swift in Sources */,
 				B0F9127F48B25962A0D3E324 /* AgentFFITests.swift in Sources */,
+				72B799A4785C73464A0783BC /* AgentSettingsTests.swift in Sources */,
 				B453F38BECAF82D76E2FE0BF /* AppModelTests.swift in Sources */,
 				4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */,
 				4BBB2B43CEEF1AFA6C20B2D3 /* AttachmentTests.swift in Sources */,
@@ -600,6 +607,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				70D4EC96D9BC0BC67EAE0885 /* AgentSettings.swift in Sources */,
 				B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */,
 				5983A19ACD9796ACFA5E19D5 /* AppModel.swift in Sources */,
 				A64492AC04FB122343BA17D2 /* AttachmentStrip.swift in Sources */,

@@ -10,7 +10,7 @@ struct SettingsView: View {
                 Text("Accounts").frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Tab("Agents", systemImage: "sparkles") {
-                Text("Agents").frame(maxWidth: .infinity, maxHeight: .infinity)
+                AgentSettings()
             }
         }
         .frame(width: 560, height: 380)

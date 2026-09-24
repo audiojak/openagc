@@ -8,6 +8,7 @@
 
 pub mod fake;
 mod manager;
+pub mod process;
 
 use std::path::PathBuf;
 

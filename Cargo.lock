@@ -26,6 +26,12 @@ name = "agent-claude"
 version = "0.1.0"
 dependencies = [
  "agent-api",
+ "async-trait",
+ "mail-domain",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -33,6 +39,12 @@ name = "agent-codex"
 version = "0.1.0"
 dependencies = [
  "agent-api",
+ "async-trait",
+ "mail-domain",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

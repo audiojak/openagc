@@ -44,7 +44,7 @@ pub(crate) struct AgentHub {
 
 /// The real agent adapters (spec §9.3, §9.4).
 pub(crate) fn adapters() -> Vec<Arc<dyn AgentProvider>> {
-    vec![]
+    vec![agent_claude::ClaudeProvider::standard(), agent_codex::CodexProvider::standard()]
 }
 
 impl AgentHub {
