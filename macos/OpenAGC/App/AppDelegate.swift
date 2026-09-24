@@ -10,7 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            let client = try CoreClient(dataDirectory: CoreClient.defaultDataDirectory())
+            let client = try CoreClient(dataDirectory: CoreClient.defaultDataDirectory(),
+                                        logDirectory: CoreClient.defaultLogDirectory())
             logger.info("core \(client.version, privacy: .public) ready")
             core = client
         } catch {

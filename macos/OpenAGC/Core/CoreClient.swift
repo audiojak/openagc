@@ -1,5 +1,6 @@
 import Foundation
 import OpenAGCCore
+import os
 
 /// The app's handle on the Rust core. This is the only file that imports
 /// `OpenAGCCore` (spec §14.2); everything else talks to `CoreClient`.
@@ -10,15 +11,15 @@ final class CoreClient: Sendable {
     /// consumer; stores fan out on the main actor.
     let events: AsyncStream<CoreClientEvent>
 
-    convenience init(dataDirectory: URL) throws(CoreClientError) {
-        try self.init(dataDirectoryPath: dataDirectory.path)
+    convenience init(dataDirectory: URL, logDirectory: URL? = nil) throws(CoreClientError) {
+        try self.init(dataDirectoryPath: dataDirectory.path, logDirectoryPath: logDirectory?.path)
     }
 
-    init(dataDirectoryPath: String) throws(CoreClientError) {
+    init(dataDirectoryPath: String, logDirectoryPath: String? = nil) throws(CoreClientError) {
         let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.self, bufferingPolicy: .unbounded)
         events = stream
         do {
-            core = try Core(config: CoreConfig(dataDir: dataDirectoryPath),
+            core = try Core(config: CoreConfig(dataDir: dataDirectoryPath, logDir: logDirectoryPath),
                             listener: EventBridge(continuation))
         } catch let error as CoreError {
             throw CoreClientError(error)
@@ -46,6 +47,11 @@ final class CoreClient: Sendable {
     /// Diagnostics hook: ask Rust to emit one ThreadsChanged per id.
     func debugEmitThreadsChanged(mailboxID: String, threadIDs: [String]) {
         core.debugEmitThreadsChanged(mailboxId: mailboxID, threadIds: threadIDs)
+    }
+
+    /// `~/Library/Logs/OpenAGC`, where the core writes `core.log`.
+    static func defaultLogDirectory() -> URL {
+        URL.libraryDirectory.appending(path: "Logs/OpenAGC", directoryHint: .isDirectory)
     }
 
     /// `~/Library/Application Support/OpenAGC`, created if missing.
@@ -109,13 +115,11 @@ struct ThreadChangeHint: Sendable, Equatable {
 
 enum CoreClientEvent: Sendable, Equatable {
     enum SyncState: Sendable, Equatable { case idle, bootstrapping, syncing, offline, error }
-    enum LogLevel: Sendable, Equatable { case warn, error }
 
     case threadsChanged(mailboxID: String, hint: ThreadChangeHint)
     case syncStatus(SyncState, pending: UInt32)
     case outboxStatus(pending: UInt32, failed: UInt32)
     case error(CoreClientError)
-    case log(LogLevel, target: String, message: String)
 }
 
 /// Receives events on a Rust runtime thread and hands them to the stream.
@@ -127,12 +131,26 @@ private final class EventBridge: EventListener, Sendable {
     }
 
     func onEvent(event: CoreEvent) {
-        continuation.yield(CoreClientEvent(event))
+        // Rust warn/error records are logged here rather than delivered to
+        // stores; Swift owns unified-logging privacy (spec §17). Rust has
+        // already kept secrets and mail content out of these messages.
+        if case let .log(level, target, message) = event {
+            let logger = Logger(subsystem: "ai.actual.openagc", category: target)
+            switch level {
+            case .warn: logger.warning("\(message, privacy: .public)")
+            case .error: logger.error("\(message, privacy: .public)")
+            }
+            return
+        }
+        if let mapped = CoreClientEvent(event) {
+            continuation.yield(mapped)
+        }
     }
 }
 
 private extension CoreClientEvent {
-    init(_ event: CoreEvent) {
+    /// `nil` for events handled inside the bridge (log records).
+    init?(_ event: CoreEvent) {
         switch event {
         case let .threadsChanged(mailboxId, hint):
             self = .threadsChanged(mailboxID: mailboxId, hint: ThreadChangeHint(
@@ -144,8 +162,8 @@ private extension CoreClientEvent {
             self = .outboxStatus(pending: pending, failed: failed)
         case let .error(kind, message):
             self = .error(CoreClientError(kind: .init(kind), message: message))
-        case let .log(level, target, message):
-            self = .log(level == .warn ? .warn : .error, target: target, message: message)
+        case .log:
+            return nil
         }
     }
 }

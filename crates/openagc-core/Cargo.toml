@@ -27,6 +27,7 @@ uniffi.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [dev-dependencies]
 futures = "0.3"

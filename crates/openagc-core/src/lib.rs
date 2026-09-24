@@ -7,6 +7,7 @@ uniffi::setup_scaffolding!();
 
 mod error;
 mod events;
+mod logging;
 mod runtime;
 
 pub use error::{CoreError, ErrorKind};
@@ -18,6 +19,9 @@ pub struct CoreConfig {
     /// Directory for databases and runtime files,
     /// e.g. `~/Library/Application Support/OpenAGC`.
     pub data_dir: String,
+    /// Directory for `core.log`, e.g. `~/Library/Logs/OpenAGC`. `None`
+    /// disables the file log (tests); warnings still reach Swift.
+    pub log_dir: Option<String>,
 }
 
 /// The core. Swift holds exactly one for the app's lifetime.
@@ -35,6 +39,8 @@ impl Core {
             return Err(CoreError::new(ErrorKind::InvalidInput, "data_dir must not be empty"));
         }
         let events = EventBus::start(listener, runtime::runtime().handle());
+        logging::init(config.log_dir.as_deref().map(std::path::Path::new), events.clone());
+        tracing::info!(version = env!("CARGO_PKG_VERSION"), "core started");
         Ok(Arc::new(Self { config, events }))
     }
 
@@ -80,7 +86,7 @@ mod tests {
     use super::*;
 
     fn config() -> CoreConfig {
-        CoreConfig { data_dir: "/tmp/openagc-test".into() }
+        CoreConfig { data_dir: "/tmp/openagc-test".into(), log_dir: None }
     }
 
     struct NoopListener;
@@ -111,7 +117,8 @@ mod tests {
 
     #[test]
     fn empty_data_dir_is_rejected() {
-        let err = Core::new(CoreConfig { data_dir: String::new() }, Arc::new(NoopListener)).err().unwrap();
+        let err =
+            Core::new(CoreConfig { data_dir: String::new(), log_dir: None }, Arc::new(NoopListener)).err().unwrap();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }
