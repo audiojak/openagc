@@ -3,6 +3,7 @@
 //! that changes messages also maintains the denormalized thread data and
 //! search index in the same transaction.
 
+pub mod agents;
 pub mod consistency;
 mod db;
 pub mod demo;

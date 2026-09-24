@@ -228,6 +228,19 @@ final class CoreClient: Sendable {
         try await call { try await core.closeAgentSession(sessionId: sessionID) }
     }
 
+    func agentHistory(limit: UInt32 = 30) async throws(CoreClientError) -> [AgentSessionInfo] {
+        try await call { try await core.listAgentHistory(limit: limit) }
+    }
+
+    func agentTranscript(_ sessionID: String) async throws(CoreClientError) -> [AgentTranscriptItem] {
+        try await call { try await core.agentTranscript(sessionId: sessionID) }
+    }
+
+    /// Continue a stored conversation; returns its (unchanged) id.
+    func resumeAgentSession(_ sessionID: String) async throws(CoreClientError) -> String {
+        try await call { try await core.resumeAgentSession(sessionId: sessionID) }
+    }
+
     /// Development: scripted agents instead of the real CLIs.
     func useFakeAgents() { core.debugUseFakeAgents() }
 
@@ -370,6 +383,8 @@ private extension CoreClientError.Kind {
 typealias AddressInfo = OpenAGCCore.AddressInfo
 typealias AgentEventInfo = OpenAGCCore.AgentEventInfo
 typealias AgentProviderInfo = OpenAGCCore.AgentProviderInfo
+typealias AgentSessionInfo = OpenAGCCore.AgentSessionInfo
+typealias AgentTranscriptItem = OpenAGCCore.AgentTranscriptItem
 typealias AgentStatusInfo = OpenAGCCore.AgentStatusInfo
 typealias AttachmentInfo = OpenAGCCore.AttachmentInfo
 typealias PromptContextInfo = OpenAGCCore.PromptContextInfo

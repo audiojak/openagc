@@ -167,28 +167,6 @@ fn tool_calls_arrive_over_the_socket() {
     assert_eq!(core.mcp_socket_path().unwrap(), core.mcp_socket_path().unwrap(), "bound once");
 }
 
-#[test]
-fn deltas_coalesce_within_a_batch() {
-    use super::AgentEventInfo as E;
-    let merged = super::sessions::coalesce(vec![
-        E::TurnStarted,
-        E::TextDelta { text: "Hel".into() },
-        E::TextDelta { text: "lo".into() },
-        E::ThinkingDelta { text: "a".into() },
-        E::ThinkingDelta { text: "b".into() },
-        E::TextDelta { text: "!".into() },
-    ]);
-    assert_eq!(
-        merged,
-        vec![
-            E::TurnStarted,
-            E::TextDelta { text: "Hello".into() },
-            E::ThinkingDelta { text: "ab".into() },
-            E::TextDelta { text: "!".into() },
-        ]
-    );
-}
-
 #[derive(Default)]
 struct Recorder(std::sync::Mutex<Vec<CoreEvent>>);
 impl EventListener for Recorder {
@@ -251,6 +229,38 @@ fn a_fake_agent_session_round_trips_through_the_ffi() {
 
     block_on(core.clone().close_agent_session(session.clone())).unwrap();
     assert!(!core.agents.has(&session));
-    let err = block_on(core.clone().cancel_agent_turn(session)).unwrap_err();
+    let err = block_on(core.clone().cancel_agent_turn(session.clone())).unwrap_err();
     assert_eq!(err.kind(), crate::ErrorKind::NotFound);
+
+    // The conversation was stored and can be continued.
+    let history = block_on(core.list_agent_history(10)).unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!((history[0].session_id.as_str(), history[0].title.as_str()), (session.as_str(), "hi"));
+    assert!(session.starts_with("agent-") && session.len() > "agent-1".len(), "unique across launches: {session}");
+    let transcript = block_on(core.agent_transcript(session.clone())).unwrap();
+    assert_eq!(transcript[0], super::AgentTranscriptItem::Prompt { text: "hi".into() });
+    assert!(
+        transcript.contains(&super::AgentTranscriptItem::Event { event: E::TextDelta { text: "You said: hi".into() } })
+    );
+
+    let resumed = block_on(core.clone().resume_agent_session(session.clone())).unwrap();
+    assert_eq!(resumed, session, "same conversation id");
+    assert!(core.agents.has(&session));
+    block_on(core.clone().send_agent_prompt(session.clone(), "again".into(), super::PromptContextInfo::default()))
+        .unwrap();
+    for _ in 0..100 {
+        let t = block_on(core.agent_transcript(session.clone())).unwrap();
+        if t.iter()
+            .any(|i| *i == super::AgentTranscriptItem::Event { event: E::TextDelta { text: "You said: again".into() } })
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let history = block_on(core.list_agent_history(10)).unwrap();
+    assert_eq!(history[0].prompt_count, 2);
+    assert_eq!(
+        block_on(core.clone().resume_agent_session("nope".into())).unwrap_err().kind(),
+        crate::ErrorKind::NotFound
+    );
 }

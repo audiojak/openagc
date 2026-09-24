@@ -190,6 +190,22 @@ pub enum AgentEvent {
     SessionEnded,
 }
 
+/// Merge adjacent text (and thinking) deltas: fewer, larger strings for
+/// the UI and the stored transcript.
+pub fn coalesce(events: Vec<AgentEvent>) -> Vec<AgentEvent> {
+    let mut out: Vec<AgentEvent> = Vec::with_capacity(events.len());
+    for e in events {
+        match (out.last_mut(), e) {
+            (Some(AgentEvent::TextDelta { text }), AgentEvent::TextDelta { text: more }) => text.push_str(&more),
+            (Some(AgentEvent::ThinkingDelta { text }), AgentEvent::ThinkingDelta { text: more }) => {
+                text.push_str(&more)
+            }
+            (_, e) => out.push(e),
+        }
+    }
+    out
+}
+
 /// Where a session sends its events. Cheap to clone.
 #[derive(Debug, Clone)]
 pub struct EventSink {
@@ -298,6 +314,27 @@ mod tests {
         );
         let bare = TurnInput { prompt: "hi".into(), context: PromptContext::default() };
         assert_eq!(bare.full_prompt(), "hi");
+    }
+
+    #[test]
+    fn deltas_coalesce() {
+        let merged = coalesce(vec![
+            AgentEvent::TurnStarted,
+            AgentEvent::TextDelta { text: "Hel".into() },
+            AgentEvent::TextDelta { text: "lo".into() },
+            AgentEvent::ThinkingDelta { text: "a".into() },
+            AgentEvent::ThinkingDelta { text: "b".into() },
+            AgentEvent::TextDelta { text: "!".into() },
+        ]);
+        assert_eq!(
+            merged,
+            vec![
+                AgentEvent::TurnStarted,
+                AgentEvent::TextDelta { text: "Hello".into() },
+                AgentEvent::ThinkingDelta { text: "ab".into() },
+                AgentEvent::TextDelta { text: "!".into() },
+            ]
+        );
     }
 
     #[test]

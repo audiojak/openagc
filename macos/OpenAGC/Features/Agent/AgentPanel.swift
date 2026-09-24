@@ -81,6 +81,23 @@ struct AgentInspector: View {
                     Button("Stop") { agent.cancel() }
                         .controlSize(.small)
                 }
+                Menu {
+                    if agent.history.isEmpty {
+                        Text("No earlier conversations")
+                    }
+                    ForEach(agent.history, id: \.sessionId) { conversation in
+                        Button(conversation.title.isEmpty ? "Untitled" : conversation.title) {
+                            Task { await agent.open(conversation) }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Earlier conversations")
+                .onAppear { Task { await agent.loadHistory() } }
                 Button("New Conversation", systemImage: "square.and.pencil") { agent.newConversation() }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)

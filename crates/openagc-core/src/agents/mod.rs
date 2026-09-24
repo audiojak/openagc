@@ -4,7 +4,9 @@
 mod sessions;
 mod tools;
 
-pub use sessions::{AgentEventInfo, AgentProviderInfo, AgentStatusInfo, PromptContextInfo};
+pub use sessions::{
+    AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem, PromptContextInfo,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;

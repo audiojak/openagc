@@ -77,3 +77,39 @@ struct AgentPanelTests {
         #expect(AgentStore.usageText(input: nil, output: nil, cost: nil) == nil)
     }
 }
+
+@MainActor
+struct AgentHistoryTests {
+    @Test func aConversationCanBeReopenedAndContinued() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let model = AppModel(core: try CoreClient(dataDirectory: dir))
+        await model.start(openDemo: true)
+        let agent = model.agent
+        await agent.loadProviders()
+        await model.askAgent("first question")
+        var deadline = ContinuousClock.now + .seconds(5)
+        while agent.isRunning || agent.entries.count < 2 {
+            guard ContinuousClock.now < deadline else { Issue.record("timed out"); return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let original = try #require(agent.sessionID)
+        agent.newConversation()
+        try await Task.sleep(for: .milliseconds(100))
+        await agent.loadHistory()
+        let stored = try #require(agent.history.first)
+        #expect(stored.title == "first question")
+
+        await agent.open(stored)
+        #expect(agent.entries.map(\.kind) == [.prompt("first question"), .reply("You said: first question")])
+        #expect(agent.resumeID == original && agent.sessionID == nil)
+
+        await model.askAgent("second")
+        deadline = ContinuousClock.now + .seconds(5)
+        while agent.isRunning || agent.entries.count < 4 {
+            guard ContinuousClock.now < deadline else { Issue.record("timed out"); return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(agent.sessionID == original, "the same conversation continues")
+        #expect(agent.entries.last?.kind == .reply("You said: second"))
+    }
+}

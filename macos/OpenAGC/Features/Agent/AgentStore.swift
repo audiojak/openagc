@@ -31,6 +31,9 @@ final class AgentStore {
         didSet { UserDefaults.standard.set(providerID, forKey: Self.providerKey) }
     }
     private(set) var sessionID: String?
+    /// A stored conversation being shown; resumed on the next prompt.
+    private(set) var resumeID: String?
+    private(set) var history: [AgentSessionInfo] = []
     private(set) var entries: [Entry] = []
     private(set) var isRunning = false
     var isPresented = false
@@ -73,7 +76,12 @@ final class AgentStore {
         isRunning = true
         do {
             if sessionID == nil {
-                sessionID = try await core.startAgentSession(provider: providerID)
+                if let resumeID {
+                    sessionID = try await core.resumeAgentSession(resumeID)
+                    self.resumeID = nil
+                } else {
+                    sessionID = try await core.startAgentSession(provider: providerID)
+                }
             }
             try await core.sendAgentPrompt(sessionID!, text, context: context)
         } catch {
@@ -91,16 +99,44 @@ final class AgentStore {
     func newConversation() {
         if let core, let sessionID { Task { try? await core.closeAgentSession(sessionID) } }
         sessionID = nil
+        resumeID = nil
         entries = []
         toolEntries = [:]
         isRunning = false
         lastUsage = nil
     }
 
+    // MARK: History
+
+    func loadHistory() async {
+        guard let core else { return }
+        history = (try? await core.agentHistory()) ?? []
+    }
+
+    /// Show a stored conversation; the next prompt continues it.
+    func open(_ conversation: AgentSessionInfo) async {
+        guard let core, let items = try? await core.agentTranscript(conversation.sessionId) else { return }
+        newConversation()
+        providerID = conversation.provider
+        resumeID = conversation.sessionId
+        isPresented = true
+        for item in items {
+            switch item {
+            case let .prompt(text): append(.prompt(text))
+            case let .event(event): await ingest([event])
+            }
+        }
+        isRunning = false
+    }
+
     // MARK: Events
 
     func apply(sessionID: String, events: [AgentEventInfo]) async {
         guard sessionID == self.sessionID else { return }
+        await ingest(events)
+    }
+
+    private func ingest(_ events: [AgentEventInfo]) async {
         for event in events {
             switch event {
             case .sessionStarted, .sessionEnded:
