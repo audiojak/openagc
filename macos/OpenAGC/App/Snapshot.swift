@@ -19,6 +19,7 @@ import os
 ///   -OpenAGCSnapshotRoutine <runner>    open the Routines window (creating
 ///                                       a routine if there is none) and
 ///                                       capture it
+///   -OpenAGCSnapshotMode pdf            draw through AppKit's PDF (print) path
 ///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
 ///                                       (catches layer-only SwiftUI content)
 @MainActor
@@ -122,6 +123,16 @@ enum Snapshot {
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
         else {
             logger.error("no window to snapshot")
+            return
+        }
+        if UserDefaults.standard.string(forKey: "OpenAGCSnapshotMode") == "pdf" {
+            // AppKit's print path draws some SwiftUI content that bitmap
+            // caching misses on macOS 26.
+            let pdf = view.dataWithPDF(inside: view.bounds)
+            guard let image = NSImage(data: pdf),
+                  let tiff = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff),
+                  let png = bitmap.representation(using: .png, properties: [:]) else { return }
+            try? png.write(to: url)
             return
         }
         if UserDefaults.standard.string(forKey: "OpenAGCSnapshotMode") == "layer",

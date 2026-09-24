@@ -67,6 +67,7 @@
 		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
 		E65B21770ED2B172D35054C7 /* SyncStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5846BE9A95C68C7383B2B7C /* SyncStatusView.swift */; };
 		E6C0C4D4E44A1BE9838F0FB8 /* RoutinesStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0226B235AA4B7F4515359C61 /* RoutinesStore.swift */; };
+		E84BD27D7D2BF39707A7E276 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601938BEED9E6F66CF748199 /* AccountSettings.swift */; };
 		F1C67B7F56BB5793575AA7DB /* ReaderStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BFDFDE09CC5207A0A048D0 /* ReaderStore.swift */; };
 		F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */; };
 		F9BBF95D9CBEC5F60BC4CD61 /* agent-system-prompt.md in Resources */ = {isa = PBXBuildFile; fileRef = 6D322E3E16D6E19FF3D99CBF /* agent-system-prompt.md */; };
@@ -126,6 +127,7 @@
 		4E9589E376D0608FB13DD219 /* RoutineModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoutineModel.swift; sourceTree = "<group>"; };
 		56136D185C680F33C31C33A6 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
 		5D0633FEBD199D3028E73DAA /* ThreadListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadListView.swift; sourceTree = "<group>"; };
+		601938BEED9E6F66CF748199 /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
 		6106757A4B6B179819362741 /* AgentSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsTests.swift; sourceTree = "<group>"; };
 		6407F10744C6609C6D77A3E9 /* EmailDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailDocument.swift; sourceTree = "<group>"; };
 		662ED4D20063A892C72301EF /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
@@ -332,6 +334,7 @@
 		8A7408779DD1060A1ED75B09 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				601938BEED9E6F66CF748199 /* AccountSettings.swift */,
 				E4C676A513B753ECEBB6FF97 /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -641,6 +644,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E84BD27D7D2BF39707A7E276 /* AccountSettings.swift in Sources */,
 				5DAD4D28F079583BBC9786C5 /* AgentActivity.swift in Sources */,
 				CF4F91CC076301CA21FE2C86 /* AgentPanel.swift in Sources */,
 				70D4EC96D9BC0BC67EAE0885 /* AgentSettings.swift in Sources */,

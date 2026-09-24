@@ -8,7 +8,7 @@ import Observation
 @Observable
 final class ReaderStore {
     static let cacheLimit = 200
-    private static let allowedSendersKey = "remoteImagesAllowedSenders"
+    static let allowedSendersKey = "remoteImagesAllowedSenders"
 
     private(set) var threadID: String?
     private(set) var detail: ThreadDetail?

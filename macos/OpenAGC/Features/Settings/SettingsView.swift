@@ -7,7 +7,7 @@ struct SettingsView: View {
                 GeneralSettings()
             }
             Tab("Accounts", systemImage: "person.crop.circle") {
-                Text("Accounts").frame(maxWidth: .infinity, maxHeight: .infinity)
+                AccountSettings()
             }
             Tab("Agents", systemImage: "sparkles") {
                 AgentSettings()
@@ -15,8 +15,14 @@ struct SettingsView: View {
             Tab("Permissions", systemImage: "hand.raised") {
                 AgentPermissionsSettings()
             }
+            Tab("Routines", systemImage: "clock.arrow.2.circlepath") {
+                RoutineSettings()
+            }
+            Tab("Privacy", systemImage: "lock.shield") {
+                PrivacySettings()
+            }
         }
-        .frame(width: 600, height: 480)
+        .frame(width: 640, height: 520)
     }
 }
 

@@ -5,9 +5,6 @@ import SwiftUI
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
     @State private var showAdvanced = false
-    @State private var customID = UserDefaults.standard.string(forKey: GoogleClientConfiguration.customClientIDKey) ?? ""
-    @State private var customSecret = ""
-    @State private var saveError: String?
 
     private var client: GoogleClientConfiguration { GoogleClientConfiguration.effective() }
 
@@ -57,6 +54,8 @@ struct OnboardingView: View {
                     }
                 }
 
+                OnboardingAgents()
+
                 DisclosureGroup("Advanced: use your own Google OAuth client", isExpanded: $showAdvanced) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Create a “Desktop app” OAuth client in Google Cloud with the Gmail API enabled, then paste its ID and secret. Your own client avoids Google's unverified-app warning.")
@@ -64,20 +63,7 @@ struct OnboardingView: View {
                             .foregroundStyle(.secondary)
                         Link("Step-by-step instructions", destination: URL(string: "https://github.com/audiojak/openagc/blob/main/docs/google-oauth-client.md")!)
                             .font(.callout)
-                        TextField("Client ID", text: $customID)
-                        SecureField("Client secret", text: $customSecret)
-                        HStack {
-                            Button("Save") {
-                                do {
-                                    try GoogleClientConfiguration.saveCustom(clientID: customID, clientSecret: customSecret)
-                                    saveError = nil
-                                } catch {
-                                    saveError = String(describing: error)
-                                }
-                            }
-                            if client.isCustom { Text("Using your client").foregroundStyle(.secondary).font(.callout) }
-                            if let saveError { Text(saveError).foregroundStyle(.red).font(.callout) }
-                        }
+                        GoogleClientFields()
                     }
                     .textFieldStyle(.roundedBorder)
                     .padding(.top, 6)
@@ -86,5 +72,47 @@ struct OnboardingView: View {
             .padding(28)
             .frame(maxWidth: 560, alignment: .leading)
         }
+    }
+}
+
+/// Which agents are installed, and which to use by default (spec §9.2).
+private struct OnboardingAgents: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let agent = model.agent
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Agents").font(.headline)
+            Text("OpenAGC works with the Claude Code or Codex command-line tools you already have, signed in with your own account. You can add one later.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            if agent.providers.isEmpty {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Looking for Claude Code and Codex…").foregroundStyle(.secondary)
+                }
+            }
+            ForEach(agent.providers, id: \.id) { provider in
+                let status = AgentStatusText(provider)
+                Label {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(provider.name)
+                        Text(status.detail).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                } icon: {
+                    Image(systemName: status.symbol).foregroundStyle(status.isReady ? .green : .secondary)
+                }
+            }
+            let ready = agent.providers.filter { AgentStatusText($0).isReady }
+            if ready.count > 1 {
+                Picker("Ask by default", selection: Bindable(agent).providerID) {
+                    ForEach(ready, id: \.id) { Text($0.name).tag($0.id) }
+                }
+                .fixedSize()
+            }
+            Button("Check Again") { Task { await agent.loadProviders(refresh: true) } }
+                .controlSize(.small)
+        }
+        .task { await agent.loadProviders() }
     }
 }
