@@ -2756,6 +2756,8 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "mail-domain",
+ "mail-store",
  "serde_json",
 ]
 

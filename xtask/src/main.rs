@@ -6,13 +6,23 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
+mod perf;
+
 fn main() -> Result<()> {
     let cmd = std::env::args().nth(1).unwrap_or_default();
+    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let messages = std::env::args()
+        .skip_while(|a| a != "--messages")
+        .nth(1)
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(perf::DEFAULT_MESSAGES);
     match cmd.as_str() {
         "check-deps" => check_deps(),
+        "fixture" => perf::fixture(&root, messages, std::env::args().any(|a| a == "--force")).map(|_| ()),
+        "perf" => perf::perf(&root, messages),
         _ => {
             eprintln!(
-                "usage: cargo xtask <command>\n\ncommands:\n  check-deps   enforce the crate dependency direction (spec §3)"
+                "usage: cargo xtask <command>\n\ncommands:\n  check-deps              enforce the crate dependency direction (spec §3)\n  fixture [--messages N]  build the synthetic performance mailbox (default 100k)\n  perf [--messages N]     measure store operations against §1.3 budgets"
             );
             std::process::exit(2);
         }
@@ -54,7 +64,7 @@ fn allowed_internal_deps() -> BTreeMap<&'static str, &'static [&'static str]> {
         ),
         ("openagc-mcp", &["mail-domain", "agent-api", "permissions", "agent-mcp"][..]),
         ("uniffi-bindgen-swift", &[][..]),
-        ("xtask", &[][..]),
+        ("xtask", &["mail-domain", "mail-store"][..]),
     ])
 }
 
