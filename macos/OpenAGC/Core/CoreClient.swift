@@ -31,6 +31,13 @@ final class CoreClient: Sendable {
             throw CoreClientError(kind: .internalError, message: String(describing: error))
         }
         core.setTextExtractor(extractor: PDFTextExtractor())
+        let bundle = Bundle.main
+        core.configureAgents(
+            shimPath: bundle.bundleURL.appending(path: "Contents/MacOS/openagc-mcp").path,
+            systemPromptPath: bundle.url(forResource: "agent-system-prompt", withExtension: "md")?.path ?? "")
+        if UserDefaults.standard.bool(forKey: "OpenAGCFakeAgents") {
+            core.debugUseFakeAgents()
+        }
     }
 
     var version: String { core.version() }
@@ -187,6 +194,35 @@ final class CoreClient: Sendable {
         core.suggestContactsNow(text: text, limit: limit)
     }
 
+    // MARK: Agents
+
+    func agentProviders(refresh: Bool = false) async -> [AgentProviderInfo] {
+        await core.listAgentProviders(refresh: refresh)
+    }
+
+    /// Start a session; with `selection`, the agent sees only those threads.
+    func startAgentSession(provider: String, selection: [String]? = nil,
+                           resume: String? = nil) async throws(CoreClientError) -> String {
+        try await call { try await core.startAgentSession(provider: provider, selection: selection, resume: resume) }
+    }
+
+    func sendAgentPrompt(_ sessionID: String, _ prompt: String,
+                         context: PromptContextInfo = PromptContextInfo(mailboxId: nil, selectedThreadIds: [],
+                                                                         searchQuery: nil)) async throws(CoreClientError) {
+        try await call { try await core.sendAgentPrompt(sessionId: sessionID, prompt: prompt, context: context) }
+    }
+
+    func cancelAgentTurn(_ sessionID: String) async throws(CoreClientError) {
+        try await call { try await core.cancelAgentTurn(sessionId: sessionID) }
+    }
+
+    func closeAgentSession(_ sessionID: String) async throws(CoreClientError) {
+        try await call { try await core.closeAgentSession(sessionId: sessionID) }
+    }
+
+    /// Development: scripted agents instead of the real CLIs.
+    func useFakeAgents() { core.debugUseFakeAgents() }
+
     // MARK: Accounts and sync
 
     struct SignInStart: Sendable {
@@ -324,7 +360,11 @@ private extension CoreClientError.Kind {
 // rest of the app can use them without importing OpenAGCCore; all calls
 // into the core still go through CoreClient.
 typealias AddressInfo = OpenAGCCore.AddressInfo
+typealias AgentEventInfo = OpenAGCCore.AgentEventInfo
+typealias AgentProviderInfo = OpenAGCCore.AgentProviderInfo
+typealias AgentStatusInfo = OpenAGCCore.AgentStatusInfo
 typealias AttachmentInfo = OpenAGCCore.AttachmentInfo
+typealias PromptContextInfo = OpenAGCCore.PromptContextInfo
 typealias DraftAttachmentInfo = OpenAGCCore.DraftAttachmentInfo
 typealias DraftInfo = OpenAGCCore.DraftInfo
 typealias DraftStatus = OpenAGCCore.DraftStatus
@@ -364,6 +404,7 @@ enum CoreClientEvent: Sendable, Equatable {
     case syncStatus(SyncState, pending: UInt32)
     case outboxStatus(pending: UInt32, failed: UInt32)
     case newMail([NewMail])
+    case agent(sessionID: String, events: [AgentEventInfo])
     case error(CoreClientError)
 }
 
@@ -438,6 +479,8 @@ private extension CoreClientEvent {
             self = .outboxStatus(pending: pending, failed: failed)
         case let .error(kind, message):
             self = .error(CoreClientError(kind: .init(kind), message: message))
+        case let .agentEvents(sessionId, events):
+            self = .agent(sessionID: sessionId, events: events)
         case let .newMail(messages):
             self = .newMail(messages.map {
                 NewMail(messageID: $0.messageId, threadID: $0.threadId,

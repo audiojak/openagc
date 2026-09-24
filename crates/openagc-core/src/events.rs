@@ -136,6 +136,11 @@ pub enum CoreEvent {
     NewMail {
         messages: Vec<NewMailInfo>,
     },
+    /// One agent session's events from one 16 ms frame (spec §9.5).
+    AgentEvents {
+        session_id: String,
+        events: Vec<crate::agents::AgentEventInfo>,
+    },
     /// Warn/error log records from Rust, logged by Swift with `os.Logger`
     /// so unified-logging privacy stays under Swift's control (spec §17).
     Log {

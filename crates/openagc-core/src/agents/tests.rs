@@ -157,11 +157,100 @@ fn tool_calls_arrive_over_the_socket() {
     let core = demo("socket");
     core.agents.register("s1", Scope::Mailbox, None);
     let path = core.mcp_socket_path().unwrap();
-    assert!(path.starts_with(core.data_dir()));
+    // Under the data dir, or /tmp/openagc-<uid> when that path is too long.
+    assert!(path.starts_with(core.data_dir()) || path.to_string_lossy().starts_with("/tmp/openagc-"), "{path:?}");
     let outcome = crate::runtime::runtime().block_on(async move {
         let client = agent_mcp::ShimClient::connect(&path, "s1").await.unwrap();
         client.call("mail_list_labels", json!({})).await
     });
     assert!(matches!(outcome, Outcome::Ok { .. }), "{outcome:?}");
     assert_eq!(core.mcp_socket_path().unwrap(), core.mcp_socket_path().unwrap(), "bound once");
+}
+
+#[test]
+fn deltas_coalesce_within_a_batch() {
+    use super::AgentEventInfo as E;
+    let merged = super::sessions::coalesce(vec![
+        E::TurnStarted,
+        E::TextDelta { text: "Hel".into() },
+        E::TextDelta { text: "lo".into() },
+        E::ThinkingDelta { text: "a".into() },
+        E::ThinkingDelta { text: "b".into() },
+        E::TextDelta { text: "!".into() },
+    ]);
+    assert_eq!(
+        merged,
+        vec![
+            E::TurnStarted,
+            E::TextDelta { text: "Hello".into() },
+            E::ThinkingDelta { text: "ab".into() },
+            E::TextDelta { text: "!".into() },
+        ]
+    );
+}
+
+#[derive(Default)]
+struct Recorder(std::sync::Mutex<Vec<CoreEvent>>);
+impl EventListener for Recorder {
+    fn on_event(&self, event: CoreEvent) {
+        self.0.lock().unwrap().push(event);
+    }
+}
+
+#[test]
+fn a_fake_agent_session_round_trips_through_the_ffi() {
+    use super::AgentEventInfo as E;
+    let dir = std::env::temp_dir().join(format!("openagc-core-agent-ffi-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let recorder = Arc::new(Recorder::default());
+    let core = Core::new(
+        CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+        Arc::new(crate::secrets::MemorySecrets::default()),
+        recorder.clone(),
+    )
+    .unwrap();
+    core.debug_use_fake_agents();
+    let providers = block_on(core.clone().list_agent_providers(false));
+    assert_eq!(providers.len(), 2);
+    assert_eq!(providers[0].id, "claude-code");
+    assert!(matches!(providers[0].status, super::AgentStatusInfo::Ready { .. }));
+    assert_eq!(providers[1].status, super::AgentStatusInfo::NotInstalled);
+
+    let err = block_on(core.clone().start_agent_session("claude-code".into(), None, None)).unwrap_err();
+    assert_eq!(err.kind(), crate::ErrorKind::NotFound, "an account must be open");
+    block_on(core.clone().open_account("demo".into())).unwrap();
+    let err = block_on(core.clone().start_agent_session("gpt".into(), None, None)).unwrap_err();
+    assert_eq!(err.kind(), crate::ErrorKind::InvalidInput);
+
+    let session = block_on(core.clone().start_agent_session("claude-code".into(), None, None)).unwrap();
+    assert!(core.agents.has(&session), "tool calls can bind to it");
+    block_on(core.clone().send_agent_prompt(session.clone(), "hi".into(), super::PromptContextInfo::default()))
+        .unwrap();
+
+    let mut seen: Vec<E> = Vec::new();
+    for _ in 0..100 {
+        seen = recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                CoreEvent::AgentEvents { session_id, events } if *session_id == session => Some(events.clone()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        if seen.iter().any(|e| matches!(e, E::TurnCompleted { .. })) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(matches!(seen[0], E::SessionStarted { .. }), "{seen:?}");
+    assert!(seen.contains(&E::TextDelta { text: "You said: hi".into() }));
+    assert!(seen.iter().any(|e| matches!(e, E::TurnCompleted { input_tokens: Some(10), .. })));
+
+    block_on(core.clone().close_agent_session(session.clone())).unwrap();
+    assert!(!core.agents.has(&session));
+    let err = block_on(core.clone().cancel_agent_turn(session)).unwrap_err();
+    assert_eq!(err.kind(), crate::ErrorKind::NotFound);
 }

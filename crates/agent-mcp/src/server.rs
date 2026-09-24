@@ -4,6 +4,7 @@
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use async_trait::async_trait;
 use tokio::net::{UnixListener, UnixStream};
@@ -30,13 +31,14 @@ pub struct McpSocket {
 }
 
 impl McpSocket {
-    /// Listen on `<dir>/mcp-<pid>.sock`. `dir` is created 0700 if needed; a
+    /// Listen on `<dir>/mcp-<pid>-<n>.sock`. `dir` is created 0700 if needed; a
     /// stale socket from a crashed launch is replaced. Must be called inside
     /// a Tokio runtime.
     pub fn bind(dir: &Path, handler: Arc<dyn ToolHandler>) -> std::io::Result<Self> {
-        std::fs::create_dir_all(dir)?;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-        let path = dir.join(format!("mcp-{}.sock", std::process::id()));
+        static BOUND: AtomicU32 = AtomicU32::new(0);
+        let dir = socket_dir(dir)?;
+        let n = BOUND.fetch_add(1, Ordering::Relaxed);
+        let path = dir.join(format!("mcp-{}-{n}.sock", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let listener = UnixListener::bind(&path)?;
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
@@ -56,6 +58,37 @@ impl Drop for McpSocket {
         self.task.abort();
         let _ = std::fs::remove_file(&self.path);
     }
+}
+
+/// macOS limits a socket path to 104 bytes including the terminator.
+const MAX_SOCKET_PATH: usize = 103;
+
+/// `preferred` (created 0700), or — when a socket path there would be too
+/// long, as with a long home directory — `/tmp/openagc-<uid>`, used only
+/// if it is a real directory owned by us.
+fn socket_dir(preferred: &Path) -> std::io::Result<PathBuf> {
+    std::fs::create_dir_all(preferred)?;
+    std::fs::set_permissions(preferred, std::fs::Permissions::from_mode(0o700))?;
+    let longest = preferred.join(format!("mcp-{}-{}.sock", u32::MAX, u32::MAX));
+    if longest.as_os_str().len() <= MAX_SOCKET_PATH {
+        return Ok(preferred.to_owned());
+    }
+    let uid = std::fs::metadata(preferred)?.uid();
+    let short = PathBuf::from(format!("/tmp/openagc-{uid}"));
+    match std::fs::create_dir(&short) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+    let meta = std::fs::symlink_metadata(&short)?;
+    if !meta.is_dir() || meta.uid() != uid {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!("{} is not a directory owned by this user", short.display()),
+        ));
+    }
+    std::fs::set_permissions(&short, std::fs::Permissions::from_mode(0o700))?;
+    Ok(short)
 }
 
 async fn accept_loop(listener: UnixListener, handler: Arc<dyn ToolHandler>, uid: u32) {
@@ -127,4 +160,21 @@ async fn connection(stream: UnixStream, handler: Arc<dyn ToolHandler>) {
     calls.abort_all();
     drop(replies);
     let _ = write_task.await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn long_directories_fall_back_to_a_private_tmp_dir() {
+        let base = std::env::temp_dir().join("x".repeat(80));
+        let dir = socket_dir(&base).unwrap();
+        assert!(dir.to_string_lossy().starts_with("/tmp/openagc-"), "{dir:?}");
+        let meta = std::fs::metadata(&dir).unwrap();
+        assert_eq!(meta.permissions().mode() & 0o777, 0o700);
+        let short = std::env::temp_dir().join("s");
+        let short = if short.as_os_str().len() < 60 { short } else { PathBuf::from("/tmp/oagc-s") };
+        assert_eq!(socket_dir(&short).unwrap(), short);
+    }
 }

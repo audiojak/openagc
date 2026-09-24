@@ -1,15 +1,16 @@
 //! Agents in the core (spec §9, §10): the MCP socket agents' tool calls
 //! arrive on, the per-session permission state, and the tools themselves.
-// Reached from the agent FFI (oagc-doa); until then only tests call it.
-#![allow(dead_code)]
 
+mod sessions;
 mod tools;
+
+pub use sessions::{AgentEventInfo, AgentProviderInfo, AgentStatusInfo, PromptContextInfo};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 
-use agent_api::EventSink;
+use agent_api::{AgentProvider, EventSink};
 use agent_mcp::{McpSocket, Outcome, ToolHandler};
 use async_trait::async_trait;
 use permissions::{Policy, Scope, SessionGuard, Tool};
@@ -36,6 +37,14 @@ pub(crate) struct AgentHub {
     socket: Mutex<Option<McpSocket>>,
     pub(crate) policy: RwLock<Policy>,
     pub(crate) text: RwLock<Option<Arc<dyn TextExtractor>>>,
+    pub(crate) resources: RwLock<sessions::AgentResources>,
+    pub(crate) runtime: OnceLock<sessions::AgentRuntime>,
+    pub(crate) fake_providers: sessions::FakeProviders,
+}
+
+/// The real agent adapters (spec §9.3, §9.4).
+pub(crate) fn adapters() -> Vec<Arc<dyn AgentProvider>> {
+    vec![]
 }
 
 impl AgentHub {

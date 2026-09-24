@@ -353,6 +353,8 @@ final class AppModel {
             failedChanges = failed
         case let .newMail(mail):
             notifier.announce(mail)
+        case .agent:
+            break // The agent panel (oagc-mxw) consumes these.
         }
     }
 }
