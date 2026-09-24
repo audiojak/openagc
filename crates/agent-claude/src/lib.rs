@@ -3,6 +3,7 @@
 
 mod detect;
 mod session;
+mod stream;
 
 use std::sync::Arc;
 
@@ -11,6 +12,8 @@ use agent_api::{AgentProvider, AgentResult, AgentSession, AgentStatus, EventSink
 use async_trait::async_trait;
 
 pub use detect::{MINIMUM_VERSION, auth_probe_args};
+pub use session::{mcp_config, turn_args};
+pub use stream::{StreamParser, summarize_args};
 
 pub struct ClaudeProvider {
     locator: Locator,
