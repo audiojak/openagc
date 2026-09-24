@@ -200,7 +200,9 @@ OpenAGC/
 
 Crate boundaries follow the dependency direction `domain ← store ← sync ←
 core`; `provider-*` and `agent-*` depend only on their `*-api` crate and
-`mail-domain`. `openagc-core` is the only crate that knows about UniFFI.
+`mail-domain` (providers may also use `mail-mime` to decode what they
+fetch; it depends only on `mail-domain`). `cargo xtask check-deps`
+enforces this. `openagc-core` is the only crate that knows about UniFFI.
 
 ---
 

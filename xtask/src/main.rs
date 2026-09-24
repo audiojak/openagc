@@ -21,14 +21,15 @@ fn main() -> Result<()> {
 
 /// Which internal crates each crate may depend on. Dependency direction
 /// follows `domain ← store ← sync ← core`; providers and agent adapters
-/// depend only on their `*-api` crate and `mail-domain`.
+/// depend only on their `*-api` crate and `mail-domain` (providers may also
+/// use `mail-mime` to decode what they fetch).
 fn allowed_internal_deps() -> BTreeMap<&'static str, &'static [&'static str]> {
     BTreeMap::from([
         ("mail-domain", &[][..]),
         ("mail-store", &["mail-domain"][..]),
         ("mail-mime", &["mail-domain"][..]),
         ("provider-api", &["mail-domain"][..]),
-        ("provider-gmail", &["mail-domain", "provider-api"][..]),
+        ("provider-gmail", &["mail-domain", "mail-mime", "provider-api"][..]),
         ("mail-sync", &["mail-domain", "mail-store", "mail-mime", "provider-api"][..]),
         ("agent-api", &["mail-domain"][..]),
         ("permissions", &["mail-domain"][..]),

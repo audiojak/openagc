@@ -1363,8 +1363,18 @@ dependencies = [
 name = "provider-gmail"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "base64",
+ "futures",
  "mail-domain",
+ "mail-mime",
  "provider-api",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]
