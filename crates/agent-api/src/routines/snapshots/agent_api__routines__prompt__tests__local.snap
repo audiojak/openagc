@@ -1,0 +1,77 @@
+---
+source: crates/agent-api/src/routines/prompt.rs
+expression: "generate_prompt(&routine(Runner::Local), PromptTarget::Runner(Runner::Local))"
+---
+This is an automated, unattended run. The user is not present to answer questions — execute autonomously, make reasonable choices, and note them in your output. Only take write actions (mail_create_label, mail_add_label, mail_archive) that this task explicitly asks for. Never send, reply, trash, delete, or mark as spam. When in doubt, a report of what you found is the correct output.
+
+Sort the user's mail matching `is:important newer_than:1d -in:sent -in:draft` into cadence-based review labels under “Marked Important”, so nothing important is lost but the inbox stays clear.
+
+Use OpenAGC's mail tools (mail_list_labels, mail_search, mail_get_thread, mail_create_label, mail_add_label, mail_archive). The user is me@example.com. They also receive mail at me@work.example and me@side.example. They are frequently CC'd on mail to team@work.example.
+
+## Step 1 — Ensure the labels exist
+
+Call mail_list_labels. If any of these 6 are missing, create them with mail_create_label:
+
+- `Marked Important/1-Daily` — color #fb4c2f
+- `Marked Important/2-Weekly-Newsletters` — color #4a86e8
+- `Marked Important/3-Weekly-Events` — color #16a766
+- `Marked Important/4-Weekly-Finance` — color #ffad47
+- `Marked Important/5-Monthly-Pitches` — color #999999
+- `Marked Important/6-Weekly-Hiring` — color #a479e2
+
+If creating or applying a label fails with a permissions error, stop immediately and report that the Gmail connection needs write access. Do not attempt workarounds.
+
+## Step 2 — Find candidates
+
+Search with mail_search: `is:important newer_than:1d -in:sent -in:draft`
+
+Threads that already carry one of the 6 labels (`Marked Important/1-Daily`, `Marked Important/2-Weekly-Newsletters`, `Marked Important/3-Weekly-Events`, `Marked Important/4-Weekly-Finance`, `Marked Important/5-Monthly-Pitches`, and `Marked Important/6-Weekly-Hiring`) were sorted on an earlier run. A thread can come back because a newer message arrived: re-apply that same label with mail_add_label (so the new message gets it too) and archive it if it is back in the inbox, but do not re-classify it or count it as new.
+
+Page with next_cursor, but stop after 200 threads — if you hit that cap, say so rather than silently truncating. Classify from sender, subject and snippet. Only call mail_get_thread when the snippet genuinely isn't enough to decide — it is slow and most classifications are obvious from the sender.
+
+## Step 3 — Leave these alone
+
+Do NOT label and do NOT archive:
+
+- **Genuine person-to-person threads** — a real human writing to the user or a small group they are part of, about actual work: introductions, deal threads, calendar invites from named people, event logistics with named collaborators, replies to their own mail. When in doubt about whether a thread is human correspondence, leave it in the inbox.
+- Any thread the user has already replied to (it contains a message from me@example.com, me@work.example, and me@side.example).
+- Starred threads.
+- Anything in Spam or Trash.
+
+The principle behind these rules: wrongly deferring a real conversation is much worse than leaving one extra message in the inbox.
+
+## Step 4 — Sort the rest
+
+For each remaining thread, add exactly one label with mail_add_label, then archive it by calling mail_archive with its thread id (if the thread is not in the inbox, just apply the label). Never trash, delete, or mark anything as spam. If a label or archive call fails with a transient error (for example "service unavailable"), retry it once.
+
+**`Marked Important/1-Daily`** — Automated mail that needs a human action soon: service and infrastructure alerts (outages, end-of-support notices, security warnings), failed or declined payments, expiring cards, account suspension warnings, deadlines within about a week, legal or compliance notices, and anything marked "Action Required" that is genuinely actionable. For example: cloud provider health and outage alerts, "your payment was declined", and "your card expires this month". When something is both an alert and a receipt, prefer this label.
+
+**`Marked Important/2-Weekly-Newsletters`** — Newsletters, Substack and similar sends, mailing-list digests, keyword-alert bots, industry news roundups, and vendor product-marketing announcements the user did not personally ask about. Reading material, no action. For example: Substack and beehiiv newsletters, Google Groups digests, and vendor product-update announcements.
+
+**`Marked Important/3-Weekly-Events`** — Event invitations and logistics from platforms: meetups, conferences, summits, webinars, demo days, ticketing and RSVP-platform invites, RSVP-activity and post-event survey notifications, early-bird deadlines. For example: Eventbrite and Luma invitations, conference early-bird reminders, and webinar registrations. Event mail from a named human collaborator about an event the user is co-hosting is person-to-person correspondence: leave it in the inbox.
+
+**`Marked Important/4-Weekly-Finance`** — Receipts, invoices, billing statements, payment confirmations, subscription renewals, bank and card statements, expense-tool and travel-spend reports, routine payment-account notices. Successful and routine only. For example: "your receipt from …", monthly card statements, and subscription renewal confirmations. Anything failed or overdue belongs in 1-Daily.
+
+**`Marked Important/5-Monthly-Pitches`** — Cold outbound from vendors and founders, sales follow-ups ("just following up", "one last message"), recruiting-service and candidate-sourcing blasts, sponsorship and expo solicitations, unsolicited demo requests. Low priority, batch-review monthly. For example: "just following up on my last note", sponsorship packages, and "can I get 15 minutes on your calendar?".
+
+**`Marked Important/6-Weekly-Hiring`** — Inbound hiring pipeline for the user's own open roles: automated new-application notifications, applicant-tracking and job-board notices about candidates who applied, interview-scheduling bot mail. These are people who applied and deserve a real weekly pass. For example: "new application for …" from an applicant-tracking system and job-board candidate notifications. Recruiting vendors selling sourcing services or blasting candidate lists are cold outreach: 5-Monthly-Pitches. A named candidate or hiring collaborator writing directly is person-to-person correspondence: leave it in the inbox. Direction matters: candidates coming in belong here; vendors selling in do not.
+
+Anything that fits none of these and is clearly automated: leave it untouched and mention it in the report so the buckets can be adjusted over time.
+
+## Step 5 — Report
+
+End with a short report (at most 15 lines):
+
+- Counts per label, plus how many threads were left in the inbox untouched.
+- Every item in `1-Daily`, listed individually with sender and subject.
+- Every item in `6-Weekly-Hiring`, listed individually with sender and subject.
+- Anything that didn't fit a bucket.
+- Any errors, or the thread cap being hit.
+
+Do not list the `2-Weekly-Newsletters`, `3-Weekly-Events`, `4-Weekly-Finance`, and `5-Monthly-Pitches` items individually — counts are enough. If nothing new was found this run, say so in one line.
+
+## Rules that always apply
+
+- Never trash, delete, or mark anything as spam. Never send, reply or forward.
+- Stop on permission errors and say so.
+- Stop after 200 threads and say so.

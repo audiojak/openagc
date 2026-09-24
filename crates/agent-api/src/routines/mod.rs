@@ -5,7 +5,7 @@ mod prompt;
 
 use serde::{Deserialize, Serialize};
 
-pub use prompt::{PromptTarget, generate_prompt, prompt_fingerprint};
+pub use prompt::{PromptTarget, generate_prompt, missing_safety_rules, prompt_fingerprint};
 
 /// Where a routine runs (spec §11.1).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
