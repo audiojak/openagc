@@ -97,11 +97,17 @@ impl From<mail_sync::SyncError> for CoreError {
 impl Core {
     /// Start sync for the open account with an explicit provider (tests use
     /// the in-memory fake; the app uses Gmail via `start_sync`).
-    pub(crate) fn start_sync_with(&self, provider: Arc<dyn MailProvider>) -> Result<(), CoreError> {
+    pub(crate) fn start_sync_with(self: &Arc<Self>, provider: Arc<dyn MailProvider>) -> Result<(), CoreError> {
         let db = self.db()?;
         let observer = Arc::new(EventObserver { events: self.events.clone() });
         let engine = Arc::new(SyncEngine::new(provider, db, observer));
-        let service = SyncService::start(engine, self.events.clone(), runtime::runtime().handle());
+        let weak = Arc::downgrade(self);
+        let attribute: crate::sync::ExternalChanges = Arc::new(move |changes| {
+            if let Some(core) = weak.upgrade() {
+                runtime::runtime().spawn(async move { core.attribute_routine_changes(changes).await });
+            }
+        });
+        let service = SyncService::start(engine, self.events.clone(), runtime::runtime().handle(), Some(attribute));
         if let Some(old) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).replace(service) {
             old.stop();
         }
@@ -196,7 +202,7 @@ impl Core {
     }
 
     /// Start syncing the open account with Gmail.
-    pub fn start_sync(&self) -> Result<(), CoreError> {
+    pub fn start_sync(self: Arc<Self>) -> Result<(), CoreError> {
         let account_id =
             self.current_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
         let provider = self.gmail_provider(&account_id)?;

@@ -386,6 +386,58 @@ impl Core {
     }
 }
 
+/// Changes within this gap belong to one inferred run (spec §11.6).
+const INFERRED_GAP: i64 = 5 * 60 * 1000;
+
+impl Core {
+    /// Label changes made elsewhere: those under a routine's parent label
+    /// are that routine's work, recorded as (or added to) an inferred run.
+    /// Local routines are recorded exactly and are skipped here.
+    pub(crate) async fn attribute_routine_changes(&self, changes: Vec<mail_sync::ExternalLabelChange>) {
+        let (Ok(db), Ok(routines)) = (self.db(), self.list_routines().await) else { return };
+        let Ok(labels) = db.read(mail_store::read::list_labels).await else { return };
+        let name_of = |id: &mail_domain::LabelId| labels.iter().find(|l| l.id == *id).map(|l| l.name.clone());
+        let now = mail_sync::now_millis();
+        let mut touched = false;
+        for info in routines.iter().filter(|r| r.runner != "local") {
+            let Ok(routine) = decode(&info.definition_json) else { continue };
+            let prefix = format!("{}/", routine.parent_label);
+            let mut threads: Vec<(String, Option<String>)> = Vec::new();
+            for change in &changes {
+                for label in &change.added {
+                    let Some(name) = name_of(label) else { continue };
+                    let Some(child) = name.strip_prefix(&prefix) else { continue };
+                    let bucket =
+                        routine.buckets.iter().find(|b| b.label_name.eq_ignore_ascii_case(child)).map(|b| b.id.clone());
+                    if !threads.iter().any(|(t, _)| *t == change.thread.0) {
+                        threads.push((change.thread.0.clone(), bucket));
+                    }
+                }
+            }
+            if threads.is_empty() {
+                continue;
+            }
+            touched = true;
+            let rid = routine.id.clone();
+            let written = db
+                .write(move |tx| {
+                    if let Some(run) = store::open_inferred_run(tx, &rid, now, INFERRED_GAP)? {
+                        store::add_run_threads(tx, run, &threads)?;
+                        store::recount(tx, run, Some(now))?;
+                    }
+                    Ok(())
+                })
+                .await;
+            if let Err(e) = written {
+                tracing::warn!(error = %e, "recording an inferred routine run failed");
+            }
+        }
+        if touched {
+            self.events.emit(crate::CoreEvent::RoutinesChanged);
+        }
+    }
+}
+
 #[uniffi::export]
 impl Core {
     /// Run a local routine now; returns the agent session showing it.
@@ -430,6 +482,53 @@ impl Core {
             Ok(out)
         })
         .await
+    }
+
+    /// Undo a run (spec §11.6): threads go back to the inbox and lose the
+    /// bucket label, through the outbox. Each thread is re-checked first,
+    /// so nothing the user changed since is touched. Returns how many
+    /// threads were restored.
+    pub async fn undo_routine_run(&self, run_id: i64) -> Result<u32, CoreError> {
+        let db = self.db()?;
+        let rid = runtime::run({
+            let db = db.clone();
+            async move { Ok::<_, CoreError>(db.read(move |c| store::run_routine(c, run_id)).await?) }
+        })
+        .await?
+        .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no such run"))?;
+        let routine = self.load_routine(&rid).await?;
+        let (threads, labels) = runtime::run({
+            let db = db.clone();
+            async move {
+                Ok::<_, CoreError>((
+                    db.read(move |c| store::run_threads(c, run_id)).await?,
+                    db.read(mail_store::read::list_labels).await?,
+                ))
+            }
+        })
+        .await?;
+        let mut restored = 0;
+        for (thread, bucket) in threads {
+            let Some(bucket) = bucket.and_then(|b| routine.buckets.iter().find(|x| x.id == b).cloned()) else {
+                continue;
+            };
+            let full = routine.full_label(&bucket);
+            let Some(label) = labels.iter().find(|l| l.name.eq_ignore_ascii_case(&full)) else { continue };
+            // Re-check: only threads that still carry the bucket label.
+            let Some(detail) = self.get_thread(thread.clone()).await? else { continue };
+            if !detail.thread.label_ids.contains(&label.id.0) {
+                continue;
+            }
+            let add =
+                if detail.thread.label_ids.iter().any(|l| l == "INBOX") { vec![] } else { vec!["INBOX".to_owned()] };
+            self.modify_labels(vec![thread], add, vec![label.id.0.clone()]).await?;
+            restored += 1;
+        }
+        let now = mail_sync::now_millis();
+        runtime::run(async move { Ok::<_, CoreError>(db.write(move |tx| store::mark_undone(tx, run_id, now)).await?) })
+            .await?;
+        self.events.emit(crate::CoreEvent::RoutinesChanged);
+        Ok(restored)
     }
 
     /// What a schedule means, in words.
@@ -598,5 +697,91 @@ mod tests {
         wait_for(|| block_on(core.list_routine_runs(made.id.clone(), 10)).unwrap().len() == 2);
         let runs = block_on(core.list_routine_runs(made.id.clone(), 10)).unwrap();
         assert!(runs.iter().any(|r| r.session_id.is_some()));
+    }
+
+    #[test]
+    fn changes_made_by_a_cloud_routine_become_an_inferred_run_that_can_be_undone() {
+        use mail_domain::{EmailAddress, Label, LabelId, LabelKind, MessageId, ThreadId};
+        use provider_api::fake::FakeProvider;
+        use provider_api::{FetchedBody, FetchedMessage};
+
+        let dir = std::env::temp_dir().join(format!("openagc-core-inferred-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let core = Core::new(
+            CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(Noop),
+        )
+        .unwrap();
+        block_on(core.clone().open_account("acct".into())).unwrap();
+        let fake = Arc::new(FakeProvider::new("me@example.com", 1_790_000_000_000, 50));
+        let label = |id: &str, name: &str, kind| Label {
+            id: LabelId::new(id),
+            name: name.into(),
+            kind,
+            color: None,
+            visible: true,
+        };
+        fake.set_labels(vec![
+            label("INBOX", "INBOX", LabelKind::System),
+            label("Label_1", "Marked Important/1-Daily", LabelKind::User),
+            label("Label_2", "Marked Important/2-Weekly-Newsletters", LabelKind::User),
+        ]);
+        for id in ["m1", "m2", "m3"] {
+            fake.seed(FetchedMessage {
+                id: MessageId::new(id),
+                thread_id: ThreadId::new(format!("t-{id}")),
+                label_ids: vec![LabelId::new("INBOX")],
+                internal_date: 1_790_000_000_000,
+                from: Some(EmailAddress::new(None, "alerts@example.com")),
+                subject: format!("Subject {id}"),
+                body: Some(FetchedBody { text: Some("hi".into()), html: None, attachments: vec![] }),
+                ..Default::default()
+            });
+        }
+        core.start_sync_with(fake.clone()).unwrap();
+        wait_for(|| block_on(core.list_threads("INBOX".into(), None, 10)).map(|p| p.rows.len() == 3).unwrap_or(false));
+
+        let cloud = block_on(core.create_routine_from_template("claude_cloud".into())).unwrap();
+        let local = block_on(core.create_routine_from_template("local".into())).unwrap();
+
+        // The cloud routine files two threads at Gmail.
+        fake.relabel(&MessageId::new("m1"), &[LabelId::new("Label_1")], &[LabelId::new("INBOX")]);
+        fake.relabel(&MessageId::new("m2"), &[LabelId::new("Label_2")], &[LabelId::new("INBOX")]);
+        core.sync_now();
+        wait_for(|| {
+            block_on(core.list_routine_runs(cloud.id.clone(), 5)).unwrap().first().is_some_and(|r| r.thread_count == 2)
+        });
+        let run = block_on(core.list_routine_runs(cloud.id.clone(), 5)).unwrap().remove(0);
+        assert!(run.inferred);
+        assert_eq!(run.status, "inferred");
+        let counts: std::collections::HashMap<String, u32> = serde_json::from_str(&run.counts_json).unwrap();
+        assert_eq!((counts["daily"], counts["newsletters"]), (1, 1));
+        assert!(
+            block_on(core.list_routine_runs(local.id, 5)).unwrap().is_empty(),
+            "local runs are recorded exactly instead"
+        );
+
+        // A third, minutes later: the same pass.
+        fake.relabel(&MessageId::new("m3"), &[LabelId::new("Label_1")], &[LabelId::new("INBOX")]);
+        core.sync_now();
+        wait_for(|| block_on(core.list_routine_runs(cloud.id.clone(), 5)).unwrap()[0].thread_count == 3);
+        assert_eq!(block_on(core.list_routine_runs(cloud.id.clone(), 5)).unwrap().len(), 1);
+
+        // The user moves m3 back themselves; Undo leaves it alone.
+        block_on(core.modify_labels(vec!["t-m3".into()], vec!["INBOX".into()], vec!["Label_1".into()])).unwrap();
+        let restored = block_on(core.undo_routine_run(run.run_id)).unwrap();
+        assert_eq!(restored, 2);
+        let inbox: Vec<String> =
+            block_on(core.list_threads("INBOX".into(), None, 10)).unwrap().rows.into_iter().map(|t| t.id).collect();
+        assert_eq!(inbox.len(), 3, "{inbox:?}");
+        let undone = block_on(core.list_routine_runs(cloud.id.clone(), 5)).unwrap().remove(0);
+        assert_eq!(undone.status, "undone");
+        // Undo's own changes are not attributed to the routine.
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        core.sync_now();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert_eq!(block_on(core.list_routine_runs(cloud.id, 5)).unwrap().len(), 1);
+        core.stop_sync();
     }
 }

@@ -230,3 +230,26 @@ async fn only_unread_inbox_mail_from_others_is_new_mail() {
     let report = engine.sync_incremental().await.unwrap();
     assert_eq!(report.new_mail.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["hello"]);
 }
+
+#[tokio::test]
+async fn label_changes_made_elsewhere_are_reported_and_our_own_are_not() {
+    let (fake, _db, _recorder, engine) = setup("external");
+    seed_mailbox(&fake);
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    engine.backfill_all().await.unwrap();
+
+    // Something else (a cloud routine) files a message and archives it.
+    fake.relabel(&MessageId::new("inbox-unread"), &[LabelId::new("Label_7")], &[LabelId::new("INBOX")]);
+    // OpenAGC archives another through its outbox.
+    engine.apply_change(mail_sync::LocalChange::archive(vec![ThreadId::new("t2")]), true).await.unwrap();
+    engine.drain_outbox().await.unwrap();
+
+    let report = engine.sync_incremental().await.unwrap();
+    assert_eq!(report.external_label_changes.len(), 1, "{:?}", report.external_label_changes);
+    let change = &report.external_label_changes[0];
+    assert_eq!(change.message.as_str(), "inbox-unread");
+    assert_eq!(change.thread.as_str(), "t1");
+    assert_eq!(change.added, vec![LabelId::new("Label_7")]);
+    assert_eq!(change.removed, vec![LabelId::new("INBOX")]);
+}

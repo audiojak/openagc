@@ -5,7 +5,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use mail_domain::{EmailAddress, LabelId, MessageId, ThreadId, system_labels};
+use mail_domain::{EmailAddress, LabelId, MessageId, Millis, ThreadId, system_labels};
 use mail_store::{Db, IncomingMessage, MailWriter, ThreadChanges, queue, read};
 use provider_api::{Change, ListFilter, MailProvider, PageToken, Priority, ProviderError};
 
@@ -58,6 +58,8 @@ pub struct IncrementalReport {
     /// Messages that arrived since the last sync, unread in the Inbox and
     /// not sent by the user: what a new-mail notification is about.
     pub new_mail: Vec<NewMail>,
+    /// Label changes made outside OpenAGC.
+    pub external_label_changes: Vec<ExternalLabelChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,11 +98,42 @@ pub struct SyncEngine {
     observer: Arc<dyn SyncObserver>,
     /// Serializes outbox drains so one op is never sent twice.
     pub(crate) drain_lock: tokio::sync::Mutex<()>,
+    /// Label changes OpenAGC itself pushed recently, so history sync can
+    /// tell them from changes made elsewhere (spec §11.6).
+    pub(crate) own_changes: std::sync::Mutex<Vec<OwnChange>>,
 }
+
+/// One label change the outbox pushed.
+#[derive(Debug, Clone)]
+pub(crate) struct OwnChange {
+    pub message: MessageId,
+    pub label: LabelId,
+    pub added: bool,
+    pub at: Millis,
+}
+
+/// A label change seen in history that OpenAGC did not make: another
+/// client, a filter, or a cloud routine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalLabelChange {
+    pub message: MessageId,
+    pub thread: ThreadId,
+    pub added: Vec<LabelId>,
+    pub removed: Vec<LabelId>,
+}
+
+/// How long an own change is remembered.
+const OWN_CHANGE_WINDOW: Millis = 2 * 60 * 60 * 1000;
 
 impl SyncEngine {
     pub fn new(provider: Arc<dyn MailProvider>, db: Db, observer: Arc<dyn SyncObserver>) -> Self {
-        Self { provider, db, observer, drain_lock: tokio::sync::Mutex::new(()) }
+        Self {
+            provider,
+            db,
+            observer,
+            drain_lock: tokio::sync::Mutex::new(()),
+            own_changes: std::sync::Mutex::new(Vec::new()),
+        }
     }
 
     /// True until the first bootstrap has listed every phase.
@@ -245,6 +278,7 @@ impl SyncEngine {
                 }
                 let fetched_ids: BTreeSet<&str> = incoming.iter().map(|m| m.id.as_str()).collect();
                 let mut unknown: Vec<MessageId> = Vec::new();
+                let mut external: Vec<(MessageId, Vec<LabelId>, bool)> = Vec::new();
                 for change in &changes_in {
                     match change {
                         Change::MessageAdded { .. } => {}
@@ -260,6 +294,7 @@ impl SyncEngine {
                         Change::LabelsAdded { id, label_ids } => {
                             if w.modify_message_labels(id, label_ids, &[])? {
                                 report.relabeled += 1;
+                                external.push((id.clone(), label_ids.clone(), true));
                             } else {
                                 unknown.push(id.clone());
                             }
@@ -267,6 +302,7 @@ impl SyncEngine {
                         Change::LabelsRemoved { id, label_ids } => {
                             if w.modify_message_labels(id, &[], label_ids)? {
                                 report.relabeled += 1;
+                                external.push((id.clone(), label_ids.clone(), false));
                             } else {
                                 unknown.push(id.clone());
                             }
@@ -277,12 +313,57 @@ impl SyncEngine {
                 // backfill will fetch them with current labels.
                 queue::enqueue(tx, 0, &unknown, false)?;
                 read::set_sync_state(tx, KEY_CURSOR, &new_cursor)?;
-                Ok((w.finish()?, report))
+                // Thread ids for the label changes, while we hold the store.
+                let mut threads: Vec<(MessageId, ThreadId, Vec<LabelId>, bool)> = Vec::new();
+                for (id, labels, added) in external {
+                    if let Some(m) = read::get_message(tx, &id)? {
+                        threads.push((id, m.thread_id, labels, added));
+                    }
+                }
+                Ok((w.finish()?, (report, threads)))
             })
             .await?;
+        let (mut report, labeled) = report;
+        report.external_label_changes = self.not_ours(labeled);
         self.publish(&changes);
         self.report(SyncPhase::Incremental).await;
         Ok(report)
+    }
+
+    /// Drop the changes OpenAGC's outbox made; group the rest per message.
+    fn not_ours(&self, labeled: Vec<(MessageId, ThreadId, Vec<LabelId>, bool)>) -> Vec<ExternalLabelChange> {
+        let now = crate::outbox::now_millis();
+        let mut own = self.own_changes.lock().unwrap_or_else(|e| e.into_inner());
+        own.retain(|c| now - c.at < OWN_CHANGE_WINDOW);
+        let mut out: Vec<ExternalLabelChange> = Vec::new();
+        for (message, thread, labels, added) in labeled {
+            let theirs: Vec<LabelId> = labels
+                .into_iter()
+                .filter(|l| !own.iter().any(|c| c.message == message && c.label == *l && c.added == added))
+                .collect();
+            if theirs.is_empty() {
+                continue;
+            }
+            let entry = match out.iter_mut().position(|e| e.message == message) {
+                Some(i) => &mut out[i],
+                None => {
+                    out.push(ExternalLabelChange { message: message.clone(), thread, added: vec![], removed: vec![] });
+                    out.last_mut().expect("just pushed")
+                }
+            };
+            if added { entry.added.extend(theirs) } else { entry.removed.extend(theirs) }
+        }
+        out
+    }
+
+    /// Remember label changes the outbox just pushed.
+    pub(crate) fn remember_own(&self, messages: &[MessageId], add: &[LabelId], remove: &[LabelId]) {
+        let at = crate::outbox::now_millis();
+        let mut own = self.own_changes.lock().unwrap_or_else(|e| e.into_inner());
+        for m in messages {
+            own.extend(add.iter().map(|l| OwnChange { message: m.clone(), label: l.clone(), added: true, at }));
+            own.extend(remove.iter().map(|l| OwnChange { message: m.clone(), label: l.clone(), added: false, at }));
+        }
     }
 
     /// Label list changes are not in history; refresh them wholesale.

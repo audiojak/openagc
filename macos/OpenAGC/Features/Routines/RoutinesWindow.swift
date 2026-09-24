@@ -419,6 +419,7 @@ enum RoutineEditorColors {
 
 private struct RunRow: View {
     let run: RoutineRunInfo
+    @Environment(AppModel.self) private var model
     @State private var expanded = false
 
     var body: some View {
@@ -429,6 +430,10 @@ private struct RunRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Text("No report.").foregroundStyle(.secondary)
+            }
+            if run.threadCount > 0, run.status != "undone" {
+                Button("Undo This Run") { Task { await model.routines.undo(run) } }
+                    .help("Move these threads back to the inbox and remove the labels (threads changed since are left alone)")
             }
         } label: {
             HStack {

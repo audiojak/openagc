@@ -207,6 +207,14 @@ final class RoutinesStore {
         }
     }
 
+    func undo(_ run: RoutineRunInfo) async {
+        await perform("Undoing…") { core in
+            let n = try await core.undoRoutineRun(run.runId)
+            self.message = n == 0 ? "Nothing to undo: those threads were already changed." : "Moved \(n) thread\(n == 1 ? "" : "s") back to the inbox."
+            await self.reloadRuns()
+        }
+    }
+
     // MARK: Preview
 
     func startPreview() async {

@@ -156,6 +156,15 @@ impl Core {
                 let started = iso_ms(run.started_at.as_deref()).unwrap_or_else(mail_sync::now_millis);
                 let ended = iso_ms(run.ended_at.as_deref());
                 let row = db.write(move |tx| store::upsert_cloud_run(tx, &rid, &sid, &status, started, ended)).await?;
+                // Inferred runs inside this run's window were this run.
+                if let Some(row) = row {
+                    let (rid, end) = (id.clone(), ended.unwrap_or(started) + 5 * 60 * 1000);
+                    let inferred =
+                        db.read(move |c| store::inferred_runs_between(c, &rid, started - 60_000, end)).await?;
+                    for from in inferred {
+                        db.write(move |tx| store::merge_runs(tx, from, row)).await?;
+                    }
+                }
                 let finished = matches!(run.status.as_str(), "completed" | "succeeded" | "failed");
                 let Some(row) = row else { continue };
                 if !finished || logs_left == 0 || db.read(move |c| store::run_report(c, row)).await?.is_some() {

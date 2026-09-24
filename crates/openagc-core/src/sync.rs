@@ -53,6 +53,9 @@ impl SyncObserver for EventObserver {
     }
 }
 
+/// Told about label changes made outside OpenAGC (spec §11.6).
+pub(crate) type ExternalChanges = Arc<dyn Fn(Vec<mail_sync::ExternalLabelChange>) + Send + Sync>;
+
 pub(crate) struct SyncService {
     engine: Arc<SyncEngine>,
     events: EventBus,
@@ -61,11 +64,17 @@ pub(crate) struct SyncService {
     backfill_wake: Notify,
     outbox_wake: Notify,
     drafts_wake: Notify,
+    external: Option<ExternalChanges>,
     tasks: std::sync::Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl SyncService {
-    pub fn start(engine: Arc<SyncEngine>, events: EventBus, handle: &tokio::runtime::Handle) -> Arc<Self> {
+    pub fn start(
+        engine: Arc<SyncEngine>,
+        events: EventBus,
+        handle: &tokio::runtime::Handle,
+        external: Option<ExternalChanges>,
+    ) -> Arc<Self> {
         let service = Arc::new(Self {
             engine,
             events,
@@ -74,6 +83,7 @@ impl SyncService {
             backfill_wake: Notify::new(),
             outbox_wake: Notify::new(),
             drafts_wake: Notify::new(),
+            external,
             tasks: std::sync::Mutex::new(Vec::new()),
         });
         let main = handle.spawn(service.clone().run());
@@ -234,6 +244,11 @@ impl SyncService {
             match self.engine.sync_incremental().await {
                 Ok(report) => {
                     backoff = Duration::from_secs(5);
+                    if !report.external_label_changes.is_empty()
+                        && let Some(notify) = &self.external
+                    {
+                        notify(report.external_label_changes.clone());
+                    }
                     if !report.new_mail.is_empty() {
                         let messages = report.new_mail.into_iter().map(Into::into).collect();
                         self.events.emit(CoreEvent::NewMail { messages });

@@ -336,6 +336,11 @@ final class CoreClient: Sendable {
         try await call { try await core.attachCloudRoutine(id: id, urlOrId: urlOrID) }
     }
 
+    /// Put a run's threads back in the inbox; returns how many.
+    func undoRoutineRun(_ runID: Int64) async throws(CoreClientError) -> UInt32 {
+        try await call { try await core.undoRoutineRun(runId: runID) }
+    }
+
     func describeSchedule(_ rrule: String) -> String { core.describeSchedule(rrule: rrule) }
     func nextRunAt(_ rrule: String) -> Int64? { core.nextRunAt(rrule: rrule) }
 

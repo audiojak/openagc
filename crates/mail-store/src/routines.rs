@@ -196,6 +196,100 @@ pub fn set_report(tx: &Transaction<'_>, run: i64, report: &str) -> StoreResult<(
     Ok(())
 }
 
+/// The inferred run to add changes to: the routine's latest one if it
+/// ended within `gap` of `now` (one sorting pass), else a new one.
+pub fn open_inferred_run(
+    tx: &Transaction<'_>,
+    routine_uuid: &str,
+    now: Millis,
+    gap: Millis,
+) -> StoreResult<Option<i64>> {
+    let Some(routine) = routine_rowid(tx, routine_uuid)? else { return Ok(None) };
+    let recent: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM routine_runs WHERE routine_id = ?1 AND inferred = 1 AND undone_at IS NULL
+               AND ended_at >= ?2 ORDER BY ended_at DESC LIMIT 1",
+            params![routine, now - gap],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if recent.is_some() {
+        return Ok(recent);
+    }
+    tx.execute(
+        "INSERT INTO routine_runs (routine_id, inferred, started_at, ended_at, status) VALUES (?1, 1, ?2, ?2, 'inferred')",
+        params![routine, now],
+    )?;
+    Ok(Some(tx.last_insert_rowid()))
+}
+
+/// Recompute a run's per-bucket counts from its threads; `ended_at` moves
+/// to `now` when given.
+pub fn recount(tx: &Transaction<'_>, run: i64, now: Option<Millis>) -> StoreResult<()> {
+    let counts: Vec<(String, i64)> = tx
+        .prepare_cached(
+            "SELECT bucket_id, COUNT(*) FROM routine_run_threads WHERE run_id = ?1 AND bucket_id IS NOT NULL
+             GROUP BY bucket_id ORDER BY bucket_id",
+        )?
+        .query_map([run], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<_, _>>()?;
+    let json = format!(
+        "{{{}}}",
+        counts
+            .iter()
+            .map(|(b, n)| format!("{}:{n}", serde_json::to_string(b).unwrap_or_default()))
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    tx.execute("UPDATE routine_runs SET counts_json = ?2 WHERE id = ?1", params![run, json])?;
+    if let Some(now) = now {
+        tx.execute(
+            "UPDATE routine_runs SET ended_at = MAX(COALESCE(ended_at, 0), ?2) WHERE id = ?1",
+            params![run, now],
+        )?;
+    }
+    Ok(())
+}
+
+/// Inferred runs of a routine that overlap `[start, end]`.
+pub fn inferred_runs_between(
+    conn: &Connection,
+    routine_uuid: &str,
+    start: Millis,
+    end: Millis,
+) -> StoreResult<Vec<i64>> {
+    Ok(conn
+        .prepare_cached(
+            "SELECT r.id FROM routine_runs r JOIN routines ro ON ro.id = r.routine_id
+             WHERE ro.uuid = ?1 AND r.inferred = 1 AND r.started_at <= ?3 AND COALESCE(r.ended_at, r.started_at) >= ?2",
+        )?
+        .query_map(params![routine_uuid, start, end], |r| r.get(0))?
+        .collect::<Result<_, _>>()?)
+}
+
+/// Fold run `from` into run `into` (an inferred run into the cloud run it
+/// turned out to be).
+pub fn merge_runs(tx: &Transaction<'_>, from: i64, into: i64) -> StoreResult<()> {
+    tx.execute(
+        "INSERT OR IGNORE INTO routine_run_threads (run_id, thread_id, bucket_id)
+         SELECT ?2, thread_id, bucket_id FROM routine_run_threads WHERE run_id = ?1",
+        params![from, into],
+    )?;
+    tx.execute("DELETE FROM routine_runs WHERE id = ?1", [from])?;
+    recount(tx, into, None)
+}
+
+/// The routine a run belongs to.
+pub fn run_routine(conn: &Connection, run: i64) -> StoreResult<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT ro.uuid FROM routine_runs r JOIN routines ro ON ro.id = r.routine_id WHERE r.id = ?1",
+            [run],
+            |r| r.get(0),
+        )
+        .optional()?)
+}
+
 pub fn mark_undone(tx: &Transaction<'_>, run: i64, now: Millis) -> StoreResult<()> {
     tx.execute("UPDATE routine_runs SET undone_at = ?2, status = 'undone' WHERE id = ?1", params![run, now])?;
     Ok(())

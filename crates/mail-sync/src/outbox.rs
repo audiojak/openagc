@@ -122,6 +122,8 @@ impl SyncEngine {
             };
             let result = match &queued.op {
                 OutboxOp::ModifyLabels { message_ids, add, remove } => {
+                    // Before the call: history may report it before we return.
+                    self.remember_own(message_ids, add, remove);
                     self.provider()
                         .modify_labels(&LabelOp {
                             message_ids: message_ids.clone(),
@@ -131,6 +133,11 @@ impl SyncEngine {
                         .await
                 }
                 OutboxOp::Trash { message_ids, .. } => {
+                    self.remember_own(
+                        message_ids,
+                        &[LabelId::new(system_labels::TRASH)],
+                        &[LabelId::new(system_labels::INBOX)],
+                    );
                     let mut result = Ok(());
                     for m in message_ids {
                         if let Err(e) = self.provider().move_to_trash(m).await {
