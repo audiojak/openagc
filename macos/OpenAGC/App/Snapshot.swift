@@ -16,6 +16,9 @@ import os
 ///                                       -OpenAGCFakeAgents YES)
 ///   -OpenAGCSnapshotProposal <summary>  show a sample approval card
 ///   -OpenAGCSnapshotWidth <points>      resize the main window first
+///   -OpenAGCSnapshotRoutine <runner>    open the Routines window (creating
+///                                       a routine if there is none) and
+///                                       capture it
 ///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
 ///                                       (catches layer-only SwiftUI content)
 @MainActor
@@ -70,6 +73,14 @@ enum Snapshot {
                 }
             }
             var window: NSWindow?
+            if let runner = defaults.string(forKey: "OpenAGCSnapshotRoutine"), let model = delegate.model {
+                if model.routines.routines.isEmpty {
+                    await model.routines.create(runner: RoutineRunner(rawValue: runner) ?? .claudeCloud)
+                }
+                model.openRoutines?()
+                try? await Task.sleep(for: .milliseconds(800))
+                window = NSApp.windows.last { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("routines") ?? false) }
+            }
             if let compose = defaults.string(forKey: "OpenAGCSnapshotCompose"), let model = delegate.model {
                 try? await Task.sleep(for: .milliseconds(500))
                 switch compose {
@@ -89,7 +100,7 @@ enum Snapshot {
             } else {
                 FileHandle.standardError.write(Data("snapshot state: no model\n".utf8))
             }
-            if defaults.bool(forKey: "OpenAGCSnapshotDumpViews"), let root = (window ?? NSApp.windows.first)?.contentView {
+            if defaults.bool(forKey: "OpenAGCSnapshotDumpViews"), let root = (window ?? NSApp.windows.first)?.contentView?.superview {
                 dump(root, depth: 0)
             }
             capture(window, to: URL(filePath: path))

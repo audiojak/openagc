@@ -19,7 +19,10 @@ struct MainWindow: View {
         }
         .focusedSceneValue(\.isMailWindow, true)
         .task { if model.accountState == .starting { await model.start() } }
-        .onAppear { model.openComposer = { openWindow(id: "compose", value: $0) } }
+        .onAppear {
+            model.openComposer = { openWindow(id: "compose", value: $0) }
+            model.openRoutines = { openWindow(id: "routines") }
+        }
     }
 
     private var mailWindow: some View {

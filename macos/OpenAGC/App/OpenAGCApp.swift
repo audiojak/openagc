@@ -31,6 +31,12 @@ struct OpenAGCApp: App {
         .defaultSize(width: 720, height: 560)
         .commandsRemoved()
 
+        Window("Routines", id: "routines") {
+            RoutinesWindow()
+                .environment(model)
+        }
+        .defaultSize(width: 980, height: 720)
+
         Settings {
             SettingsView()
                 .environment(model)
@@ -58,6 +64,7 @@ struct MailCommands: Commands {
     /// composer (⌘⌫ deletes to line start there) never acts on the
     /// selection behind it.
     @FocusedValue(\.isMailWindow) private var isMailWindow
+    @Environment(\.openWindow) private var openWindow
 
     private var mailKey: Bool { isMailWindow == true && model.isMailOpen }
     private var noTargets: Bool { !mailKey || model.actionTargets.isEmpty }
@@ -72,6 +79,10 @@ struct MailCommands: Commands {
             Button("Search Mail") { model.focusSearch() }
                 .keyboardShortcut("f")
                 .disabled(!mailKey)
+        }
+        CommandGroup(after: .windowList) {
+            Button("Routines") { openWindow(id: "routines") }
+                .keyboardShortcut("r", modifiers: [.command, .option])
         }
         CommandGroup(before: .sidebar) {
             ForEach(Array(Self.mailboxShortcuts.enumerated()), id: \.offset) { index, item in

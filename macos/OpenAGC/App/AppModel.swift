@@ -47,12 +47,15 @@ final class AppModel {
     /// Opens a composer window; set by the main window, which has SwiftUI's
     /// `openWindow` action.
     @ObservationIgnored var openComposer: ((ComposeRequest) -> Void)?
+    /// Opens the Routines window; set by the main window.
+    @ObservationIgnored var openRoutines: (() -> Void)?
 
     let notifier = NewMailNotifier()
     let mailboxes: MailboxStore
     let threads: ThreadListStore
     let reader: ReaderStore
     let agent: AgentStore
+    let routines: RoutinesStore
     let core: CoreClient?
 
     private let logger = Logger(subsystem: "ai.actual.openagc", category: "app")
@@ -67,6 +70,7 @@ final class AppModel {
         threads = ThreadListStore(core: core)
         reader = ReaderStore(core: core)
         agent = AgentStore(core: core)
+        routines = RoutinesStore(core: core)
     }
 
     /// Open the remembered account, or the demo when asked for on launch.
