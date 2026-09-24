@@ -9,14 +9,23 @@
 /* Begin PBXBuildFile section */
 		116A2EC55EB66E0F8E5ACCF0 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C676A513B753ECEBB6FF97 /* SettingsView.swift */; };
 		1970C5710634017B9B3E926B /* CoreClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EA889A74036D5319EED2E94 /* CoreClientTests.swift */; };
+		1EE4D994E6332B9D2D7B1772 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A65BAFCB0A37F91E630541F2 /* SidebarView.swift */; };
 		24C211EEAB25BC61A3BB4F70 /* MailReadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7491CD8B391923F8E19F565D /* MailReadTests.swift */; };
+		290545266B859DE81481C714 /* Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662ED4D20063A892C72301EF /* Snapshot.swift */; };
 		36A454FB046BB704125EF7F3 /* CoreClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE83811F68C4EBD9E870E49B /* CoreClient.swift */; };
 		4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */; };
+		5983A19ACD9796ACFA5E19D5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB3DFF446CD804B9EB7984C8 /* AppModel.swift */; };
 		6F0DEB707ABBB25DA5066D0D /* openagc_core.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3ECF1113029DF896EFBDA03 /* openagc_core.swift */; };
 		751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */; };
 		8BCA879DA87A93071503AFD8 /* OpenAGCCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; };
 		ACA4618DFA7FBAF468B9AF9C /* OpenAGCCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B26C2A82F8E9E5DF5DBF5C14 /* ThreadDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B74521E331950B248757E97A /* ThreadDetailView.swift */; };
+		B453F38BECAF82D76E2FE0BF /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */; };
+		B46DC7164B626E812E646EDE /* ThreadListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0633FEBD199D3028E73DAA /* ThreadListView.swift */; };
 		B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */; };
+		C9F5E1202A2849397390D3AC /* MailboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD6458B52C0ABAB8AED1A828 /* MailboxStore.swift */; };
+		CC89EB36D485FE29C268F72A /* ThreadRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF32A9AE2D35843656097005 /* ThreadRowView.swift */; };
+		D9974F0610B1100DD537D0A5 /* ThreadListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A751B74E9626A3A08F4D905F /* ThreadListStore.swift */; };
 		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
 		F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */; };
 /* End PBXBuildFile section */
@@ -57,13 +66,22 @@
 		2C8458B42683B1FC4F0EBB64 /* OpenAGC.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OpenAGC.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		448D8466905D410325058CE5 /* OpenAGC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenAGC.entitlements; sourceTree = "<group>"; };
+		5D0633FEBD199D3028E73DAA /* ThreadListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadListView.swift; sourceTree = "<group>"; };
+		662ED4D20063A892C72301EF /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
 		6EA889A74036D5319EED2E94 /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		7491CD8B391923F8E19F565D /* MailReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailReadTests.swift; sourceTree = "<group>"; };
+		83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAGCApp.swift; sourceTree = "<group>"; };
 		9036B10AEDC12CF3CF3416BD /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
 		948C111ADD342515B7C70DDB /* OpenAGCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenAGCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A3ECF1113029DF896EFBDA03 /* openagc_core.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = openagc_core.swift; sourceTree = "<group>"; };
+		A65BAFCB0A37F91E630541F2 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		A751B74E9626A3A08F4D905F /* ThreadListStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadListStore.swift; sourceTree = "<group>"; };
+		AB3DFF446CD804B9EB7984C8 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTests.swift; sourceTree = "<group>"; };
+		B74521E331950B248757E97A /* ThreadDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadDetailView.swift; sourceTree = "<group>"; };
+		BD6458B52C0ABAB8AED1A828 /* MailboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailboxStore.swift; sourceTree = "<group>"; };
+		CF32A9AE2D35843656097005 /* ThreadRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadRowView.swift; sourceTree = "<group>"; };
 		DE83811F68C4EBD9E870E49B /* CoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
 		E4C676A513B753ECEBB6FF97 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEventTests.swift; sourceTree = "<group>"; };
@@ -99,6 +117,7 @@
 		1256AAEC04D116859F4845BE /* MessageView */ = {
 			isa = PBXGroup;
 			children = (
+				B74521E331950B248757E97A /* ThreadDetailView.swift */,
 			);
 			path = MessageView;
 			sourceTree = "<group>";
@@ -114,8 +133,10 @@
 			isa = PBXGroup;
 			children = (
 				3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */,
+				AB3DFF446CD804B9EB7984C8 /* AppModel.swift */,
 				9036B10AEDC12CF3CF3416BD /* MainWindow.swift */,
 				88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */,
+				662ED4D20063A892C72301EF /* Snapshot.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -131,6 +152,8 @@
 		69C4720C0FA23E101118BEBF /* Sidebar */ = {
 			isa = PBXGroup;
 			children = (
+				BD6458B52C0ABAB8AED1A828 /* MailboxStore.swift */,
+				A65BAFCB0A37F91E630541F2 /* SidebarView.swift */,
 			);
 			path = Sidebar;
 			sourceTree = "<group>";
@@ -171,6 +194,7 @@
 		89D5CBF0512B9AEB8BE8E232 /* OpenAGCTests */ = {
 			isa = PBXGroup;
 			children = (
+				83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */,
 				AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */,
 				6EA889A74036D5319EED2E94 /* CoreClientTests.swift */,
 				FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */,
@@ -199,6 +223,9 @@
 		B755F7DDAB76557EFF1EA484 /* ThreadList */ = {
 			isa = PBXGroup;
 			children = (
+				A751B74E9626A3A08F4D905F /* ThreadListStore.swift */,
+				5D0633FEBD199D3028E73DAA /* ThreadListView.swift */,
+				CF32A9AE2D35843656097005 /* ThreadRowView.swift */,
 			);
 			path = ThreadList;
 			sourceTree = "<group>";
@@ -397,6 +424,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B453F38BECAF82D76E2FE0BF /* AppModelTests.swift in Sources */,
 				4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */,
 				1970C5710634017B9B3E926B /* CoreClientTests.swift in Sources */,
 				F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */,
@@ -409,10 +437,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */,
+				5983A19ACD9796ACFA5E19D5 /* AppModel.swift in Sources */,
 				36A454FB046BB704125EF7F3 /* CoreClient.swift in Sources */,
+				C9F5E1202A2849397390D3AC /* MailboxStore.swift in Sources */,
 				DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */,
 				751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */,
 				116A2EC55EB66E0F8E5ACCF0 /* SettingsView.swift in Sources */,
+				1EE4D994E6332B9D2D7B1772 /* SidebarView.swift in Sources */,
+				290545266B859DE81481C714 /* Snapshot.swift in Sources */,
+				B26C2A82F8E9E5DF5DBF5C14 /* ThreadDetailView.swift in Sources */,
+				D9974F0610B1100DD537D0A5 /* ThreadListStore.swift in Sources */,
+				B46DC7164B626E812E646EDE /* ThreadListView.swift in Sources */,
+				CC89EB36D485FE29C268F72A /* ThreadRowView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
