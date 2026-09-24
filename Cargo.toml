@@ -39,6 +39,10 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 mail-parser = "0.11"
 mail-builder = "1"
 ammonia = "4"
+async-trait = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip", "http2", "charset"] }
+fastrand = "2"
+wiremock = "0.6"
 
 [workspace.lints.rust]
 unsafe_code = "deny"
