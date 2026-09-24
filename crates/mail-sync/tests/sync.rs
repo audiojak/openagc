@@ -141,11 +141,12 @@ async fn incremental_sync_applies_new_mail_label_changes_and_deletions() {
     assert_eq!(inbox.rows.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["t7"]);
     let archive = db.read(|c| read::list_threads(c, ARCHIVE_LABEL, None, 10)).await.unwrap();
     assert!(archive.rows.iter().any(|t| t.id.as_str() == "t1"), "archived on the server shows as archived here");
-    let changes = recorder.changes.lock().unwrap();
-    let inbox_change = &changes.last().unwrap().mailboxes["INBOX"];
-    assert!(inbox_change.inserted.contains("t7"));
-    assert!(inbox_change.removed.contains("t1") && inbox_change.removed.contains("t2"));
-    drop(changes);
+    {
+        let changes = recorder.changes.lock().unwrap();
+        let inbox_change = &changes.last().unwrap().mailboxes["INBOX"];
+        assert!(inbox_change.inserted.contains("t7"));
+        assert!(inbox_change.removed.contains("t1") && inbox_change.removed.contains("t2"));
+    }
 
     // Running again with nothing new is a no-op.
     let again = engine.sync_incremental().await.unwrap();

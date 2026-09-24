@@ -134,12 +134,10 @@ fn matches(m: &FetchedMessage, filter: &ListFilter, now: Millis) -> bool {
         if term == "is:unread" && !has("UNREAD") {
             return false;
         }
-        if let Some(days) =
-            term.strip_prefix("newer_than:").and_then(|d| d.strip_suffix('d')).and_then(|d| d.parse::<i64>().ok())
-        {
-            if m.internal_date < now - days * 86_400_000 {
-                return false;
-            }
+        let days =
+            term.strip_prefix("newer_than:").and_then(|d| d.strip_suffix('d')).and_then(|d| d.parse::<i64>().ok());
+        if days.is_some_and(|days| m.internal_date < now - days * 86_400_000) {
+            return false;
         }
     }
     true
