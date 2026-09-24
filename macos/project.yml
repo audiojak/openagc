@@ -42,6 +42,7 @@ targets:
           - $(SRCROOT)/../build/core/include/openagc_coreFFI.h
           - $(SRCROOT)/../build/core/include/module.modulemap
           - $(SRCROOT)/../build/core/lib/libopenagc_core.a
+          - $(SRCROOT)/../build/core/bin/openagc-mcp
     settings:
       base:
         # The script writes outside the build directory and runs cargo.
@@ -61,6 +62,15 @@ targets:
     dependencies:
       - target: OpenAGCCore
       - package: Sparkle
+    postCompileScripts:
+      - name: Embed openagc-mcp
+        # Agent CLIs spawn <app>/Contents/MacOS/openagc-mcp (spec §10.1).
+        script: |
+          install -m 0755 "$SRCROOT/../build/core/bin/openagc-mcp" "$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/openagc-mcp"
+        inputFiles:
+          - $(SRCROOT)/../build/core/bin/openagc-mcp
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/openagc-mcp
     info:
       path: OpenAGC/Resources/Info.plist
       properties:

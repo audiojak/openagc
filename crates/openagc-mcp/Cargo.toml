@@ -9,6 +9,14 @@ publish.workspace = true
 
 [dependencies]
 agent-mcp.workspace = true
+rmcp.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "io-std"] }
+
+[dev-dependencies]
+async-trait.workspace = true
+permissions.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "process", "time"] }
 
 [lints]
 workspace = true

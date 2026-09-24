@@ -48,6 +48,7 @@ sha2 = "0.10"
 getrandom = "0.3"
 url = "2"
 wiremock = "0.6"
+rmcp = { version = "3.4", default-features = false, features = ["server", "transport-io"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

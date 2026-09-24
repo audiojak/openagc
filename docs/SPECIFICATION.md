@@ -912,6 +912,10 @@ same definitions are rendered to `docs/mcp.md` by a `cargo xtask`.
 
 ### 10.2 Tool set (MVP)
 
+*(Amended in M3: tool names use underscores, `mail_search` rather than
+`mail.search`, because the Anthropic and OpenAI APIs only accept
+`[a-zA-Z0-9_-]` in tool names. Dotted names below map one-to-one.)*
+
 | Tool | Risk | Description |
 |---|---|---|
 | `mail.search` | ReadOnly | Query string or structured `SearchQuery`; returns thread summaries (id, subject, participants, date, snippet, labels, unread). Max 50 per call, cursor for more. |

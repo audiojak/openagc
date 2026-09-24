@@ -78,26 +78,27 @@ impl Tool {
         Tool::Delete,
     ];
 
-    /// The MCP tool name.
+    /// The MCP tool name. Underscores, not dots: both the Anthropic and
+    /// OpenAI APIs limit tool names to `[a-zA-Z0-9_-]`.
     pub fn name(self) -> &'static str {
         match self {
-            Tool::Search => "mail.search",
-            Tool::GetThread => "mail.get_thread",
-            Tool::GetMessage => "mail.get_message",
-            Tool::ListLabels => "mail.list_labels",
-            Tool::GetAttachmentText => "mail.get_attachment_text",
-            Tool::PresentThreads => "mail.present_threads",
-            Tool::CreateDraft => "mail.create_draft",
-            Tool::UpdateDraft => "mail.update_draft",
-            Tool::Archive => "mail.archive",
-            Tool::MarkRead => "mail.mark_read",
-            Tool::MarkUnread => "mail.mark_unread",
-            Tool::AddLabel => "mail.add_label",
-            Tool::RemoveLabel => "mail.remove_label",
-            Tool::CreateLabel => "mail.create_label",
-            Tool::Send => "mail.send",
-            Tool::Forward => "mail.forward",
-            Tool::Delete => "mail.delete",
+            Tool::Search => "mail_search",
+            Tool::GetThread => "mail_get_thread",
+            Tool::GetMessage => "mail_get_message",
+            Tool::ListLabels => "mail_list_labels",
+            Tool::GetAttachmentText => "mail_get_attachment_text",
+            Tool::PresentThreads => "mail_present_threads",
+            Tool::CreateDraft => "mail_create_draft",
+            Tool::UpdateDraft => "mail_update_draft",
+            Tool::Archive => "mail_archive",
+            Tool::MarkRead => "mail_mark_read",
+            Tool::MarkUnread => "mail_mark_unread",
+            Tool::AddLabel => "mail_add_label",
+            Tool::RemoveLabel => "mail_remove_label",
+            Tool::CreateLabel => "mail_create_label",
+            Tool::Send => "mail_send",
+            Tool::Forward => "mail_forward",
+            Tool::Delete => "mail_delete",
         }
     }
 
@@ -329,7 +330,8 @@ mod tests {
         for tool in Tool::ALL {
             assert_eq!(Tool::from_name(tool.name()), Some(tool));
         }
-        assert_eq!(Tool::from_name("mail.rm_rf"), None);
+        assert_eq!(Tool::from_name("mail_rm_rf"), None);
+        assert_eq!(Tool::from_name("mail.search"), None, "dots are not valid tool names for either API");
     }
 
     #[test]

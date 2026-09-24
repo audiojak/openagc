@@ -414,6 +414,7 @@
 			buildConfigurationList = 94A46F5E7765F2768EAE7307 /* Build configuration list for PBXNativeTarget "OpenAGC" */;
 			buildPhases = (
 				E7B11FE5522E11BD255456FF /* Sources */,
+				6831234871BCA881BA0E2EF4 /* Embed openagc-mcp */,
 				13D6A05D7BF5BF40D35464F0 /* Resources */,
 				20BB3593C59F962F46FD8869 /* Frameworks */,
 				EAC3C6A66D600D8A512134C9 /* Embed Frameworks */,
@@ -526,11 +527,32 @@
 				"$(SRCROOT)/../build/core/include/openagc_coreFFI.h",
 				"$(SRCROOT)/../build/core/include/module.modulemap",
 				"$(SRCROOT)/../build/core/lib/libopenagc_core.a",
+				"$(SRCROOT)/../build/core/bin/openagc-mcp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"$SRCROOT/../scripts/build-core.sh\"";
 			showEnvVarsInLog = 0;
+		};
+		6831234871BCA881BA0E2EF4 /* Embed openagc-mcp */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../build/core/bin/openagc-mcp",
+			);
+			name = "Embed openagc-mcp";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(EXECUTABLE_FOLDER_PATH)/openagc-mcp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "install -m 0755 \"$SRCROOT/../build/core/bin/openagc-mcp\" \"$TARGET_BUILD_DIR/$EXECUTABLE_FOLDER_PATH/openagc-mcp\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

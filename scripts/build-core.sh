@@ -8,6 +8,7 @@
 #   build/core/include/   openagc_coreFFI.h + module.modulemap  (SWIFT_INCLUDE_PATHS)
 #   build/core/lib/       libopenagc_core.a                     (LIBRARY_SEARCH_PATHS)
 #   build/core/swift/     openagc_core.swift                    (compiled into OpenAGCCore)
+#   build/core/bin/       openagc-mcp                           (copied into Contents/MacOS)
 #
 # Xcode reads these paths directly at compile/link time. An XCFramework is
 # deliberately not used for development builds: Xcode copies XCFramework
@@ -33,7 +34,7 @@ OUT="$ROOT/build/core"
 LIB="$ROOT/target/$TARGET/$PROFILE/libopenagc_core.a"
 MODULE=openagc_coreFFI
 
-CARGO_FLAGS=(--package openagc-core --target "$TARGET" --locked)
+CARGO_FLAGS=(--package openagc-core --package openagc-mcp --target "$TARGET" --locked)
 [[ "$PROFILE" == "release" ]] && CARGO_FLAGS+=(--release)
 
 # Pin the SDK and deployment target so C dependencies (bundled SQLite)
@@ -45,7 +46,7 @@ MACOSX_DEPLOYMENT_TARGET=26.0 \
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-mkdir -p "$STAGE/include" "$STAGE/swift" "$STAGE/lib"
+mkdir -p "$STAGE/include" "$STAGE/swift" "$STAGE/lib" "$STAGE/bin"
 
 BINDGEN=(cargo run --quiet --locked --package uniffi-bindgen-swift --)
 "${BINDGEN[@]}" --swift-sources "$LIB" "$STAGE/swift"
@@ -54,6 +55,8 @@ BINDGEN=(cargo run --quiet --locked --package uniffi-bindgen-swift --)
 "${BINDGEN[@]}" --modulemap --module-name "$MODULE" \
   --modulemap-filename module.modulemap "$LIB" "$STAGE/include"
 cp "$LIB" "$STAGE/lib/"
+# The MCP shim agent CLIs spawn (spec §10.1); the app bundles it.
+cp "$ROOT/target/$TARGET/$PROFILE/openagc-mcp" "$STAGE/bin/"
 
 # Install only what changed, so unchanged builds stay incremental.
 changed=0
