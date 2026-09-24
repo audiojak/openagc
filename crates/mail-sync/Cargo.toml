@@ -12,6 +12,12 @@ mail-domain.workspace = true
 mail-store.workspace = true
 mail-mime.workspace = true
 provider-api.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [lints]
 workspace = true

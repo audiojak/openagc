@@ -7,6 +7,7 @@ pub mod consistency;
 mod db;
 pub mod demo;
 mod error;
+pub mod queue;
 pub mod read;
 mod write;
 

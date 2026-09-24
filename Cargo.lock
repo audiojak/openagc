@@ -1061,6 +1061,9 @@ dependencies = [
  "mail-mime",
  "mail-store",
  "provider-api",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

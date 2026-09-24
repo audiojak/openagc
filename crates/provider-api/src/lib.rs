@@ -4,6 +4,7 @@
 //! IMAP provider (UIDVALIDITY/MODSEQ) fits later.
 
 mod error;
+pub mod fake;
 pub mod http;
 pub mod rate_limit;
 pub mod token;
