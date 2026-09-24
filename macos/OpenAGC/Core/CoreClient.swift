@@ -26,6 +26,16 @@ final class CoreClient: Sendable {
         core.ping(message: message)
     }
 
+    func pingAsync(_ message: String) async throws(CoreClientError) -> String {
+        do {
+            return try await core.pingAsync(message: message)
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
+    }
+
     /// `~/Library/Application Support/OpenAGC`, created if missing.
     static func defaultDataDirectory() throws -> URL {
         let dir = URL.applicationSupportDirectory.appending(path: "OpenAGC", directoryHint: .isDirectory)

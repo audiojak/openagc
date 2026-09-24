@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Build openagc-core and package it for the app (spec §4.1):
+# Build openagc-core and lay it out for Xcode (spec §4.1):
 #   1. cargo build the static library
 #   2. generate Swift bindings, C header and modulemap with uniffi-bindgen-swift
-#   3. wrap library + headers in an XCFramework
+#   3. install them under build/core/, rewriting only files whose content changed
 #
-# Output (gitignored): build/core/
-#   OpenAGCCoreFFI.xcframework   static library + openagc_coreFFI module
-#   swift/openagc_core.swift     generated bindings, compiled into OpenAGCCore
+# Output (gitignored):
+#   build/core/include/   openagc_coreFFI.h + module.modulemap  (SWIFT_INCLUDE_PATHS)
+#   build/core/lib/       libopenagc_core.a                     (LIBRARY_SEARCH_PATHS)
+#   build/core/swift/     openagc_core.swift                    (compiled into OpenAGCCore)
+#
+# Xcode reads these paths directly at compile/link time. An XCFramework is
+# deliberately not used for development builds: Xcode copies XCFramework
+# headers in a step planned before this script runs, so regenerated headers
+# would be missed until the next build.
 #
 # Usage: scripts/build-core.sh [debug|release]
 # Under Xcode, the profile follows $CONFIGURATION (Release → release).
@@ -32,22 +38,31 @@ CARGO_FLAGS=(--package openagc-core --target "$TARGET" --locked)
 
 # Xcode exports SDK and deployment variables meant for Swift/Clang; keep
 # them away from cargo so Rust builds identically inside and outside Xcode.
-env -u SDKROOT -u MACOSX_DEPLOYMENT_TARGET -u IPHONEOS_DEPLOYMENT_TARGET \
+env -u SDKROOT -u IPHONEOS_DEPLOYMENT_TARGET \
   MACOSX_DEPLOYMENT_TARGET=26.0 cargo build "${CARGO_FLAGS[@]}"
 
-STAGE="$OUT/stage"
-rm -rf "$STAGE" "$OUT/swift" "$OUT/$MODULE.xcframework"
-mkdir -p "$STAGE/headers" "$OUT/swift"
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/include" "$STAGE/swift" "$STAGE/lib"
 
 BINDGEN=(cargo run --quiet --locked --package uniffi-bindgen-swift --)
-"${BINDGEN[@]}" --swift-sources "$LIB" "$OUT/swift"
-"${BINDGEN[@]}" --headers "$LIB" "$STAGE/headers"
+"${BINDGEN[@]}" --swift-sources "$LIB" "$STAGE/swift"
+"${BINDGEN[@]}" --headers "$LIB" "$STAGE/include"
+# A plain `module` (not `--xcframework`, which emits `framework module`).
 "${BINDGEN[@]}" --modulemap --module-name "$MODULE" \
-  --modulemap-filename module.modulemap "$LIB" "$STAGE/headers"
+  --modulemap-filename module.modulemap "$LIB" "$STAGE/include"
+cp "$LIB" "$STAGE/lib/"
 
-xcodebuild -create-xcframework \
-  -library "$LIB" -headers "$STAGE/headers" \
-  -output "$OUT/$MODULE.xcframework" >/dev/null
+# Install only what changed, so unchanged builds stay incremental.
+changed=0
+while IFS= read -r -d '' src; do
+  rel="${src#"$STAGE"/}"
+  dst="$OUT/$rel"
+  if ! cmp -s "$src" "$dst"; then
+    mkdir -p "$(dirname "$dst")"
+    cp "$src" "$dst"
+    changed=$((changed + 1))
+  fi
+done < <(find "$STAGE" -type f -print0)
 
-rm -rf "$STAGE"
-echo "build-core: $PROFILE → $OUT"
+echo "build-core: $PROFILE → $OUT ($changed file(s) updated)"

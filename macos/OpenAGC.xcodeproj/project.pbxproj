@@ -16,18 +16,10 @@
 		8BCA879DA87A93071503AFD8 /* OpenAGCCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; };
 		ACA4618DFA7FBAF468B9AF9C /* OpenAGCCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */; };
-		B9E79340A54BF687EF23CFCD /* openagc_coreFFI.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 73268CC40A9A549E6BDB6BA1 /* openagc_coreFFI.xcframework */; };
 		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		46EDF242BE70F45538C20FE0 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 74D97FBC20E6E452C2351EE4 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A484A7B63D36442D5497A000;
-			remoteInfo = RustCore;
-		};
 		D2A0BA09A79B75550A4D007A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 74D97FBC20E6E452C2351EE4 /* Project object */;
@@ -64,7 +56,6 @@
 		3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		448D8466905D410325058CE5 /* OpenAGC.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpenAGC.entitlements; sourceTree = "<group>"; };
 		6EA889A74036D5319EED2E94 /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
-		73268CC40A9A549E6BDB6BA1 /* openagc_coreFFI.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = openagc_coreFFI.xcframework; path = ../build/core/openagc_coreFFI.xcframework; sourceTree = "<group>"; };
 		88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAGCApp.swift; sourceTree = "<group>"; };
 		9036B10AEDC12CF3CF3416BD /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
 		948C111ADD342515B7C70DDB /* OpenAGCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenAGCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -80,14 +71,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				8BCA879DA87A93071503AFD8 /* OpenAGCCore.framework in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		6FF47132AAB8C725C402EB61 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				B9E79340A54BF687EF23CFCD /* openagc_coreFFI.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -153,14 +136,6 @@
 			children = (
 			);
 			path = Search;
-			sourceTree = "<group>";
-		};
-		7BB97C3B94E83FED87D94374 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				73268CC40A9A549E6BDB6BA1 /* openagc_coreFFI.xcframework */,
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 		7D3084210606660AA4637D36 /* swift */ = {
@@ -269,32 +244,11 @@
 				DD42BD42C84471844AD41C80 /* OpenAGC */,
 				96316BD80602D0C3FCFABB04 /* OpenAGC */,
 				89D5CBF0512B9AEB8BE8E232 /* OpenAGCTests */,
-				7BB97C3B94E83FED87D94374 /* Frameworks */,
 				84FAC93793B5EC1C8F00EF34 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
-
-/* Begin PBXLegacyTarget section */
-		A484A7B63D36442D5497A000 /* RustCore */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "$(SRCROOT)/../scripts/build-core.sh";
-			buildConfigurationList = 7DEA6574B0AEBF401BFC6BD2 /* Build configuration list for PBXLegacyTarget "RustCore" */;
-			buildPhases = (
-				20C1EAE4C375D46822E02537 /* Sources */,
-			);
-			buildToolPath = /bin/bash;
-			buildWorkingDirectory = "$(SRCROOT)/..";
-			dependencies = (
-			);
-			name = RustCore;
-			packageProductDependencies = (
-			);
-			passBuildSettingsInEnvironment = 1;
-			productName = RustCore;
-		};
-/* End PBXLegacyTarget section */
 
 /* Begin PBXNativeTarget section */
 		8C028A5FF1B3DC8D34D09AF2 /* OpenAGCTests */ = {
@@ -339,13 +293,12 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 04943046DB95894355B96720 /* Build configuration list for PBXNativeTarget "OpenAGCCore" */;
 			buildPhases = (
+				25E14F1F2DFC96612E504D5B /* Build Rust core */,
 				9CE8100CFF90A76D9F06FDA8 /* Sources */,
-				6FF47132AAB8C725C402EB61 /* Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				65AFC80F061061C1BA2A29A3 /* PBXTargetDependency */,
 			);
 			name = OpenAGCCore;
 			packageProductDependencies = (
@@ -371,10 +324,6 @@
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
 					};
-					A484A7B63D36442D5497A000 = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Manual;
-					};
 					FC08343BF71E222A44041679 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Manual;
@@ -395,7 +344,6 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				A484A7B63D36442D5497A000 /* RustCore */,
 				FC08343BF71E222A44041679 /* OpenAGCCore */,
 				982F5821420F29993571F6A2 /* OpenAGC */,
 				8C028A5FF1B3DC8D34D09AF2 /* OpenAGCTests */,
@@ -403,14 +351,34 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXSourcesBuildPhase section */
-		20C1EAE4C375D46822E02537 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
+/* Begin PBXShellScriptBuildPhase section */
+		25E14F1F2DFC96612E504D5B /* Build Rust core */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust core";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/../build/core/swift/openagc_core.swift",
+				"$(SRCROOT)/../build/core/include/openagc_coreFFI.h",
+				"$(SRCROOT)/../build/core/include/module.modulemap",
+				"$(SRCROOT)/../build/core/lib/libopenagc_core.a",
+			);
 			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"$SRCROOT/../scripts/build-core.sh\"";
+			showEnvVarsInLog = 0;
 		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
 		9CE8100CFF90A76D9F06FDA8 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -452,11 +420,6 @@
 			isa = PBXTargetDependency;
 			target = 982F5821420F29993571F6A2 /* OpenAGC */;
 			targetProxy = FAD17EA64C72CD5EDF1ACFA2 /* PBXContainerItemProxy */;
-		};
-		65AFC80F061061C1BA2A29A3 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A484A7B63D36442D5497A000 /* RustCore */;
-			targetProxy = 46EDF242BE70F45538C20FE0 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -529,6 +492,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../build/core/lib";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -537,6 +501,7 @@
 				SDKROOT = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../build/core/include";
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
@@ -553,10 +518,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"\"../build/core\"",
-				);
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -583,10 +545,7 @@
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"\"../build/core\"",
-				);
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -618,6 +577,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_LDFLAGS = "-lopenagc_core";
 				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.openagc;
 				PRODUCT_NAME = OpenAGC;
 				SDKROOT = macosx;
@@ -681,6 +641,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../build/core/lib";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -690,35 +651,10 @@
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_APPROACHABLE_CONCURRENCY = NO;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/../build/core/include";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
-			};
-			name = Debug;
-		};
-		6CD486905DCBB696E2B08D76 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				COMBINE_HIDPI_IMAGES = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.RustCore;
-				SDKROOT = macosx;
-			};
-			name = Release;
-		};
-		70CC2549B4113A4857769092 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				COMBINE_HIDPI_IMAGES = YES;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.RustCore;
-				SDKROOT = macosx;
 			};
 			name = Debug;
 		};
@@ -754,6 +690,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				OTHER_LDFLAGS = "-lopenagc_core";
 				PRODUCT_BUNDLE_IDENTIFIER = ai.actual.openagc;
 				PRODUCT_NAME = OpenAGC;
 				SDKROOT = macosx;
@@ -768,15 +705,6 @@
 			buildConfigurations = (
 				2A2E8FBF7DE34D5C24326C4B /* Debug */,
 				4711ED214E311CD13C67324C /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		7DEA6574B0AEBF401BFC6BD2 /* Build configuration list for PBXLegacyTarget "RustCore" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				70CC2549B4113A4857769092 /* Debug */,
-				6CD486905DCBB696E2B08D76 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

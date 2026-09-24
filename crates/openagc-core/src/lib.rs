@@ -6,6 +6,7 @@ use std::sync::Arc;
 uniffi::setup_scaffolding!();
 
 mod error;
+mod runtime;
 
 pub use error::{CoreError, ErrorKind};
 
@@ -38,6 +39,17 @@ impl Core {
         format!("pong: {message}")
     }
 
+    /// Async round-trip: proves exported futures run on the core runtime
+    /// (the sleep needs tokio's timer) when awaited from Swift.
+    pub async fn ping_async(&self, message: String) -> Result<String, CoreError> {
+        runtime::run(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            let thread = std::thread::current().name().unwrap_or_default().to_owned();
+            Ok(format!("pong: {message} (on {thread})"))
+        })
+        .await
+    }
+
     /// The core's version, for About and diagnostics.
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_owned()
@@ -60,6 +72,17 @@ mod tests {
     fn ping_round_trips() {
         let core = Core::new(config()).unwrap();
         assert_eq!(core.ping("hi".into()), "pong: hi");
+    }
+
+    /// Awaited from a plain thread with a non-tokio executor, as Swift does.
+    #[test]
+    fn async_exports_run_on_the_core_runtime_from_any_executor() {
+        let core = Core::new(config()).unwrap();
+        let reply = std::thread::spawn(move || futures::executor::block_on(core.ping_async("hi".into())))
+            .join()
+            .unwrap()
+            .unwrap();
+        assert_eq!(reply, "pong: hi (on openagc-core)");
     }
 
     #[test]

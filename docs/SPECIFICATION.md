@@ -27,7 +27,7 @@ The short version. Everything below elaborates on these.
 | Platform | macOS 26 Tahoe or later, Apple Silicon only for MVP |
 | UI | Swift 6.x, SwiftUI shell, AppKit where speed or fidelity demands it |
 | Core | Rust (stable, edition 2024), one Cargo workspace |
-| Swift↔Rust | UniFFI 0.32+, proc-macro mode, in-process static library, XCFramework via SwiftPM |
+| Swift↔Rust | UniFFI 0.32+, proc-macro mode, in-process static library built by an Xcode pre-build phase |
 | Async runtime | tokio multi-thread runtime owned by the core, never UniFFI's ambient runtime |
 | Storage | SQLite via `rusqlite` (bundled, FTS5), single-writer thread, WAL mode |
 | Search | SQLite FTS5 external-content tables: `unicode61` for text, `trigram` for addresses |
@@ -188,7 +188,7 @@ OpenAGC/
 │   │   └── Resources/
 │   ├── OpenAGCTests/
 │   ├── OpenAGCUITests/
-│   └── (targets RustCore + OpenAGCCore wrap the XCFramework and generated bindings; see §4.1)
+│   └── (the OpenAGCCore target builds the Rust core and compiles its bindings; see §4.1)
 ├── scripts/
 │   ├── build-core.sh              cargo build → uniffi-bindgen-swift → xcframework
 │   ├── notarize.sh
@@ -213,20 +213,29 @@ etc.), "library mode" binding generation so no UDL file is maintained.
 
 Build pipeline (`scripts/build-core.sh`):
 
-1. `cargo build --release -p openagc-core --target aarch64-apple-darwin`
-   produces `libopenagc_core.a`.
-2. `uniffi-bindgen-swift --swift-sources --headers --modulemap --module-name
-   OpenAGCCoreFFI` generates `OpenAGCCore.swift` and the C header.
-3. `xcodebuild -create-xcframework` wraps the static library and headers.
-4. In Xcode, an external-build `RustCore` target runs `build-core.sh` on
-   every build (cargo is incremental), and a static `OpenAGCCore`
-   framework target compiles the generated Swift and links the
-   XCFramework; the app depends on `OpenAGCCore`. *(Amended during M0: a
-   local SwiftPM `binaryTarget` was the original plan, but SwiftPM resolves
-   binary targets before any build phase runs, so Rust changes would not
-   be picked up by a normal Xcode build.)* The XCFramework wraps a plain
-   static library, so the modulemap is a plain `module`, not a
-   `framework module` — do not pass `--xcframework` to the bindgen.
+1. `cargo build -p openagc-core --target aarch64-apple-darwin` (release
+   for Release builds) produces `libopenagc_core.a`.
+2. `uniffi-bindgen-swift` generates `openagc_core.swift`, the C header and a
+   plain `module openagc_coreFFI` modulemap (not `--xcframework`, which
+   emits a `framework module`).
+3. The script installs them under `build/core/{swift,include,lib}`,
+   rewriting only files whose content changed so unchanged builds stay
+   incremental.
+4. In Xcode, the static `OpenAGCCore` framework target runs the script as
+   an always-run pre-build phase with **declared output files**, compiles
+   the generated Swift, and finds the C module through
+   `SWIFT_INCLUDE_PATHS`; the app links `-lopenagc_core` from
+   `LIBRARY_SEARCH_PATHS` and depends on `OpenAGCCore`.
+
+*Amended during M0.* The original plan was a local SwiftPM package with an
+XCFramework `binaryTarget`. Two Xcode behaviors ruled it out: SwiftPM
+resolves binary targets before any build phase runs, and Xcode copies
+XCFramework headers in a step planned before the Rust script runs, so a
+regenerated header was silently stale until the following build. Reading
+the artifacts from fixed paths, with the producing phase's outputs
+declared, fixes both (verified: a new Rust export flows through a single
+incremental `xcodebuild`, and a clean build succeeds). An XCFramework can
+still be produced for distribution if the core is ever shipped separately.
 
 Static linking is deliberate: it avoids `disable-library-validation` in the
 hardened runtime and gives one Mach-O to sign.

@@ -17,27 +17,30 @@ settings:
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "-"
+    # Rust core artifacts written by scripts/build-core.sh (spec §4.1).
+    SWIFT_INCLUDE_PATHS: $(SRCROOT)/../build/core/include
+    LIBRARY_SEARCH_PATHS: $(SRCROOT)/../build/core/lib
 targets:
-  RustCore:
-    type: ""
-    platform: macOS
-    legacy:
-      toolPath: /bin/bash
-      arguments: "$(SRCROOT)/../scripts/build-core.sh"
-      passSettings: true
-      workingDirectory: $(SRCROOT)/..
   OpenAGCCore:
     type: framework.static
     platform: macOS
     sources:
       - path: ../build/core/swift/openagc_core.swift
         optional: true
-    dependencies:
-      - target: RustCore
-      - framework: ../build/core/openagc_coreFFI.xcframework
-        embed: false
+    preBuildScripts:
+      - name: Build Rust core
+        script: '"$SRCROOT/../scripts/build-core.sh"'
+        basedOnDependencyAnalysis: false   # always run; cargo decides what to rebuild
+        showEnvVars: false
+        outputFiles:
+          - $(SRCROOT)/../build/core/swift/openagc_core.swift
+          - $(SRCROOT)/../build/core/include/openagc_coreFFI.h
+          - $(SRCROOT)/../build/core/include/module.modulemap
+          - $(SRCROOT)/../build/core/lib/libopenagc_core.a
     settings:
       base:
+        # The script writes outside the build directory and runs cargo.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
         PRODUCT_BUNDLE_IDENTIFIER: ai.actual.openagc.core
         PRODUCT_NAME: OpenAGCCore
         GENERATE_INFOPLIST_FILE: YES
@@ -56,6 +59,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.actual.openagc
         PRODUCT_NAME: OpenAGC
+        OTHER_LDFLAGS: -lopenagc_core
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: OpenAGC/Resources/OpenAGC.entitlements
         GENERATE_INFOPLIST_FILE: YES

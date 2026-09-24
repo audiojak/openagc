@@ -12,6 +12,20 @@ struct CoreClientTests {
         #expect(client.ping("hello") == "pong: hello")
     }
 
+    @Test func asyncCallsRunOnTheCoreRuntime() async throws {
+        let client = try CoreClient(dataDirectory: tempDir())
+        #expect(try await client.pingAsync("hi") == "pong: hi (on openagc-core)")
+    }
+
+    @MainActor
+    @Test func asyncCallsFromTheMainActorDoNotBlockIt() async throws {
+        let client = try CoreClient(dataDirectory: tempDir())
+        async let reply = client.pingAsync("main")
+        // The main actor stays free to run other work while Rust sleeps.
+        await Task.yield()
+        #expect(try await reply == "pong: main (on openagc-core)")
+    }
+
     @Test func versionComesFromTheCrate() throws {
         let client = try CoreClient(dataDirectory: tempDir())
         #expect(client.version == "0.1.0")
