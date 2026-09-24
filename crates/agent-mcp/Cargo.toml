@@ -1,0 +1,16 @@
+[package]
+name = "agent-mcp"
+description = "MCP tool definitions and handlers exposed to agents."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mail-domain.workspace = true
+agent-api.workspace = true
+permissions.workspace = true
+
+[lints]
+workspace = true

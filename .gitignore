@@ -8,3 +8,8 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+target/
+/build/
+*.xcframework
+DerivedData/
+xcuserdata/
