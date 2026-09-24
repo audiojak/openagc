@@ -256,6 +256,20 @@ final class CoreClient: Sendable {
         try await call { try await core.listAgentActions(limit: limit) }
     }
 
+    /// Reversible tools that need the user's approval (spec §10.3).
+    func setAgentPolicy(_ approveTools: [String]) throws(CoreClientError) {
+        do {
+            try core.setAgentPolicy(approveTools: approveTools)
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
+    }
+
+    var agentPolicy: [String] { core.agentPolicy() }
+    var configurableAgentTools: [String] { core.configurableAgentTools() }
+
     /// Development: scripted agents instead of the real CLIs.
     func useFakeAgents() { core.debugUseFakeAgents() }
 

@@ -12,8 +12,11 @@ struct SettingsView: View {
             Tab("Agents", systemImage: "sparkles") {
                 AgentSettings()
             }
+            Tab("Permissions", systemImage: "hand.raised") {
+                AgentPermissionsSettings()
+            }
         }
-        .frame(width: 560, height: 380)
+        .frame(width: 600, height: 480)
     }
 }
 

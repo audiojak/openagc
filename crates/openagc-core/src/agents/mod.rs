@@ -112,6 +112,36 @@ impl Core {
 
 #[uniffi::export]
 impl Core {
+    /// Reversible tools the user wants to approve one by one (spec §10.3).
+    /// Read-only tools are always allowed and external ones always asked.
+    pub fn set_agent_policy(&self, approve_tools: Vec<String>) -> Result<(), CoreError> {
+        let mut policy = Policy::default();
+        for name in approve_tools {
+            let tool = Tool::from_name(&name)
+                .ok_or_else(|| CoreError::new(ErrorKind::InvalidInput, format!("unknown tool {name}")))?;
+            policy
+                .set_requires_approval(tool, true)
+                .map_err(|e| CoreError::new(ErrorKind::InvalidInput, e.to_string()))?;
+        }
+        *self.agents.policy.write().unwrap_or_else(|e| e.into_inner()) = policy;
+        Ok(())
+    }
+
+    /// The reversible tools currently requiring approval.
+    pub fn agent_policy(&self) -> Vec<String> {
+        let policy = self.agents.policy.read().unwrap_or_else(|e| e.into_inner());
+        policy.approve_reversible.iter().map(|t| t.name().to_owned()).collect()
+    }
+
+    /// Tools whose approval the user can choose, with their risk.
+    pub fn configurable_agent_tools(&self) -> Vec<String> {
+        Tool::ALL
+            .into_iter()
+            .filter(|t| t.risk() == permissions::Risk::Reversible)
+            .map(|t| t.name().to_owned())
+            .collect()
+    }
+
     /// Register how the app extracts PDF text (PDFKit).
     pub fn set_text_extractor(&self, extractor: Arc<dyn TextExtractor>) {
         *self.agents.text.write().unwrap_or_else(|e| e.into_inner()) = Some(extractor);

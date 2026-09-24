@@ -76,6 +76,7 @@ final class AppModel {
             return
         }
         listenForEvents(from: core)
+        applyAgentPolicy()
         notifier.openThread = { [weak self] in self?.reveal(threadID: $0) }
         notifier.install()
         if openDemo {
@@ -176,6 +177,18 @@ final class AppModel {
     }
 
     // MARK: Agent
+
+    static let agentApprovalKey = "agentApproveTools"
+
+    /// Push the user's approval choices to the core (they live in defaults).
+    func applyAgentPolicy() {
+        let tools = UserDefaults.standard.stringArray(forKey: Self.agentApprovalKey) ?? []
+        do {
+            try core?.setAgentPolicy(tools)
+        } catch {
+            logger.error("agent policy rejected: \(error.message, privacy: .public)")
+        }
+    }
 
     /// Bumped to move focus to the agent prompt (⌘K).
     private(set) var agentFocusRequests = 0
