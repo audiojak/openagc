@@ -11,7 +11,9 @@ fn main() -> Result<()> {
     match cmd.as_str() {
         "check-deps" => check_deps(),
         _ => {
-            eprintln!("usage: cargo xtask <command>\n\ncommands:\n  check-deps   enforce the crate dependency direction (spec §3)");
+            eprintln!(
+                "usage: cargo xtask <command>\n\ncommands:\n  check-deps   enforce the crate dependency direction (spec §3)"
+            );
             std::process::exit(2);
         }
     }
@@ -69,17 +71,16 @@ fn check_deps() -> Result<()> {
     }
     let meta: Value = serde_json::from_slice(&out.stdout)?;
     let packages = meta["packages"].as_array().context("no packages")?;
-    let members: BTreeSet<String> = packages
-        .iter()
-        .filter_map(|p| p["name"].as_str().map(str::to_owned))
-        .collect();
+    let members: BTreeSet<String> = packages.iter().filter_map(|p| p["name"].as_str().map(str::to_owned)).collect();
     let allowed = allowed_internal_deps();
 
     let mut errors = Vec::new();
     for pkg in packages {
         let name = pkg["name"].as_str().unwrap_or_default();
         let Some(permitted) = allowed.get(name) else {
-            errors.push(format!("{name}: not listed in xtask allowed_internal_deps; add it with its permitted dependencies"));
+            errors.push(format!(
+                "{name}: not listed in xtask allowed_internal_deps; add it with its permitted dependencies"
+            ));
             continue;
         };
         for dep in pkg["dependencies"].as_array().into_iter().flatten() {

@@ -94,13 +94,29 @@ pub enum LogLevel {
 
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum CoreEvent {
-    ThreadsChanged { mailbox_id: String, hint: ChangeHint },
-    SyncStatus { state: SyncState, pending: u32 },
-    OutboxStatus { pending: u32, failed: u32 },
-    Error { kind: ErrorKind, message: String },
+    ThreadsChanged {
+        mailbox_id: String,
+        hint: ChangeHint,
+    },
+    SyncStatus {
+        state: SyncState,
+        pending: u32,
+    },
+    OutboxStatus {
+        pending: u32,
+        failed: u32,
+    },
+    Error {
+        kind: ErrorKind,
+        message: String,
+    },
     /// Warn/error log records from Rust, logged by Swift with `os.Logger`
     /// so unified-logging privacy stays under Swift's control (spec §17).
-    Log { level: LogLevel, target: String, message: String },
+    Log {
+        level: LogLevel,
+        target: String,
+        message: String,
+    },
 }
 
 /// Cheap, cloneable handle for emitting events from anywhere in the core.
