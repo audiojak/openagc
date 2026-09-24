@@ -84,7 +84,7 @@ targets:
         SUFeedURL: https://raw.githubusercontent.com/audiojak/openagc/main/appcast.xml
         # Set by the release maintainer (docs/releasing.md). Empty disables
         # the updater, so development builds never check for updates.
-        SUPublicEDKey: ""
+        SUPublicEDKey: 7MkOQ+3AXyPMrh8zri1P40oRXY3+8FAui3b/B5xBcfE=
         SUEnableInstallerLauncherService: false
     settings:
       base:

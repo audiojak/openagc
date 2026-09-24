@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION="${1:-test}"
 shift || true
 
+mkdir -p "$ROOT/build"
 cd "$ROOT/macos"
 xcodegen generate --spec project.yml --quiet
 
