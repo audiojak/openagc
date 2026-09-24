@@ -54,6 +54,21 @@ fn is_divider(t: &str) -> bool {
         || lower == "________________________________"
 }
 
+/// HTML for a message body written in Markdown (agent drafts, spec
+/// §10.2). Raw HTML in the Markdown is shown as text, and the result goes
+/// through the same sanitizer as received mail.
+pub fn markdown_to_html(markdown: &str) -> String {
+    use pulldown_cmark::{Event, Options, Parser, html};
+    let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
+    let events = Parser::new_ext(markdown, options).map(|e| match e {
+        Event::Html(raw) | Event::InlineHtml(raw) => Event::Text(raw),
+        other => other,
+    });
+    let mut out = String::new();
+    html::push_html(&mut out, events);
+    crate::sanitize_html(&out).html
+}
+
 /// At most `max` characters (not bytes), and whether anything was cut.
 pub fn truncate_chars(text: &str, max: usize) -> (String, bool) {
     match text.char_indices().nth(max) {
@@ -127,6 +142,16 @@ mod tests {
         assert_eq!(strip_quoted("Yes\n> quoted\nNo"), "Yes\nNo");
         assert_eq!(strip_quoted("FYI\n---------- Forwarded message ---------\nFrom: x"), "FYI");
         assert_eq!(strip_quoted("On second thought, no."), "On second thought, no.");
+    }
+
+    #[test]
+    fn markdown_becomes_safe_html() {
+        let html = markdown_to_html("Hi **Alex**,\n\n- one\n- two\n\n[site](https://example.com) <script>x</script>");
+        assert!(html.contains("<strong>Alex</strong>"), "{html}");
+        assert!(html.contains("<li>one</li>"));
+        assert!(html.contains("href=\"https://example.com\""));
+        assert!(!html.contains("<script"), "raw HTML is text: {html}");
+        assert!(!markdown_to_html("[x](javascript:alert(1))").contains("javascript:"));
     }
 
     #[test]

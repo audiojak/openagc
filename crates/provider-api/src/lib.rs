@@ -142,4 +142,7 @@ pub trait MailProvider: Send + Sync {
     async fn save_draft(&self, existing: Option<&str>, raw: &[u8], thread: Option<&ThreadId>)
     -> ProviderResult<String>;
     async fn delete_draft(&self, draft_id: &str) -> ProviderResult<()>;
+    /// Create a user label. `color` is a `(background, text)` pair from the
+    /// provider's palette.
+    async fn create_label(&self, name: &str, color: Option<(&str, &str)>) -> ProviderResult<Label>;
 }

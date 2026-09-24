@@ -274,6 +274,23 @@ impl MailProvider for FakeProvider {
         Ok(format!("fake bytes of {}", found.filename).into_bytes())
     }
 
+    async fn create_label(&self, name: &str, color: Option<(&str, &str)>) -> ProviderResult<Label> {
+        self.injected_failure()?;
+        let mut s = self.state();
+        if s.labels.iter().any(|l| l.name.eq_ignore_ascii_case(name)) {
+            return Err(ProviderError::Invalid(format!("label {name} exists")));
+        }
+        let label = Label {
+            id: mail_domain::LabelId(format!("Label_{}", s.labels.len() + 1)),
+            name: name.to_owned(),
+            kind: mail_domain::LabelKind::User,
+            color: color.map(|(bg, fg)| mail_domain::LabelColor { background: bg.into(), text: fg.into() }),
+            visible: true,
+        };
+        s.labels.push(label.clone());
+        Ok(label)
+    }
+
     async fn save_draft(
         &self,
         existing: Option<&str>,

@@ -36,6 +36,7 @@ pub mod cost {
     pub const SEND: u32 = 100;
     pub const ATTACHMENT_GET: u32 = 20;
     pub const DRAFTS_WRITE: u32 = 10;
+    pub const LABELS_CREATE: u32 = 5;
 }
 
 /// Concurrent `messages.get` calls; the rate limiter paces them.
@@ -241,6 +242,23 @@ impl MailProvider for GmailProvider {
         let data: wire::AttachmentData =
             self.http.json(cost::ATTACHMENT_GET, Priority::Interactive, |c| c.get(&url)).await?;
         decode_base64url(&data.data).ok_or_else(|| ProviderError::Invalid("attachment data is not base64url".into()))
+    }
+
+    async fn create_label(&self, name: &str, color: Option<(&str, &str)>) -> ProviderResult<Label> {
+        let url = self.url("labels");
+        let mut body = json!({ "name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show" });
+        if let Some((bg, fg)) = color {
+            body["color"] = json!({ "backgroundColor": bg, "textColor": fg });
+        }
+        let l: wire::Label =
+            self.http.json(cost::LABELS_CREATE, Priority::Interactive, |c| c.post(&url).json(&body)).await?;
+        Ok(Label {
+            visible: true,
+            kind: LabelKind::User,
+            color: l.color.map(|c| LabelColor { background: c.background_color, text: c.text_color }),
+            id: LabelId(l.id),
+            name: l.name,
+        })
     }
 
     async fn save_draft(

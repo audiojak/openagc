@@ -29,6 +29,9 @@ pub trait TextExtractor: Send + Sync {
 /// One agent session's tool-side state.
 pub(crate) struct ToolSession {
     pub guard: SessionGuard,
+    /// The quoted original of reply drafts this session made, so updating
+    /// the body keeps it.
+    pub draft_quotes: HashMap<i64, String>,
     /// Where `mail_present_threads` shows results; set by the agent manager.
     pub sink: Option<EventSink>,
 }
@@ -51,7 +54,7 @@ pub(crate) fn adapters() -> Vec<Arc<dyn AgentProvider>> {
 
 impl AgentHub {
     pub(crate) fn register(&self, session: &str, scope: Scope, sink: Option<EventSink>) {
-        let state = ToolSession { guard: SessionGuard::new(scope), sink };
+        let state = ToolSession { guard: SessionGuard::new(scope), draft_quotes: HashMap::new(), sink };
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session.to_owned(), state);
     }
 

@@ -305,6 +305,11 @@ impl SessionGuard {
         self.sendable_drafts.insert(draft_id);
     }
 
+    /// Whether this session made (or was given) the draft.
+    pub fn owns_draft(&self, draft_id: i64) -> bool {
+        self.sendable_drafts.contains(&draft_id)
+    }
+
     /// The user prompted again: the session bulk count starts over.
     pub fn new_user_prompt(&mut self) {
         self.touched.clear();

@@ -14,6 +14,7 @@ ammonia.workspace = true
 mail-builder.workspace = true
 thiserror.workspace = true
 zip.workspace = true
+pulldown-cmark.workspace = true
 
 [lints]
 workspace = true

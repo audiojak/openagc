@@ -75,6 +75,14 @@ pub(crate) async fn call(core: &Arc<Core>, session: &str, tool: Tool, arguments:
         Tool::ListLabels => list_labels(core).await,
         Tool::GetAttachmentText => attachment_text(core, session, arguments).await,
         Tool::PresentThreads => present_threads(core, session, arguments),
+        Tool::CreateDraft => create_draft(core, session, arguments).await,
+        Tool::UpdateDraft => update_draft(core, session, arguments).await,
+        Tool::Archive => change_threads(core, arguments, ThreadChange::Archive).await,
+        Tool::MarkRead => change_threads(core, arguments, ThreadChange::Read(true)).await,
+        Tool::MarkUnread => change_threads(core, arguments, ThreadChange::Read(false)).await,
+        Tool::AddLabel => label_threads(core, arguments, true).await,
+        Tool::RemoveLabel => label_threads(core, arguments, false).await,
+        Tool::CreateLabel => create_label(core, arguments).await,
         _ => Err(Outcome::error("not_available", format!("{} is not available yet", tool.name()))),
     };
     result.unwrap_or_else(|e| e)
@@ -318,4 +326,220 @@ fn present_threads(core: &Arc<Core>, session: &str, arguments: Value) -> Result<
         }
     });
     Ok(Outcome::json(json!({ "shown": shown })))
+}
+
+// MARK: Changing the mailbox (Reversible)
+
+/// "Name <a@b.c>" or "a@b.c".
+fn parse_address(text: &str) -> Result<crate::ffi::AddressInfo, Outcome> {
+    let t = text.trim();
+    let (name, email) = match (t.rfind('<'), t.rfind('>')) {
+        (Some(open), Some(close)) if open < close => {
+            let name = t[..open].trim().trim_matches('"').trim();
+            (if name.is_empty() { None } else { Some(name.to_owned()) }, t[open + 1..close].trim().to_owned())
+        }
+        _ => (None, t.to_owned()),
+    };
+    let valid = email.matches('@').count() == 1
+        && !email.starts_with('@')
+        && !email.ends_with('@')
+        && !email.chars().any(|c| c.is_whitespace() || matches!(c, '<' | '>' | ',' | ';' | '"'));
+    if !valid {
+        return Err(Outcome::error("invalid_arguments", format!("{text:?} is not an email address")));
+    }
+    Ok(crate::ffi::AddressInfo { name, email })
+}
+
+fn addresses(list: Option<Vec<String>>) -> Result<Option<Vec<crate::ffi::AddressInfo>>, Outcome> {
+    list.map(|l| l.iter().map(|a| parse_address(a)).collect()).transpose()
+}
+
+fn draft_json(d: &crate::DraftInfo) -> Value {
+    json!({
+        "draft_id": d.id,
+        "subject": d.subject,
+        "to": d.to.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
+        "cc": d.cc.iter().map(|a| a.email.clone()).collect::<Vec<_>>(),
+        "reply_to_message_id": d.in_reply_to_message_id,
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateDraftArgs {
+    reply_to_message_id: Option<String>,
+    #[serde(default)]
+    reply_all: bool,
+    to: Option<Vec<String>>,
+    cc: Option<Vec<String>>,
+    subject: Option<String>,
+    body_markdown: String,
+}
+
+async fn create_draft(core: &Arc<Core>, session: &str, arguments: Value) -> Result<Outcome, Outcome> {
+    let a: CreateDraftArgs = args(arguments)?;
+    let mut draft = match &a.reply_to_message_id {
+        Some(id) => {
+            let not_found = || Outcome::error("not_found", "no such message");
+            let db = core.db().map_err(failed)?;
+            let mid = MessageId(id.clone());
+            let m = db
+                .read(move |c| read::get_message(c, &mid))
+                .await
+                .map_err(|e| failed(e.into()))?
+                .ok_or_else(not_found)?;
+            if !in_scope(core, session, &m.thread_id) {
+                return Err(not_found());
+            }
+            core.reply_draft(id.clone(), a.reply_all).await.map_err(failed)?
+        }
+        None => crate::DraftInfo {
+            id: 0,
+            thread_id: None,
+            in_reply_to_message_id: None,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: String::new(),
+            body_html: String::new(),
+            quoted_html: String::new(),
+            attachments: vec![],
+            status: crate::DraftStatus::Editing,
+            error: None,
+            updated_at: 0,
+        },
+    };
+    if let Some(to) = addresses(a.to)? {
+        draft.to = to;
+    }
+    if let Some(cc) = addresses(a.cc)? {
+        draft.cc = cc;
+    }
+    if let Some(subject) = a.subject {
+        draft.subject = subject;
+    }
+    draft.body_html = mail_mime::markdown_to_html(&a.body_markdown);
+    let quote = draft.quoted_html.clone();
+    let id = core.save_draft(draft.clone()).await.map_err(failed)?;
+    draft.id = id;
+    core.agents.with_session(session, |s| {
+        s.guard.allow_draft(id);
+        s.draft_quotes.insert(id, quote);
+    });
+    Ok(Outcome::json(draft_json(&draft)))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UpdateDraftArgs {
+    draft_id: i64,
+    to: Option<Vec<String>>,
+    cc: Option<Vec<String>>,
+    subject: Option<String>,
+    body_markdown: Option<String>,
+}
+
+async fn update_draft(core: &Arc<Core>, session: &str, arguments: Value) -> Result<Outcome, Outcome> {
+    let a: UpdateDraftArgs = args(arguments)?;
+    let not_yours = || Outcome::error("denied", "only drafts created in this conversation can be changed");
+    let quote = core
+        .agents
+        .with_session(session, |s| {
+            s.guard.owns_draft(a.draft_id).then(|| s.draft_quotes.get(&a.draft_id).cloned().unwrap_or_default())
+        })
+        .flatten()
+        .ok_or_else(not_yours)?;
+    let mut draft = core
+        .get_draft(a.draft_id)
+        .await
+        .map_err(failed)?
+        .ok_or_else(|| Outcome::error("not_found", "that draft no longer exists"))?;
+    if let Some(to) = addresses(a.to)? {
+        draft.to = to;
+    }
+    if let Some(cc) = addresses(a.cc)? {
+        draft.cc = cc;
+    }
+    if let Some(subject) = a.subject {
+        draft.subject = subject;
+    }
+    if let Some(body) = a.body_markdown {
+        // The stored body includes the quote; rebuild it around the new text.
+        draft.body_html = mail_mime::markdown_to_html(&body);
+        draft.quoted_html = quote;
+    }
+    core.save_draft(draft.clone()).await.map_err(failed)?;
+    Ok(Outcome::json(draft_json(&draft)))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThreadsArgs {
+    thread_ids: Vec<String>,
+}
+
+enum ThreadChange {
+    Archive,
+    Read(bool),
+}
+
+async fn change_threads(core: &Arc<Core>, arguments: Value, change: ThreadChange) -> Result<Outcome, Outcome> {
+    let a: ThreadsArgs = args(arguments)?;
+    let n = a.thread_ids.len();
+    let (done, key) = match change {
+        ThreadChange::Archive => (core.archive(a.thread_ids).await, "archived"),
+        ThreadChange::Read(true) => (core.set_read(a.thread_ids, true).await, "marked_read"),
+        ThreadChange::Read(false) => (core.set_read(a.thread_ids, false).await, "marked_unread"),
+    };
+    done.map_err(failed)?;
+    Ok(Outcome::json(json!({ key: n })))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LabelArgs {
+    thread_ids: Vec<String>,
+    label: String,
+}
+
+async fn label_threads(core: &Arc<Core>, arguments: Value, add: bool) -> Result<Outcome, Outcome> {
+    let a: LabelArgs = args(arguments)?;
+    let db = core.db().map_err(failed)?;
+    let labels = db.read(read::list_labels).await.map_err(|e| failed(e.into()))?;
+    let wanted = a.label.trim();
+    let label = labels
+        .iter()
+        .find(|l| l.id.as_str() == wanted)
+        .or_else(|| labels.iter().find(|l| l.name.eq_ignore_ascii_case(wanted)))
+        .ok_or_else(|| {
+            Outcome::error("not_found", format!("there is no label {wanted:?}; create it with mail_create_label"))
+        })?;
+    if label.kind != mail_domain::LabelKind::User {
+        return Err(Outcome::error(
+            "invalid_arguments",
+            format!("{} is a system label; only user labels can be set here", label.name),
+        ));
+    }
+    let n = a.thread_ids.len();
+    let (plus, minus) = if add { (vec![label.id.0.clone()], vec![]) } else { (vec![], vec![label.id.0.clone()]) };
+    core.modify_labels(a.thread_ids, plus, minus).await.map_err(failed)?;
+    Ok(Outcome::json(json!({ "label": label.name, if add { "labeled" } else { "unlabeled" }: n })))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateLabelArgs {
+    name: String,
+    color: Option<String>,
+}
+
+async fn create_label(core: &Arc<Core>, arguments: Value) -> Result<Outcome, Outcome> {
+    let a: CreateLabelArgs = args(arguments)?;
+    if let Some(c) = &a.color
+        && !(c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit()))
+    {
+        return Err(Outcome::error("invalid_arguments", "color must look like #rrggbb"));
+    }
+    let label = core.create_label(a.name, a.color).await.map_err(failed)?;
+    Ok(Outcome::json(json!({ "label_id": label.id, "name": label.name })))
 }

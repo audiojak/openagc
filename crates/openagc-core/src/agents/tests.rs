@@ -264,3 +264,107 @@ fn a_fake_agent_session_round_trips_through_the_ffi() {
         crate::ErrorKind::NotFound
     );
 }
+
+fn inbox(core: &Arc<Core>) -> Vec<String> {
+    block_on(core.list_threads("INBOX".into(), None, 500)).unwrap().rows.into_iter().map(|t| t.id).collect()
+}
+
+#[test]
+fn drafts_written_by_the_agent() {
+    let core = demo("drafts");
+    core.agents.register("s1", Scope::Mailbox, None);
+    core.agents.register("s2", Scope::Mailbox, None);
+
+    let made = call(
+        &core,
+        "s1",
+        Tool::CreateDraft,
+        json!({ "to": ["Alex Rivera <alex@example.org>"], "subject": "Plan", "body_markdown": "Hi **Alex**" }),
+    )
+    .unwrap();
+    let id = made["draft_id"].as_i64().unwrap();
+    let stored = block_on(core.get_draft(id)).unwrap().unwrap();
+    assert!(stored.body_html.contains("<strong>Alex</strong>"), "{}", stored.body_html);
+    assert_eq!(stored.to[0].name.as_deref(), Some("Alex Rivera"));
+
+    call(&core, "s1", Tool::UpdateDraft, json!({ "draft_id": id, "subject": "Plan v2" })).unwrap();
+    assert_eq!(block_on(core.get_draft(id)).unwrap().unwrap().subject, "Plan v2");
+    assert_eq!(
+        call(&core, "s2", Tool::UpdateDraft, json!({ "draft_id": id, "subject": "hijack" })).unwrap_err().0,
+        "denied",
+        "another session cannot touch it"
+    );
+    assert_eq!(
+        call(&core, "s1", Tool::CreateDraft, json!({ "to": ["not an address"], "body_markdown": "x" })).unwrap_err().0,
+        "invalid_arguments"
+    );
+
+    // A reply keeps its quote when the body is rewritten.
+    let thread = inbox(&core)[0].clone();
+    let detail = block_on(core.get_thread(thread)).unwrap().unwrap();
+    let parent = detail.messages.last().unwrap().id.clone();
+    let reply = call(&core, "s1", Tool::CreateDraft, json!({ "reply_to_message_id": parent, "body_markdown": "Yes." }))
+        .unwrap();
+    let rid = reply["draft_id"].as_i64().unwrap();
+    assert!(reply["subject"].as_str().unwrap().starts_with("Re:"));
+    call(&core, "s1", Tool::UpdateDraft, json!({ "draft_id": rid, "body_markdown": "Actually, no." })).unwrap();
+    let body = block_on(core.get_draft(rid)).unwrap().unwrap().body_html;
+    assert!(body.starts_with("<p>Actually, no.</p>"), "{body}");
+    assert_eq!(body.matches("<blockquote>").count(), 1, "the quote is kept once");
+}
+
+#[test]
+fn archive_read_state_and_labels() {
+    let core = demo("changes");
+    core.agents.register("s1", Scope::Mailbox, None);
+    let ids = inbox(&core);
+    let (a, b) = (ids[0].clone(), ids[1].clone());
+
+    assert_eq!(call(&core, "s1", Tool::Archive, json!({ "thread_ids": [a] })).unwrap()["archived"], 1);
+    assert!(!inbox(&core).contains(&a));
+
+    call(&core, "s1", Tool::MarkUnread, json!({ "thread_ids": [b] })).unwrap();
+    assert!(block_on(core.get_thread(b.clone())).unwrap().unwrap().thread.unread_count > 0);
+    call(&core, "s1", Tool::MarkRead, json!({ "thread_ids": [b] })).unwrap();
+    assert_eq!(block_on(core.get_thread(b.clone())).unwrap().unwrap().thread.unread_count, 0);
+
+    let made = call(&core, "s1", Tool::CreateLabel, json!({ "name": "Sorted/Important", "color": "#fb4c2f" })).unwrap();
+    let again = call(&core, "s1", Tool::CreateLabel, json!({ "name": "sorted/important" })).unwrap();
+    assert_eq!(made["label_id"], again["label_id"], "idempotent by name");
+    assert_eq!(call(&core, "s1", Tool::CreateLabel, json!({ "name": "TRASH" })).unwrap_err().0, "invalid_arguments");
+    assert_eq!(
+        call(&core, "s1", Tool::CreateLabel, json!({ "name": "x", "color": "red" })).unwrap_err().0,
+        "invalid_arguments"
+    );
+
+    call(&core, "s1", Tool::AddLabel, json!({ "thread_ids": [b], "label": "Sorted/Important" })).unwrap();
+    let labels = block_on(core.get_thread(b.clone())).unwrap().unwrap().thread.label_ids;
+    assert!(labels.contains(&made["label_id"].as_str().unwrap().to_owned()));
+    call(&core, "s1", Tool::RemoveLabel, json!({ "thread_ids": [b], "label": made["label_id"] })).unwrap();
+    assert!(
+        !block_on(core.get_thread(b.clone()))
+            .unwrap()
+            .unwrap()
+            .thread
+            .label_ids
+            .contains(&made["label_id"].as_str().unwrap().to_owned())
+    );
+
+    assert_eq!(
+        call(&core, "s1", Tool::AddLabel, json!({ "thread_ids": [b], "label": "INBOX" })).unwrap_err().0,
+        "invalid_arguments"
+    );
+    assert_eq!(
+        call(&core, "s1", Tool::AddLabel, json!({ "thread_ids": [b], "label": "Nope" })).unwrap_err().0,
+        "not_found"
+    );
+}
+
+#[test]
+fn a_selection_session_cannot_change_other_threads() {
+    let core = demo("scoped-writes");
+    let ids = inbox(&core);
+    core.agents.register("sel", Scope::Selection([ThreadId::new(ids[0].clone())].into()), None);
+    assert_eq!(call(&core, "sel", Tool::Archive, json!({ "thread_ids": [ids[1]] })).unwrap_err().0, "denied");
+    call(&core, "sel", Tool::Archive, json!({ "thread_ids": [ids[0]] })).unwrap();
+}

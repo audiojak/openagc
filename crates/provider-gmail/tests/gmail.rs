@@ -302,6 +302,25 @@ async fn drafts_are_created_replaced_and_deleted() {
 }
 
 #[tokio::test]
+async fn labels_are_created_with_an_optional_color() {
+    let (server, gmail) = setup().await;
+    Mock::given(method("POST"))
+        .and(path("/users/me/labels"))
+        .and(body_json(json!({"name": "Sorted/Important", "labelListVisibility": "labelShow",
+                              "messageListVisibility": "show",
+                              "color": {"backgroundColor": "#fb4c2f", "textColor": "#ffffff"}})))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "Label_77", "name": "Sorted/Important", "type": "user",
+            "color": {"backgroundColor": "#fb4c2f", "textColor": "#ffffff"}})))
+        .mount(&server)
+        .await;
+    let label = gmail.create_label("Sorted/Important", Some(("#fb4c2f", "#ffffff"))).await.unwrap();
+    assert_eq!(label.id, LabelId::new("Label_77"));
+    assert_eq!(label.kind, LabelKind::User);
+    assert_eq!(label.color.unwrap().background, "#fb4c2f");
+}
+
+#[tokio::test]
 async fn attachments_are_decoded() {
     let (server, gmail) = setup().await;
     Mock::given(path("/users/me/messages/m1/attachments/ANGjdJ_deck"))

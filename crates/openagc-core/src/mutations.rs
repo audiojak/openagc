@@ -5,6 +5,7 @@
 use mail_domain::{LabelId, ThreadId, system_labels};
 use mail_sync::LocalChange;
 
+use crate::ffi::LabelInfo;
 use crate::sync::EventObserver;
 use crate::{Core, CoreError, ErrorKind, runtime};
 
@@ -12,6 +13,14 @@ use crate::{Core, CoreError, ErrorKind, runtime};
 pub struct OutboxStatus {
     pub pending: u32,
     pub failed: u32,
+}
+
+/// White or near-black text, whichever reads better on `background`.
+fn text_color_for(background: &str) -> &'static str {
+    let hex = background.trim_start_matches('#');
+    let channel = |i: usize| u8::from_str_radix(hex.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0) as f64;
+    let luminance = 0.299 * channel(0) + 0.587 * channel(2) + 0.114 * channel(4);
+    if luminance > 150.0 { "#000000" } else { "#ffffff" }
 }
 
 fn threads(ids: Vec<String>) -> Result<Vec<ThreadId>, CoreError> {
@@ -80,6 +89,73 @@ impl Core {
             remove: remove.into_iter().map(LabelId).collect(),
         };
         self.mutate(change).await
+    }
+
+    /// Create a user label, or return the one with that name (spec §10.2,
+    /// §11). `color` is a background like `#fb4c2f`; the text color is
+    /// chosen for contrast. Needs Gmail to be reachable: the label id comes
+    /// from the server.
+    pub async fn create_label(&self, name: String, color: Option<String>) -> Result<LabelInfo, CoreError> {
+        let name = name.trim().trim_matches('/').to_owned();
+        if name.is_empty() || name.len() > 225 || name.split('/').any(|part| part.trim().is_empty()) {
+            return Err(CoreError::new(ErrorKind::InvalidInput, "a label needs a name (nest with /)"));
+        }
+        if system_labels::PROTECTED
+            .iter()
+            .chain(&["INBOX", "UNREAD", "STARRED", "IMPORTANT"])
+            .any(|s| s.eq_ignore_ascii_case(&name))
+        {
+            return Err(CoreError::new(ErrorKind::InvalidInput, format!("{name} is a system label")));
+        }
+        let db = self.db()?;
+        let service = self.accounts.sync_service();
+        let events = self.events.clone();
+        runtime::run(async move {
+            let wanted = name.clone();
+            let labels = db.read(mail_store::read::list_labels).await?;
+            if let Some(existing) = labels.into_iter().find(|l| l.name.eq_ignore_ascii_case(&wanted)) {
+                return Ok(existing.into());
+            }
+            let color = color.map(|bg| {
+                let fg = text_color_for(&bg);
+                (bg, fg.to_owned())
+            });
+            let label = match &service {
+                Some(service) => {
+                    let provider = service.engine().provider();
+                    let with_color = color.as_ref().map(|(bg, fg)| (bg.as_str(), fg.as_str()));
+                    match provider.create_label(&name, with_color).await {
+                        // Gmail only accepts palette colors; try again plain.
+                        Err(provider_api::ProviderError::Invalid(_)) if with_color.is_some() => {
+                            provider.create_label(&name, None).await?
+                        }
+                        other => other?,
+                    }
+                }
+                // The demo mailbox has no server: a local id.
+                None => mail_domain::Label {
+                    id: LabelId(format!("Label_local_{}", mail_sync::now_millis())),
+                    name,
+                    kind: mail_domain::LabelKind::User,
+                    color: color.map(|(background, text)| mail_domain::LabelColor { background, text }),
+                    visible: true,
+                },
+            };
+            let stored = label.clone();
+            db.write(move |tx| {
+                let mut w = mail_store::MailWriter::new(tx);
+                w.upsert_labels(std::slice::from_ref(&stored))?;
+                w.finish().map(|_| ())
+            })
+            .await?;
+            // The sidebar reloads its labels on any change event.
+            events.emit(crate::CoreEvent::ThreadsChanged {
+                mailbox_id: label.id.0.clone(),
+                hint: crate::ChangeHint::default(),
+            });
+            Ok(label.into())
+        })
+        .await
     }
 
     pub async fn trash(&self, thread_ids: Vec<String>) -> Result<(), CoreError> {
@@ -189,7 +265,22 @@ mod tests {
             !fake.message(&MessageId::new("m1")).unwrap().label_ids.contains(&LabelId::new("INBOX")),
             "server archived"
         );
+        // The op is removed just after the server call returns.
+        for _ in 0..200 {
+            if block_on(core.outbox_status()).unwrap().pending == 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
         assert_eq!(block_on(core.outbox_status()).unwrap().pending, 0);
+
+        // Labels are created on the server, then stored.
+        let label = block_on(core.create_label("Sorted/Later".into(), Some("#ffad47".into()))).unwrap();
+        assert_eq!(label.id, "Label_1");
+        assert_eq!(label.text_color.as_deref(), Some("#000000"), "dark text on a light color");
+        assert!(block_on(core.list_labels()).unwrap().iter().any(|l| l.id == "Label_1"));
+        let same = block_on(core.create_label("SORTED/LATER".into(), None)).unwrap();
+        assert_eq!(same.id, "Label_1");
         core.stop_sync();
     }
 }
