@@ -1,6 +1,7 @@
 import Foundation
 import OpenAGCCore
 import os
+import PDFKit
 
 /// The app's handle on the Rust core. This is the only file that imports
 /// `OpenAGCCore` (spec §14.2); everything else talks to `CoreClient`.
@@ -29,6 +30,7 @@ final class CoreClient: Sendable {
         } catch {
             throw CoreClientError(kind: .internalError, message: String(describing: error))
         }
+        core.setTextExtractor(extractor: PDFTextExtractor())
     }
 
     var version: String { core.version() }
@@ -383,6 +385,16 @@ private final class SecretBridge: SecretStore, Sendable {
 
     func delete(key: String) throws {
         do { try keychain.delete(key) } catch { throw CoreError.Failed(kind: .storage, message: error.description) }
+    }
+}
+
+/// PDF text for agents (spec §10.2), through PDFKit rather than a Rust
+/// parser. Called on a core worker thread.
+final class PDFTextExtractor: TextExtractor, Sendable {
+    func pdfText(path: String) -> String? {
+        guard let document = PDFDocument(url: URL(filePath: path)), !document.isLocked else { return nil }
+        let text = document.string?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text?.isEmpty == false ? text : nil
     }
 }
 

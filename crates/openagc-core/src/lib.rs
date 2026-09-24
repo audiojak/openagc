@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 uniffi::setup_scaffolding!();
 
 mod account;
+mod agents;
 mod attachments;
 mod compose;
 mod error;
@@ -19,6 +20,7 @@ pub mod secrets;
 mod sync;
 
 pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
+pub use agents::TextExtractor;
 pub use attachments::AttachmentFileInfo;
 pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
@@ -45,6 +47,7 @@ pub struct Core {
     secrets: Arc<dyn SecretStore>,
     account: RwLock<Option<mail::Account>>,
     accounts: account::AccountState,
+    agents: agents::AgentHub,
 }
 
 #[uniffi::export]
@@ -61,7 +64,14 @@ impl Core {
         let events = EventBus::start(listener, runtime::runtime().handle());
         logging::init(config.log_dir.as_deref().map(std::path::Path::new), events.clone());
         tracing::info!(version = env!("CARGO_PKG_VERSION"), "core started");
-        Ok(Arc::new(Self { config, events, secrets, account: RwLock::new(None), accounts: Default::default() }))
+        Ok(Arc::new(Self {
+            config,
+            events,
+            secrets,
+            account: RwLock::new(None),
+            accounts: Default::default(),
+            agents: Default::default(),
+        }))
     }
 
     /// Round-trip check used by the app at launch and by tests.

@@ -3,6 +3,7 @@
 mod ids;
 mod model;
 mod redacted;
+mod time;
 
 pub use ids::{AccountId, AttachmentId, DraftId, LabelId, MessageId, Millis, ThreadId};
 pub use model::{
@@ -10,3 +11,4 @@ pub use model::{
     ThreadSummary, system_labels,
 };
 pub use redacted::Redacted;
+pub use time::{civil_from_days, iso8601_utc};

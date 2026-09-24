@@ -922,7 +922,7 @@ same definitions are rendered to `docs/mcp.md` by a `cargo xtask`.
 | `mail.get_thread` | ReadOnly | Messages in a thread with `text_plain` bodies (HTML converted), truncated per message at 20 KB with a `truncated` flag; attachments listed as metadata. |
 | `mail.get_message` | ReadOnly | One message, same shape; `include_quoted: bool` (default false strips quoted replies). |
 | `mail.list_labels` | ReadOnly | Labels with counts. |
-| `mail.get_attachment_text` | ReadOnly | Extracted text for `text/*`, PDF (via `pdf-extract`), and `.docx`; cap 100 KB. No binary bytes are ever returned. |
+| `mail.get_attachment_text` | ReadOnly | Extracted text for `text/*`, PDF (via PDFKit in the app, through a foreign trait; *amended in M3: `pdf-extract` depends on the unmaintained `ttf-parser` and would parse untrusted PDFs in-process*), and `.docx`; cap 100 KB. No binary bytes are ever returned. |
 | `mail.present_threads` | ReadOnly | Instructs the UI to show a result set; returns nothing. |
 | `mail.create_draft` | Reversible | Reply or new; body as Markdown, converted to HTML+text by the core. Returns draft id. |
 | `mail.update_draft` | Reversible | |

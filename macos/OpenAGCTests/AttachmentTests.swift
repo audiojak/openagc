@@ -44,3 +44,21 @@ struct AttachmentTests {
         #expect(ReaderStore.normalizedContentID("logo") == "logo")
     }
 }
+
+@MainActor
+struct PDFTextTests {
+    @Test func pdfKitExtractsTheDemoAttachmentsText() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let core = try CoreClient(dataDirectory: dir)
+        try await core.openAccount(AppModel.demoAccountID)
+        try await core.seedDemoMailbox(threads: 200)
+        let row = try #require(try await core.search("has:attachment", limit: 1).rows.first)
+        let detail = try #require(try await core.thread(row.id))
+        let attachment = try #require(detail.messages.flatMap(\.attachments).first)
+        let file = try await core.attachmentFile(attachment.id)
+        let text = try #require(PDFTextExtractor().pdfText(path: file.url.path))
+        let topic = attachment.filename.replacingOccurrences(of: ".pdf", with: "").replacingOccurrences(of: "-", with: " ")
+        #expect(text.localizedCaseInsensitiveContains(topic), "\(text) vs \(topic)")
+        #expect(PDFTextExtractor().pdfText(path: "/nonexistent.pdf") == nil)
+    }
+}
