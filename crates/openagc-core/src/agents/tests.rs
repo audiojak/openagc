@@ -112,8 +112,8 @@ fn bad_arguments_unknown_sessions_and_gated_tools() {
     assert_eq!(call(&core, "s1", Tool::GetThread, json!({ "thread_id": "nope" })).unwrap_err().0, "not_found");
     assert_eq!(
         call(&core, "s1", Tool::Delete, json!({ "thread_ids": ["t"] })).unwrap_err().0,
-        "approval_unavailable",
-        "external tools never run without the user"
+        "failed",
+        "a proposal that cannot be recorded is refused, never run"
     );
     let many: Vec<String> = (0..201).map(|i| format!("t{i}")).collect();
     assert_eq!(call(&core, "s1", Tool::Archive, json!({ "thread_ids": many })).unwrap_err().0, "denied");
@@ -367,4 +367,136 @@ fn a_selection_session_cannot_change_other_threads() {
     core.agents.register("sel", Scope::Selection([ThreadId::new(ids[0].clone())].into()), None);
     assert_eq!(call(&core, "sel", Tool::Archive, json!({ "thread_ids": [ids[1]] })).unwrap_err().0, "denied");
     call(&core, "sel", Tool::Archive, json!({ "thread_ids": [ids[0]] })).unwrap();
+}
+
+/// A tool session backed by a stored session row, as a real one is.
+fn session_with_events(core: &Arc<Core>, id: &str) -> tokio::sync::mpsc::UnboundedReceiver<(SessionId, AgentEvent)> {
+    let db = core.db().unwrap();
+    let uuid = id.to_owned();
+    db.write_blocking(move |tx| mail_store::agents::start_session(tx, &uuid, "claude-code", 1)).unwrap();
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    core.agents.register(id, Scope::Mailbox, Some(EventSink::new(SessionId(id.into()), tx)));
+    rx
+}
+
+/// Run a call in the background; returns its eventual outcome.
+fn spawn_call(core: &Arc<Core>, session: &str, tool: Tool, args: Value) -> tokio::task::JoinHandle<Outcome> {
+    let (core, session) = (core.clone(), session.to_owned());
+    crate::runtime::runtime().spawn(async move { super::tools::call(&core, &session, tool, args).await })
+}
+
+fn next_proposal(rx: &mut tokio::sync::mpsc::UnboundedReceiver<(SessionId, AgentEvent)>) -> (i64, String, Option<i64>) {
+    loop {
+        let (_, e) = crate::runtime::runtime()
+            .block_on(async { tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await })
+            .expect("a proposal in time")
+            .unwrap();
+        if let AgentEvent::ActionProposed { action_id, summary, draft_id, .. } = e {
+            return (action_id, summary, draft_id);
+        }
+    }
+}
+
+fn outcome(handle: tokio::task::JoinHandle<Outcome>) -> Outcome {
+    crate::runtime::runtime().block_on(handle).unwrap()
+}
+
+#[test]
+fn sending_waits_for_the_user_and_the_draft_is_frozen_meanwhile() {
+    let core = demo("approve-send");
+    let mut rx = session_with_events(&core, "s1");
+    let made = call(
+        &core,
+        "s1",
+        Tool::CreateDraft,
+        json!({ "to": ["sam@example.org"], "subject": "Lunch", "body_markdown": "Noon?" }),
+    )
+    .unwrap();
+    let draft = made["draft_id"].as_i64().unwrap();
+
+    let sending = spawn_call(&core, "s1", Tool::Send, json!({ "draft_id": draft }));
+    let (action, summary, draft_id) = next_proposal(&mut rx);
+    assert_eq!(summary, "Send “Lunch” to sam@example.org");
+    assert_eq!(draft_id, Some(draft));
+    assert!(!sending.is_finished(), "parked until the user answers");
+    assert_eq!(
+        call(&core, "s1", Tool::UpdateDraft, json!({ "draft_id": draft, "to": ["attacker@evil.test"] })).unwrap_err().0,
+        "denied",
+        "the agent cannot change what the user is reviewing"
+    );
+    core.resolve_agent_action(action, true).unwrap();
+    assert!(matches!(outcome(sending), Outcome::Ok { .. }));
+    assert!(block_on(core.get_draft(draft)).unwrap().is_none(), "sent");
+    let sent = block_on(core.list_threads("SENT".into(), None, 50)).unwrap().rows;
+    assert!(sent.iter().any(|t| t.subject == "Lunch"));
+
+    let log = block_on(core.list_agent_actions(10)).unwrap();
+    let send = log.iter().find(|a| a.tool == "mail_send").unwrap();
+    assert_eq!((send.risk.as_str(), send.state.as_str()), ("external", "done"));
+    assert!(log.iter().any(|a| a.tool == "mail_create_draft" && a.state == "done"));
+    assert_eq!(core.resolve_agent_action(action, true).unwrap_err().kind(), crate::ErrorKind::NotFound);
+}
+
+#[test]
+fn rejected_timed_out_and_cancelled_proposals_do_nothing() {
+    let core = demo("approve-reject");
+    let mut rx = session_with_events(&core, "s1");
+    let ids = inbox(&core);
+
+    let deleting = spawn_call(&core, "s1", Tool::Delete, json!({ "thread_ids": [ids[0]] }));
+    let (action, summary, _) = next_proposal(&mut rx);
+    assert_eq!(summary, "Move 1 thread to Trash");
+    core.resolve_agent_action(action, false).unwrap();
+    assert!(matches!(outcome(deleting), Outcome::Error { code, .. } if code == "rejected_by_user"));
+    assert!(inbox(&core).contains(&ids[0]), "nothing was trashed");
+
+    // A declined forward leaves no draft.
+    let detail = block_on(core.get_thread(ids[1].clone())).unwrap().unwrap();
+    let message = detail.messages.last().unwrap().id.clone();
+    let forwarding = spawn_call(
+        &core,
+        "s1",
+        Tool::Forward,
+        json!({ "message_id": message, "to": ["pat@example.com"], "note_markdown": "FYI" }),
+    );
+    let (action, summary, draft) = next_proposal(&mut rx);
+    assert!(summary.starts_with("Forward “") && summary.ends_with("to pat@example.com"), "{summary}");
+    assert!(block_on(core.get_draft(draft.unwrap())).unwrap().is_some(), "reviewable while pending");
+    core.resolve_agent_action(action, false).unwrap();
+    outcome(forwarding);
+    assert!(block_on(core.get_draft(draft.unwrap())).unwrap().is_none());
+
+    // Unanswered: expires.
+    *core.agents.approvals.timeout.lock().unwrap() = Some(std::time::Duration::from_millis(100));
+    let expiring = spawn_call(&core, "s1", Tool::Delete, json!({ "thread_ids": [ids[2]] }));
+    next_proposal(&mut rx);
+    assert!(matches!(outcome(expiring), Outcome::Error { code, .. } if code == "approval_timeout"));
+    *core.agents.approvals.timeout.lock().unwrap() = None;
+
+    // Cancelling the turn rejects what is pending. (Bounded, so a
+    // regression fails instead of hanging for ten minutes.)
+    *core.agents.approvals.timeout.lock().unwrap() = Some(std::time::Duration::from_secs(5));
+    let pending = spawn_call(&core, "s1", Tool::Delete, json!({ "thread_ids": [ids[3]] }));
+    next_proposal(&mut rx);
+    let _ = block_on(core.clone().cancel_agent_turn("s1".into()));
+    assert!(matches!(outcome(pending), Outcome::Error { code, .. } if code == "rejected_by_user"));
+    *core.agents.approvals.timeout.lock().unwrap() = None;
+    assert!(inbox(&core).contains(&ids[3]));
+
+    let states: Vec<String> = block_on(core.list_agent_actions(20)).unwrap().into_iter().map(|a| a.state).collect();
+    assert!(states.contains(&"rejected".to_owned()) && states.contains(&"expired".to_owned()), "{states:?}");
+}
+
+#[test]
+fn a_user_policy_can_require_approval_for_reversible_tools() {
+    let core = demo("policy");
+    let mut rx = session_with_events(&core, "s1");
+    core.agents.policy.write().unwrap().set_requires_approval(Tool::Archive, true).unwrap();
+    let id = inbox(&core)[0].clone();
+    let archiving = spawn_call(&core, "s1", Tool::Archive, json!({ "thread_ids": [id] }));
+    let (action, summary, _) = next_proposal(&mut rx);
+    assert_eq!(summary, "mail_archive on 1 thread");
+    core.resolve_agent_action(action, true).unwrap();
+    assert!(matches!(outcome(archiving), Outcome::Ok { .. }));
+    assert!(!inbox(&core).contains(&id));
 }

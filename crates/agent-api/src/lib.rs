@@ -172,9 +172,17 @@ pub enum AgentEvent {
     },
     /// A gated action awaiting the user (spec §10.4).
     ActionProposed {
+        /// The draft to review, for sends and forwards.
+        #[serde(default)]
+        draft_id: Option<i64>,
         action_id: i64,
         tool: String,
         summary: String,
+    },
+    /// A proposal was decided: by the user, a timeout, or the session ending.
+    ActionResolved {
+        action_id: i64,
+        approved: bool,
     },
     /// Threads the agent wants shown as a list.
     ResultsAvailable {

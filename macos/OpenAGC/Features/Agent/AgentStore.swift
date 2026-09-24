@@ -18,7 +18,11 @@ final class AgentStore {
             case tool(name: String, arguments: String, state: ToolState, summary: String)
             case results([ThreadRow])
             case error(String)
+            /// Something the agent wants to do that the user decides.
+            case proposal(actionID: Int64, tool: String, summary: String, draftID: Int64?, state: ProposalState)
         }
+
+        enum ProposalState: Equatable { case pending, approved, rejected }
 
         enum ToolState: Equatable { case running, succeeded, failed }
 
@@ -106,6 +110,38 @@ final class AgentStore {
         lastUsage = nil
     }
 
+    // MARK: Approvals
+
+    var pendingProposals: [Int64] {
+        entries.compactMap {
+            if case let .proposal(id, _, _, _, .pending) = $0.kind { id } else { nil }
+        }
+    }
+
+    /// The user's answer. The card updates at once; the core confirms with
+    /// `actionResolved`.
+    func resolve(_ actionID: Int64, approve: Bool) {
+        guard let core else { return }
+        do {
+            try core.resolveAgentAction(actionID, approve: approve)
+            setProposal(actionID, approve ? .approved : .rejected)
+        } catch {
+            // Already decided (timed out, or the session ended).
+            setProposal(actionID, .rejected)
+        }
+    }
+
+    func approveAll() {
+        for id in pendingProposals { resolve(id, approve: true) }
+    }
+
+    private func setProposal(_ actionID: Int64, _ state: Entry.ProposalState) {
+        guard let i = entries.firstIndex(where: {
+            if case let .proposal(id, _, _, _, _) = $0.kind { id == actionID } else { false }
+        }), case let .proposal(id, tool, summary, draft, _) = entries[i].kind else { return }
+        entries[i].kind = .proposal(actionID: id, tool: tool, summary: summary, draftID: draft, state: state)
+    }
+
     // MARK: History
 
     func loadHistory() async {
@@ -154,8 +190,11 @@ final class AgentStore {
                    case let .tool(name, args, _, _) = entries[i].kind {
                     entries[i].kind = .tool(name: name, arguments: args, state: ok ? .succeeded : .failed, summary: summary)
                 }
-            case .actionProposed:
-                break // Approval cards arrive with the write tools (M4).
+            case let .actionProposed(actionID, tool, summary, draftID):
+                append(.proposal(actionID: actionID, tool: tool, summary: summary, draftID: draftID, state: .pending))
+                isPresented = true
+            case let .actionResolved(actionID, approved):
+                setProposal(actionID, approved ? .approved : .rejected)
             case let .resultsAvailable(threadIDs):
                 let rows = await rows(for: threadIDs)
                 if !rows.isEmpty { append(.results(rows)) }

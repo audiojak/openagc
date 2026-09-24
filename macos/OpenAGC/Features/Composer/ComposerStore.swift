@@ -11,6 +11,14 @@ enum ComposeRequest: Codable, Hashable, Sendable {
     case reply(messageID: String, all: Bool)
     case forward(messageID: String)
     case draft(id: Int64)
+    /// A draft an agent wrote, opened for the user to check before
+    /// approving the send.
+    case review(draftID: Int64, agent: String)
+
+    /// Who wrote the draft, for the composer's banner.
+    var agentName: String? {
+        if case let .review(_, agent) = self { agent } else { nil }
+    }
 }
 
 /// One composer window's state (spec §14.5). Edits are autosaved 2 s after
@@ -84,7 +92,7 @@ final class ComposerStore {
                 try await core.replyDraft(to: messageID, all: all)
             case let .forward(messageID):
                 try await core.forwardDraft(of: messageID)
-            case let .draft(id):
+            case let .draft(id), let .review(id, _):
                 try await core.draft(id)
             }
             guard let draft else {

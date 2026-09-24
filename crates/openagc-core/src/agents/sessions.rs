@@ -76,16 +76,48 @@ pub enum AgentTranscriptItem {
 
 #[derive(Debug, Clone, PartialEq, uniffi::Enum)]
 pub enum AgentEventInfo {
-    SessionStarted { external_id: Option<String> },
+    SessionStarted {
+        external_id: Option<String>,
+    },
     TurnStarted,
-    TextDelta { text: String },
-    ThinkingDelta { text: String },
-    ToolCallStarted { call_id: String, tool: String, args_summary: String },
-    ToolCallFinished { call_id: String, ok: bool, summary: String },
-    ActionProposed { action_id: i64, tool: String, summary: String },
-    ResultsAvailable { thread_ids: Vec<String> },
-    TurnCompleted { input_tokens: Option<u64>, output_tokens: Option<u64>, cost_usd: Option<f64> },
-    TurnFailed { message: String },
+    TextDelta {
+        text: String,
+    },
+    ThinkingDelta {
+        text: String,
+    },
+    ToolCallStarted {
+        call_id: String,
+        tool: String,
+        args_summary: String,
+    },
+    ToolCallFinished {
+        call_id: String,
+        ok: bool,
+        summary: String,
+    },
+    ActionProposed {
+        action_id: i64,
+        tool: String,
+        summary: String,
+        draft_id: Option<i64>,
+    },
+    /// A proposal was decided (by the user, a timeout or the session ending).
+    ActionResolved {
+        action_id: i64,
+        approved: bool,
+    },
+    ResultsAvailable {
+        thread_ids: Vec<String>,
+    },
+    TurnCompleted {
+        input_tokens: Option<u64>,
+        output_tokens: Option<u64>,
+        cost_usd: Option<f64>,
+    },
+    TurnFailed {
+        message: String,
+    },
     SessionEnded,
 }
 
@@ -100,9 +132,10 @@ impl From<AgentEvent> for AgentEventInfo {
                 Self::ToolCallStarted { call_id, tool, args_summary }
             }
             AgentEvent::ToolCallFinished { call_id, ok, summary } => Self::ToolCallFinished { call_id, ok, summary },
-            AgentEvent::ActionProposed { action_id, tool, summary } => {
-                Self::ActionProposed { action_id, tool, summary }
+            AgentEvent::ActionProposed { action_id, tool, summary, draft_id } => {
+                Self::ActionProposed { action_id, tool, summary, draft_id }
             }
+            AgentEvent::ActionResolved { action_id, approved } => Self::ActionResolved { action_id, approved },
             AgentEvent::ResultsAvailable { thread_ids } => {
                 Self::ResultsAvailable { thread_ids: thread_ids.into_iter().map(|t| t.0).collect() }
             }
@@ -370,12 +403,15 @@ impl Core {
     }
 
     pub async fn cancel_agent_turn(self: Arc<Self>, session_id: String) -> Result<(), CoreError> {
+        // Cancelling rejects whatever the turn is waiting on (spec §10.4).
+        self.agents.approvals.reject_session(&session_id);
         let core = self.clone();
         runtime::run(async move { Ok(core.agent_runtime().manager.cancel(&SessionId(session_id)).await?) }).await
     }
 
     /// End a session; its pending tool calls are refused from now on.
     pub async fn close_agent_session(self: Arc<Self>, session_id: String) -> Result<(), CoreError> {
+        self.agents.approvals.reject_session(&session_id);
         self.agents.unregister(&session_id);
         if let Ok(db) = self.db() {
             let (uuid, now) = (session_id.clone(), mail_sync::now_millis());

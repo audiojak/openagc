@@ -46,6 +46,15 @@ struct ComposerView: View {
     private func editor(_ store: ComposerStore) -> some View {
         @Bindable var store = store
         return VStack(spacing: 0) {
+            if let agent = request.agentName {
+                Label("Created by \(agent). Edit it if you like, then approve sending in the agent panel.",
+                      systemImage: "sparkles")
+                    .font(.callout)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
+                    .background(.tint.opacity(0.1))
+            }
             header(store)
             if let error = store.saveError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -71,12 +80,16 @@ struct ComposerView: View {
                 Button("Attach", systemImage: "paperclip") { importing = true }
                     .keyboardShortcut("a", modifiers: [.command, .shift])
                     .help("Attach Files")
-                Button("Discard", systemImage: "trash") { Task { await store.discard() } }
-                    .help("Delete Draft")
-                Button("Send", systemImage: "paperplane.fill") { Task { await store.send() } }
-                    .keyboardShortcut("d", modifiers: [.command, .shift])
-                    .disabled(!store.canSend)
-                    .help("Send (⇧⌘D)")
+                // Reviewing an agent's draft: the decision is the approval
+                // card's, so sending here would go around it.
+                if request.agentName == nil {
+                    Button("Discard", systemImage: "trash") { Task { await store.discard() } }
+                        .help("Delete Draft")
+                    Button("Send", systemImage: "paperplane.fill") { Task { await store.send() } }
+                        .keyboardShortcut("d", modifiers: [.command, .shift])
+                        .disabled(!store.canSend)
+                        .help("Send (⇧⌘D)")
+                }
             }
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in

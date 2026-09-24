@@ -1,8 +1,11 @@
 //! Agents in the core (spec §9, §10): the MCP socket agents' tool calls
 //! arrive on, the per-session permission state, and the tools themselves.
 
+mod approvals;
 mod sessions;
 mod tools;
+
+pub use approvals::AgentActionInfo;
 
 pub use sessions::{
     AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem, PromptContextInfo,
@@ -45,6 +48,7 @@ pub(crate) struct AgentHub {
     pub(crate) resources: RwLock<sessions::AgentResources>,
     pub(crate) runtime: OnceLock<sessions::AgentRuntime>,
     pub(crate) fake_providers: sessions::FakeProviders,
+    pub(crate) approvals: approvals::Approvals,
 }
 
 /// The real agent adapters (spec §9.3, §9.4).

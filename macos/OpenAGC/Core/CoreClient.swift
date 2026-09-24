@@ -241,6 +241,21 @@ final class CoreClient: Sendable {
         try await call { try await core.resumeAgentSession(sessionId: sessionID) }
     }
 
+    /// Approve or reject an action the agent proposed.
+    func resolveAgentAction(_ actionID: Int64, approve: Bool) throws(CoreClientError) {
+        do {
+            try core.resolveAgentAction(actionId: actionID, approve: approve)
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
+    }
+
+    func agentActions(limit: UInt32 = 200) async throws(CoreClientError) -> [AgentActionInfo] {
+        try await call { try await core.listAgentActions(limit: limit) }
+    }
+
     /// Development: scripted agents instead of the real CLIs.
     func useFakeAgents() { core.debugUseFakeAgents() }
 
@@ -381,6 +396,7 @@ private extension CoreClientError.Kind {
 // rest of the app can use them without importing OpenAGCCore; all calls
 // into the core still go through CoreClient.
 typealias AddressInfo = OpenAGCCore.AddressInfo
+typealias AgentActionInfo = OpenAGCCore.AgentActionInfo
 typealias AgentEventInfo = OpenAGCCore.AgentEventInfo
 typealias AgentProviderInfo = OpenAGCCore.AgentProviderInfo
 typealias AgentSessionInfo = OpenAGCCore.AgentSessionInfo

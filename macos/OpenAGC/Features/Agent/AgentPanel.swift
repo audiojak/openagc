@@ -76,6 +76,10 @@ struct AgentInspector: View {
             HStack {
                 Text(agent.providerName).font(.headline)
                 Spacer()
+                if agent.pendingProposals.count > 1 {
+                    Button("Approve All (\(agent.pendingProposals.count))") { agent.approveAll() }
+                        .controlSize(.small)
+                }
                 if agent.isRunning {
                     ProgressView().controlSize(.small)
                     Button("Stop") { agent.cancel() }
@@ -197,6 +201,61 @@ private struct EntryView: View {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .font(.callout)
                 .foregroundStyle(.orange)
+        case let .proposal(actionID, tool, summary, draftID, state):
+            ProposalCard(actionID: actionID, tool: tool, summary: summary, draftID: draftID, state: state)
+        }
+    }
+}
+
+/// An action waiting for the user (spec §10.4): what it does, a way to
+/// review the message for sends and forwards, and the decision.
+private struct ProposalCard: View {
+    let actionID: Int64
+    let tool: String
+    let summary: String
+    let draftID: Int64?
+    let state: AgentStore.Entry.ProposalState
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(summary, systemImage: Self.symbol(tool))
+                .font(.callout.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+            switch state {
+            case .pending:
+                HStack {
+                    if let draftID {
+                        Button("Review…") {
+                            model.compose(.review(draftID: draftID, agent: model.agent.providerName))
+                        }
+                    }
+                    Spacer()
+                    Button("Reject", role: .destructive) { model.agent.resolve(actionID, approve: false) }
+                    Button("Approve") { model.agent.resolve(actionID, approve: true) }
+                        .buttonStyle(.borderedProminent)
+                }
+                .controlSize(.small)
+            case .approved:
+                Label("Approved", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+            case .rejected:
+                Label("Declined", systemImage: "xmark.circle").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(state == .pending ? AnyShapeStyle(.yellow.opacity(0.12)) : AnyShapeStyle(.quaternary.opacity(0.4)),
+                    in: .rect(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(state == .pending ? .yellow.opacity(0.6) : .clear))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Proposed: \(summary)")
+    }
+
+    static func symbol(_ tool: String) -> String {
+        switch tool {
+        case "mail_send": "paperplane"
+        case "mail_forward": "arrowshape.turn.up.right"
+        case "mail_delete": "trash"
+        default: "hand.raised"
         }
     }
 }

@@ -113,3 +113,37 @@ struct AgentHistoryTests {
         #expect(agent.entries.last?.kind == .reply("You said: second"))
     }
 }
+
+@MainActor
+struct ApprovalCardTests {
+    @Test func proposalsBecomeCardsAndResolveFromTheirEvent() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let model = AppModel(core: try CoreClient(dataDirectory: dir))
+        await model.start(openDemo: true)
+        let agent = model.agent
+        await agent.loadProviders()
+        await model.askAgent("hi")
+        let session = try #require(agent.sessionID)
+        agent.isPresented = false
+        await agent.apply(sessionID: session, events: [
+            .actionProposed(actionId: 7, tool: "mail_send", summary: "Send “Lunch” to sam@example.org", draftId: 3),
+            .actionProposed(actionId: 8, tool: "mail_delete", summary: "Move 2 threads to Trash", draftId: nil),
+        ])
+        #expect(agent.isPresented, "a proposal brings the panel up")
+        #expect(agent.pendingProposals == [7, 8])
+        await agent.apply(sessionID: session, events: [.actionResolved(actionId: 7, approved: true)])
+        #expect(agent.pendingProposals == [8])
+        // Resolving an action the core no longer waits on marks it declined.
+        agent.resolve(8, approve: true)
+        #expect(agent.pendingProposals.isEmpty)
+        let states = agent.entries.compactMap { entry -> AgentStore.Entry.ProposalState? in
+            if case let .proposal(_, _, _, _, state) = entry.kind { state } else { nil }
+        }
+        #expect(states == [.approved, .rejected])
+    }
+
+    @Test func reviewRequestsCarryTheAgentName() {
+        #expect(ComposeRequest.review(draftID: 3, agent: "Claude").agentName == "Claude")
+        #expect(ComposeRequest.draft(id: 3).agentName == nil)
+    }
+}

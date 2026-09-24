@@ -21,8 +21,8 @@ mod sync;
 
 pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
 pub use agents::{
-    AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem, PromptContextInfo,
-    TextExtractor,
+    AgentActionInfo, AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem,
+    PromptContextInfo, TextExtractor,
 };
 pub use attachments::AttachmentFileInfo;
 pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};

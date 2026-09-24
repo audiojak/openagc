@@ -51,23 +51,37 @@ pub(crate) async fn call(core: &Arc<Core>, session: &str, tool: Tool, arguments:
         ProposedAction { tool, thread_ids: thread_ids_of(tool, &arguments), draft_id: arguments["draft_id"].as_i64() };
     let now = mail_sync::now_millis();
     let checked = core.agents.with_session(session, |s| s.guard.check(&action, now));
-    match checked {
+    let refusal = match checked {
         None => return Outcome::error("unknown_session", "this agent session has ended"),
-        Some(Err(reason)) => return Outcome::error("denied", reason.to_string()),
-        Some(Ok(())) => {}
-    }
-    let policy = core.agents.policy.read().unwrap_or_else(|e| e.into_inner()).clone();
-    match decide(&policy, &action) {
-        Decision::Allow => {}
-        Decision::Deny(reason) => return Outcome::error("denied", reason.to_string()),
-        // The approval flow arrives with the write tools (spec §10.4).
-        Decision::RequireApproval => {
-            return Outcome::error(
-                "approval_unavailable",
-                "this action needs the user's approval, which is not available yet",
-            );
+        Some(Err(reason)) => Some(reason.to_string()),
+        Some(Ok(())) => {
+            let policy = core.agents.policy.read().unwrap_or_else(|e| e.into_inner()).clone();
+            match decide(&policy, &action) {
+                Decision::Deny(reason) => Some(reason.to_string()),
+                Decision::Allow => None,
+                Decision::RequireApproval => {
+                    return approve_then_run(core, session, tool, arguments).await;
+                }
+            }
         }
-    }
+    };
+    let action_id =
+        core.record_action(session, tool, &arguments, if refusal.is_some() { "denied" } else { "allowed" }).await;
+    let outcome = match refusal {
+        Some(reason) => Outcome::error("denied", reason),
+        None => run(core, session, tool, arguments).await,
+    };
+    let state = if matches!(outcome, Outcome::Ok { .. }) { "done" } else { "failed" };
+    let state = if refusal_state(&outcome) { "denied" } else { state };
+    core.finish_action(action_id, state, Some(super::approvals::outcome_summary(&outcome))).await;
+    outcome
+}
+
+fn refusal_state(outcome: &Outcome) -> bool {
+    matches!(outcome, Outcome::Error { code, .. } if code == "denied")
+}
+
+async fn run(core: &Arc<Core>, session: &str, tool: Tool, arguments: Value) -> Outcome {
     let result = match tool {
         Tool::Search => search(core, session, arguments).await,
         Tool::GetThread => get_thread(core, session, arguments).await,
@@ -83,9 +97,139 @@ pub(crate) async fn call(core: &Arc<Core>, session: &str, tool: Tool, arguments:
         Tool::AddLabel => label_threads(core, arguments, true).await,
         Tool::RemoveLabel => label_threads(core, arguments, false).await,
         Tool::CreateLabel => create_label(core, arguments).await,
-        _ => Err(Outcome::error("not_available", format!("{} is not available yet", tool.name()))),
+        // External tools only ever run after approval.
+        Tool::Send | Tool::Forward | Tool::Delete => {
+            Err(Outcome::error("failed", "external actions run only after approval"))
+        }
     };
     result.unwrap_or_else(|e| e)
+}
+
+/// What the user approves, prepared before asking: the summary they read
+/// and, for sends and forwards, the draft they can review.
+struct Proposal {
+    summary: String,
+    draft_id: Option<i64>,
+}
+
+async fn approve_then_run(core: &Arc<Core>, session: &str, tool: Tool, arguments: Value) -> Outcome {
+    let proposal = match prepare(core, session, tool, &arguments).await {
+        Ok(p) => p,
+        Err(outcome) => {
+            let id = core.record_action(session, tool, &arguments, "failed").await;
+            core.finish_action(id, "failed", Some(super::approvals::outcome_summary(&outcome))).await;
+            return outcome;
+        }
+    };
+    let action_id = core.record_action(session, tool, &arguments, "pending").await;
+    if let Err(declined) = core.await_approval(session, action_id, tool, proposal.summary, proposal.draft_id).await {
+        // A forward the user declined leaves no draft behind.
+        if tool == Tool::Forward
+            && let Some(draft) = proposal.draft_id
+        {
+            let _ = core.delete_draft(draft).await;
+        }
+        return declined;
+    }
+    let outcome = match tool {
+        Tool::Send | Tool::Forward => match proposal.draft_id {
+            Some(draft) => match core.clone().send_draft(draft).await {
+                Ok(()) => Outcome::json(json!({ "sent": true, "draft_id": draft })),
+                Err(e) => failed(e),
+            },
+            None => Outcome::error("failed", "no draft to send"),
+        },
+        Tool::Delete => {
+            let a: Result<ThreadsArgs, Outcome> = args(arguments);
+            match a {
+                Ok(a) => {
+                    let n = a.thread_ids.len();
+                    match core.trash(a.thread_ids).await {
+                        Ok(()) => Outcome::json(json!({ "trashed": n })),
+                        Err(e) => failed(e),
+                    }
+                }
+                Err(e) => e,
+            }
+        }
+        // A reversible tool the user asked to approve.
+        _ => run(core, session, tool, arguments).await,
+    };
+    let state = if matches!(outcome, Outcome::Ok { .. }) { "done" } else { "failed" };
+    core.finish_action(action_id, state, Some(super::approvals::outcome_summary(&outcome))).await;
+    outcome
+}
+
+fn plural(n: usize, one: &str) -> String {
+    format!("{n} {one}{}", if n == 1 { "" } else { "s" })
+}
+
+fn recipients(d: &crate::DraftInfo) -> String {
+    let all: Vec<String> = d.to.iter().chain(&d.cc).chain(&d.bcc).map(|a| a.email.clone()).collect();
+    if all.is_empty() { "no recipients".into() } else { all.join(", ") }
+}
+
+async fn prepare(core: &Arc<Core>, session: &str, tool: Tool, arguments: &Value) -> Result<Proposal, Outcome> {
+    match tool {
+        Tool::Send => {
+            let draft_id = arguments["draft_id"]
+                .as_i64()
+                .ok_or_else(|| Outcome::error("invalid_arguments", "draft_id is required"))?;
+            let d = core
+                .get_draft(draft_id)
+                .await
+                .map_err(failed)?
+                .ok_or_else(|| Outcome::error("not_found", "that draft no longer exists"))?;
+            if d.to.is_empty() && d.cc.is_empty() && d.bcc.is_empty() {
+                return Err(Outcome::error("invalid_arguments", "the draft has no recipients"));
+            }
+            Ok(Proposal {
+                summary: format!("Send “{}” to {}", d.subject, recipients(&d)), draft_id: Some(draft_id)
+            })
+        }
+        Tool::Forward => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct ForwardArgs {
+                message_id: String,
+                to: Vec<String>,
+                note_markdown: Option<String>,
+            }
+            let a: ForwardArgs = args(arguments.clone())?;
+            let not_found = || Outcome::error("not_found", "no such message");
+            let db = core.db().map_err(failed)?;
+            let mid = MessageId(a.message_id.clone());
+            let m = db
+                .read(move |c| read::get_message(c, &mid))
+                .await
+                .map_err(|e| failed(e.into()))?
+                .ok_or_else(not_found)?;
+            if !in_scope(core, session, &m.thread_id) {
+                return Err(not_found());
+            }
+            let to = addresses(Some(a.to))?.unwrap_or_default();
+            if to.is_empty() {
+                return Err(Outcome::error("invalid_arguments", "say who to forward it to"));
+            }
+            let mut draft = core.forward_draft(a.message_id).await.map_err(failed)?;
+            draft.to = to;
+            draft.body_html = a.note_markdown.as_deref().map(mail_mime::markdown_to_html).unwrap_or_default();
+            let id = core.save_draft(draft.clone()).await.map_err(failed)?;
+            core.agents.with_session(session, |s| s.guard.allow_draft(id));
+            Ok(Proposal {
+                summary: format!("Forward “{}” to {}", m.subject, recipients(&draft)), draft_id: Some(id)
+            })
+        }
+        Tool::Delete => {
+            let n = arguments["thread_ids"].as_array().map_or(0, Vec::len);
+            Ok(Proposal { summary: format!("Move {} to Trash", plural(n, "thread")), draft_id: None })
+        }
+        other => {
+            let n = arguments["thread_ids"].as_array().map_or(0, Vec::len);
+            let what = if n > 0 { format!(" on {}", plural(n, "thread")) } else { String::new() };
+            Ok(Proposal { summary: format!("{}{what}", other.name()), draft_id: None })
+        }
+    }
 }
 
 fn in_scope(core: &Core, session: &str, thread: &ThreadId) -> bool {
@@ -449,6 +593,9 @@ async fn update_draft(core: &Arc<Core>, session: &str, arguments: Value) -> Resu
         })
         .flatten()
         .ok_or_else(not_yours)?;
+    if core.agents.approvals.is_frozen(a.draft_id) {
+        return Err(Outcome::error("denied", "the user is reviewing this draft; wait for their answer"));
+    }
     let mut draft = core
         .get_draft(a.draft_id)
         .await

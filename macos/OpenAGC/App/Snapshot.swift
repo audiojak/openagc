@@ -14,6 +14,7 @@ import os
 ///                                       capture it instead
 ///   -OpenAGCSnapshotAgentPrompt <text>  ask the agent first (use with
 ///                                       -OpenAGCFakeAgents YES)
+///   -OpenAGCSnapshotProposal <summary>  show a sample approval card
 ///   -OpenAGCSnapshotWidth <points>      resize the main window first
 ///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
 ///                                       (catches layer-only SwiftUI content)
@@ -61,6 +62,12 @@ enum Snapshot {
                 await model.agent.loadProviders()
                 await model.askAgent(prompt)
                 try? await Task.sleep(for: .milliseconds(800))
+                // A sample approval card: the scripted agent cannot call tools.
+                if let summary = defaults.string(forKey: "OpenAGCSnapshotProposal"), let session = model.agent.sessionID {
+                    await model.agent.apply(sessionID: session, events: [
+                        .actionProposed(actionId: 1, tool: "mail_send", summary: summary, draftId: 1),
+                    ])
+                }
             }
             var window: NSWindow?
             if let compose = defaults.string(forKey: "OpenAGCSnapshotCompose"), let model = delegate.model {

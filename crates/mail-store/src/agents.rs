@@ -136,6 +136,78 @@ pub fn transcript(conn: &Connection, uuid: &str) -> StoreResult<Vec<TranscriptRo
         .collect::<Result<_, _>>()?)
 }
 
+/// One tool call in the audit log (spec §10.5).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionRow {
+    pub id: i64,
+    pub session_uuid: String,
+    pub tool: String,
+    pub args_json: String,
+    /// `read_only`, `reversible` or `external`.
+    pub risk: String,
+    /// `allowed`, `denied`, `pending`, `approved`, `rejected`, `expired`,
+    /// `done` or `failed`.
+    pub state: String,
+    pub result_summary: Option<String>,
+    pub created_at: Millis,
+    pub resolved_at: Option<Millis>,
+}
+
+/// Record a tool call; returns its action id.
+pub fn record_action(
+    tx: &Transaction<'_>,
+    uuid: &str,
+    tool: &str,
+    args_json: &str,
+    risk: &str,
+    state: &str,
+    now: Millis,
+) -> StoreResult<Option<i64>> {
+    let Some(session) = rowid(tx, uuid)? else { return Ok(None) };
+    tx.execute(
+        "INSERT INTO agent_actions (session_id, tool, args_json, risk, state, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![session, tool, args_json, risk, state, now],
+    )?;
+    Ok(Some(tx.last_insert_rowid()))
+}
+
+pub fn update_action(
+    tx: &Transaction<'_>,
+    id: i64,
+    state: &str,
+    summary: Option<&str>,
+    now: Millis,
+) -> StoreResult<()> {
+    tx.execute(
+        "UPDATE agent_actions SET state = ?2, result_summary = COALESCE(?3, result_summary), resolved_at = ?4 WHERE id = ?1",
+        params![id, state, summary, now],
+    )?;
+    Ok(())
+}
+
+/// The newest actions first, across sessions.
+pub fn list_actions(conn: &Connection, limit: u32) -> StoreResult<Vec<ActionRow>> {
+    Ok(conn
+        .prepare_cached(
+            "SELECT a.id, s.uuid, a.tool, a.args_json, a.risk, a.state, a.result_summary, a.created_at, a.resolved_at
+             FROM agent_actions a JOIN agent_sessions s ON s.id = a.session_id ORDER BY a.id DESC LIMIT ?1",
+        )?
+        .query_map([limit], |r| {
+            Ok(ActionRow {
+                id: r.get(0)?,
+                session_uuid: r.get(1)?,
+                tool: r.get(2)?,
+                args_json: r.get(3)?,
+                risk: r.get(4)?,
+                state: r.get(5)?,
+                result_summary: r.get(6)?,
+                created_at: r.get(7)?,
+                resolved_at: r.get(8)?,
+            })
+        })?
+        .collect::<Result<_, _>>()?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,5 +243,18 @@ mod tests {
         db.write_blocking(|tx| start_session(tx, "a-1", "claude-code", 40)).unwrap();
         let again = db.read_blocking(|c| get_session(c, "a-1")).unwrap().unwrap();
         assert_eq!((again.ended_at, again.started_at), (None, 10));
+
+        let id = db
+            .write_blocking(|tx| record_action(tx, "a-1", "mail_send", r#"{"draft_id":3}"#, "external", "pending", 50))
+            .unwrap()
+            .unwrap();
+        db.write_blocking(move |tx| update_action(tx, id, "done", Some("Sent"), 60)).unwrap();
+        let actions = db.read_blocking(|c| list_actions(c, 10)).unwrap();
+        assert_eq!(actions[0].state, "done");
+        assert_eq!(actions[0].result_summary.as_deref(), Some("Sent"));
+        assert_eq!((actions[0].session_uuid.as_str(), actions[0].resolved_at), ("a-1", Some(60)));
+        assert!(
+            db.write_blocking(|tx| record_action(tx, "nope", "x", "{}", "read_only", "allowed", 1)).unwrap().is_none()
+        );
     }
 }
