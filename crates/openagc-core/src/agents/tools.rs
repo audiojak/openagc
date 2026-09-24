@@ -654,6 +654,14 @@ async fn label_threads(core: &Arc<Core>, arguments: Value, add: bool) -> Result<
     let db = core.db().map_err(failed)?;
     let labels = db.read(read::list_labels).await.map_err(|e| failed(e.into()))?;
     let wanted = a.label.trim();
+    // System labels are refused by name whether or not this account has them.
+    let system = mail_domain::system_labels::PROTECTED.iter().chain(&["INBOX", "UNREAD", "STARRED", "IMPORTANT"]);
+    if system.clone().any(|s| s.eq_ignore_ascii_case(wanted)) {
+        return Err(Outcome::error(
+            "invalid_arguments",
+            format!("{wanted} is a system label; only user labels can be set here"),
+        ));
+    }
     let label = labels
         .iter()
         .find(|l| l.id.as_str() == wanted)

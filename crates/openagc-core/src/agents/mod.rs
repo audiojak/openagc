@@ -119,4 +119,6 @@ impl Core {
 }
 
 #[cfg(test)]
+mod injection_tests;
+#[cfg(test)]
 mod tests;
