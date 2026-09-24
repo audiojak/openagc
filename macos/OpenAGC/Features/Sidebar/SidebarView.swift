@@ -16,7 +16,7 @@ struct SidebarView: View {
             if !model.mailboxes.labels.isEmpty {
                 Section("Labels") {
                     ForEach(model.mailboxes.labels, id: \.id) { mailbox in
-                        MailboxRow(mailbox: mailbox)
+                        MailboxRow(mailbox: mailbox, tint: mailbox.labelId.flatMap { model.mailboxes.labelColors[$0] }.flatMap(Color.init(hex:)))
                     }
                 }
             }
@@ -55,9 +55,16 @@ struct SidebarView: View {
 
 private struct MailboxRow: View {
     let mailbox: MailboxInfo
+    var tint: Color?
 
     var body: some View {
-        Label(mailbox.name, systemImage: mailbox.kind.symbolName)
+        Label {
+            Text(mailbox.name)
+        } icon: {
+            // Gmail's label colors are chosen to read on light and dark.
+            Image(systemName: tint == nil ? mailbox.kind.symbolName : "tag.fill")
+                .foregroundStyle(tint ?? .secondary)
+        }
             .badge(badgeCount)
             .tag(mailbox.id)
     }
@@ -69,6 +76,15 @@ private struct MailboxRow: View {
         case .sent, .archive, .trash, .spam: 0
         default: Int(mailbox.unreadCount)
         }
+    }
+}
+
+extension Color {
+    /// `#rrggbb` → Color.
+    init?(hex: String) {
+        let h = hex.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard h.count == 6, let v = UInt32(h, radix: 16) else { return nil }
+        self.init(red: Double((v >> 16) & 0xff) / 255, green: Double((v >> 8) & 0xff) / 255, blue: Double(v & 0xff) / 255)
     }
 }
 

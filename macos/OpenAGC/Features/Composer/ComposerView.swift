@@ -198,8 +198,10 @@ struct ComposerView: View {
         <!doctype html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="\(EmailDocument.contentSecurityPolicy)">
         <meta name="color-scheme" content="light dark">
-        <style>body{font:13px -apple-system;margin:8px 16px;color:#666}
-        blockquote{margin:0 0 0 4px;padding-left:10px;border-left:2px solid #ccc}</style>
+        <style>:root{color-scheme:light dark}
+        body{font:13px -apple-system;margin:8px 16px;background:Canvas;color:GrayText}
+        blockquote{margin:0 0 0 4px;padding-left:10px;border-left:2px solid color-mix(in srgb, CanvasText 25%, transparent)}
+        a{color:LinkText}</style>
         </head><body>\(html)</body></html>
         """
     }
