@@ -5,8 +5,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use mail_domain::{LabelId, MessageId};
-use mail_store::{Db, MailWriter, ThreadChanges, queue, read};
+use mail_domain::{EmailAddress, LabelId, MessageId, ThreadId, system_labels};
+use mail_store::{Db, IncomingMessage, MailWriter, ThreadChanges, queue, read};
 use provider_api::{Change, ListFilter, MailProvider, PageToken, Priority, ProviderError};
 
 use crate::convert::to_incoming;
@@ -55,6 +55,39 @@ pub struct IncrementalReport {
     pub added: usize,
     pub deleted: usize,
     pub relabeled: usize,
+    /// Messages that arrived since the last sync, unread in the Inbox and
+    /// not sent by the user: what a new-mail notification is about.
+    pub new_mail: Vec<NewMail>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewMail {
+    pub id: MessageId,
+    pub thread_id: ThreadId,
+    pub from: Option<EmailAddress>,
+    pub subject: String,
+    pub snippet: String,
+}
+
+impl NewMail {
+    /// `m` is new mail worth announcing if it is unread in the Inbox, not
+    /// from the user, and was not already stored (e.g. by a backfill).
+    fn from_incoming(m: &IncomingMessage, already_stored: bool) -> Option<Self> {
+        let has = |l: &str| m.label_ids.iter().any(|x| x.as_str() == l);
+        let fresh = !already_stored
+            && has(system_labels::INBOX)
+            && has(system_labels::UNREAD)
+            && !has(system_labels::SENT)
+            && !has(system_labels::SPAM)
+            && !has(system_labels::TRASH);
+        fresh.then(|| Self {
+            id: m.id.clone(),
+            thread_id: m.thread_id.clone(),
+            from: m.from.clone(),
+            subject: m.subject.clone(),
+            snippet: m.snippet.clone(),
+        })
+    }
 }
 
 pub struct SyncEngine {
@@ -204,6 +237,9 @@ impl SyncEngine {
                 let mut report = IncrementalReport::default();
                 let mut w = MailWriter::new(tx);
                 for m in &incoming {
+                    let stored =
+                        tx.prepare_cached("SELECT 1 FROM messages WHERE gmail_id = ?1")?.exists([m.id.as_str()])?;
+                    report.new_mail.extend(NewMail::from_incoming(m, stored));
                     w.upsert_message(m)?;
                     report.added += 1;
                 }

@@ -22,7 +22,7 @@ pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
 pub use attachments::AttachmentFileInfo;
 pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
-pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, SyncState};
+pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};
 pub use mutations::OutboxStatus;
 pub use secrets::SecretStore;
 

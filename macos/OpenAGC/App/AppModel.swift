@@ -48,6 +48,7 @@ final class AppModel {
     /// `openWindow` action.
     @ObservationIgnored var openComposer: ((ComposeRequest) -> Void)?
 
+    let notifier = NewMailNotifier()
     let mailboxes: MailboxStore
     let threads: ThreadListStore
     let reader: ReaderStore
@@ -73,6 +74,8 @@ final class AppModel {
             return
         }
         listenForEvents(from: core)
+        notifier.openThread = { [weak self] in self?.reveal(threadID: $0) }
+        notifier.install()
         if openDemo {
             await openDemoMailbox()
         } else if let id = UserDefaults.standard.string(forKey: "accountID") {
@@ -144,6 +147,7 @@ final class AppModel {
             try await core.openAccount(accountID)
             accountState = .open(accountID: accountID)
             await mailboxes.reload()
+            updateBadge()
             await threads.show(mailboxID: selectedMailboxID ?? "INBOX")
             if accountID != Self.demoAccountID, core.accountHasCredentials(accountID) {
                 try core.startSync()
@@ -153,6 +157,20 @@ final class AppModel {
             logger.error("opening account failed: \(error.message, privacy: .public)")
             accountState = .failed(error.message)
         }
+    }
+
+    // MARK: Notifications
+
+    func updateBadge() {
+        notifier.updateBadge(inboxUnread: mailboxes.mailboxes.first { $0.kind == .inbox }?.unreadCount ?? 0)
+    }
+
+    /// Show a thread from a notification: switch to the Inbox and select it.
+    func reveal(threadID: String) {
+        if selectedMailboxID != "INBOX" { selectedMailboxID = "INBOX" }
+        searchText = ""
+        selectedThreadIDs = []
+        selectedThreadID = threadID
     }
 
     // MARK: Compose
@@ -303,6 +321,7 @@ final class AppModel {
         switch event {
         case let .threadsChanged(mailboxID, hint):
             await mailboxes.reload()
+            updateBadge()
             if mailboxID == threads.mailboxID || threads.searchQuery != nil {
                 await threads.apply(hint)
             }
@@ -318,6 +337,8 @@ final class AppModel {
             }
         case let .outboxStatus(_, failed):
             failedChanges = failed
+        case let .newMail(mail):
+            notifier.announce(mail)
         }
     }
 }

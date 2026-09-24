@@ -25,6 +25,7 @@
 		3CFA63FC5E129133E7001146 /* KeychainSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2ED5356A1BBFFEABB704F9 /* KeychainSecretStore.swift */; };
 		4BBB2B43CEEF1AFA6C20B2D3 /* AttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F36E7595DF6E9B290AE189 /* AttachmentTests.swift */; };
 		4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */; };
+		4FF62FFF28E05444455223CB /* NewMailNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9494AAF5D25AD46911AD35 /* NewMailNotifier.swift */; };
 		5983A19ACD9796ACFA5E19D5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB3DFF446CD804B9EB7984C8 /* AppModel.swift */; };
 		691D6124014BCD1F910B8B27 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F65D12222A0363EDB8FFE0 /* OnboardingView.swift */; };
 		69662C039B9C1E122F754EDE /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5694ECC8EA36F2A4119F98 /* ComposerView.swift */; };
@@ -34,6 +35,7 @@
 		751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */; };
 		8AE4FC81B09805EFF46AE738 /* ActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA440AC1C73AD0A9E18E993 /* ActionTests.swift */; };
 		8BCA879DA87A93071503AFD8 /* OpenAGCCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; };
+		936F90444AC202FD05E01DE6 /* NotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C869C66EBC8340DA185D26D9 /* NotificationTests.swift */; };
 		9CC3AECF8DB746BF967161B7 /* KeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700730FD7CE20073EC4E05F4 /* KeychainTests.swift */; };
 		A183D5AC94021A65ABDCCBDD /* ComposerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05AE95A75189A1675986338 /* ComposerStore.swift */; };
 		A469FDD2983D0CFA9FBD5AB6 /* RecipientField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */; };
@@ -123,8 +125,10 @@
 		ACA440AC1C73AD0A9E18E993 /* ActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionTests.swift; sourceTree = "<group>"; };
 		AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellTests.swift; sourceTree = "<group>"; };
 		AF46AFEDFFFF3F8D14FFDF02 /* ComposerHTML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerHTML.swift; sourceTree = "<group>"; };
+		BB9494AAF5D25AD46911AD35 /* NewMailNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewMailNotifier.swift; sourceTree = "<group>"; };
 		BD6458B52C0ABAB8AED1A828 /* MailboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailboxStore.swift; sourceTree = "<group>"; };
 		C05AE95A75189A1675986338 /* ComposerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStore.swift; sourceTree = "<group>"; };
+		C869C66EBC8340DA185D26D9 /* NotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationTests.swift; sourceTree = "<group>"; };
 		CD2ED5356A1BBFFEABB704F9 /* KeychainSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretStore.swift; sourceTree = "<group>"; };
 		CF32A9AE2D35843656097005 /* ThreadRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadRowView.swift; sourceTree = "<group>"; };
 		D24E3C75C954D3F4970670D2 /* RichTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextEditor.swift; sourceTree = "<group>"; };
@@ -260,6 +264,7 @@
 				FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */,
 				700730FD7CE20073EC4E05F4 /* KeychainTests.swift */,
 				7491CD8B391923F8E19F565D /* MailReadTests.swift */,
+				C869C66EBC8340DA185D26D9 /* NotificationTests.swift */,
 				56136D185C680F33C31C33A6 /* OnboardingTests.swift */,
 				4372C03A0DB7F78DF414F892 /* PerformanceTests.swift */,
 				FDAEE7BA4E6152A7714BD298 /* ReaderTests.swift */,
@@ -283,6 +288,14 @@
 			);
 			name = OpenAGC;
 			path = ..;
+			sourceTree = "<group>";
+		};
+		ACB56B1D93EAD3FFE3A9A111 /* Notifications */ = {
+			isa = PBXGroup;
+			children = (
+				BB9494AAF5D25AD46911AD35 /* NewMailNotifier.swift */,
+			);
+			path = Notifications;
 			sourceTree = "<group>";
 		};
 		B755F7DDAB76557EFF1EA484 /* ThreadList */ = {
@@ -309,6 +322,7 @@
 				1D30BC16B523BE0C4B1F7695 /* Agent */,
 				CE7481F262DA91540E01D859 /* Composer */,
 				1256AAEC04D116859F4845BE /* MessageView */,
+				ACB56B1D93EAD3FFE3A9A111 /* Notifications */,
 				F02A9018A33830637A9E3504 /* Onboarding */,
 				7775276806229C17EF4F389C /* Search */,
 				8A7408779DD1060A1ED75B09 /* Settings */,
@@ -525,6 +539,7 @@
 				F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */,
 				9CC3AECF8DB746BF967161B7 /* KeychainTests.swift in Sources */,
 				24C211EEAB25BC61A3BB4F70 /* MailReadTests.swift in Sources */,
+				936F90444AC202FD05E01DE6 /* NotificationTests.swift in Sources */,
 				277A64612543D96AB16DA154 /* OnboardingTests.swift in Sources */,
 				319185B7856E5D37CAB6C52A /* PerformanceTests.swift in Sources */,
 				0665BDF0CA8EA8B79ED06F61 /* ReaderTests.swift in Sources */,
@@ -550,6 +565,7 @@
 				C9F5E1202A2849397390D3AC /* MailboxStore.swift in Sources */,
 				DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */,
 				020FC5F4D626FA3D9FEC35D0 /* MessageWebView.swift in Sources */,
+				4FF62FFF28E05444455223CB /* NewMailNotifier.swift in Sources */,
 				691D6124014BCD1F910B8B27 /* OnboardingView.swift in Sources */,
 				751F75594BDFE0DB89944569 /* OpenAGCApp.swift in Sources */,
 				F1C67B7F56BB5793575AA7DB /* ReaderStore.swift in Sources */,

@@ -26,6 +26,7 @@ struct OpenAGCApp: App {
 
         Settings {
             SettingsView()
+                .environment(model)
         }
     }
 

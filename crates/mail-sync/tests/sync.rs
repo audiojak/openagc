@@ -136,6 +136,8 @@ async fn incremental_sync_applies_new_mail_label_changes_and_deletions() {
 
     let report = engine.sync_incremental().await.unwrap();
     assert_eq!((report.added, report.relabeled, report.deleted), (1, 1, 1));
+    assert_eq!(report.new_mail.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["new"]);
+    assert_eq!(report.new_mail[0].thread_id.as_str(), "t7");
 
     let inbox = db.read(|c| read::list_threads(c, "INBOX", None, 10)).await.unwrap();
     assert_eq!(inbox.rows.iter().map(|t| t.id.as_str()).collect::<Vec<_>>(), vec!["t7"]);
@@ -151,6 +153,7 @@ async fn incremental_sync_applies_new_mail_label_changes_and_deletions() {
     // Running again with nothing new is a no-op.
     let again = engine.sync_incremental().await.unwrap();
     assert_eq!((again.added, again.relabeled, again.deleted), (0, 0, 0));
+    assert!(again.new_mail.is_empty());
     assert_consistent(&db);
 }
 
@@ -163,7 +166,8 @@ async fn mail_arriving_during_bootstrap_is_not_lost() {
     fake.deliver(message("mid-bootstrap", "t8", 0, &["INBOX"]));
     engine.bootstrap_list_rest().await.unwrap();
     engine.backfill_all().await.unwrap();
-    engine.sync_incremental().await.unwrap();
+    let report = engine.sync_incremental().await.unwrap();
+    assert!(report.new_mail.is_empty(), "already stored by the bootstrap: not announced again");
     let inbox = db.read(|c| read::list_threads(c, "INBOX", None, 10)).await.unwrap();
     assert!(inbox.rows.iter().any(|t| t.id.as_str() == "t8"));
     assert_consistent(&db);
@@ -209,4 +213,20 @@ async fn an_expired_cursor_triggers_a_full_resync() {
 async fn incremental_before_bootstrap_is_an_error() {
     let (_fake, _db, _recorder, engine) = setup("early");
     assert!(matches!(engine.sync_incremental().await.unwrap_err(), SyncError::NotBootstrapped));
+}
+
+#[tokio::test]
+async fn only_unread_inbox_mail_from_others_is_new_mail() {
+    let (fake, _db, _recorder, engine) = setup("new-mail");
+    seed_mailbox(&fake);
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    engine.backfill_all().await.unwrap();
+    fake.deliver(message("hello", "t20", 0, &["INBOX", "UNREAD"]));
+    fake.deliver(message("already-read", "t21", 0, &["INBOX"]));
+    fake.deliver(message("mine", "t22", 0, &["SENT", "INBOX", "UNREAD"]));
+    fake.deliver(message("junk", "t23", 0, &["SPAM", "UNREAD"]));
+    fake.deliver(message("filtered", "t24", 0, &["UNREAD", "Label_1"]));
+    let report = engine.sync_incremental().await.unwrap();
+    assert_eq!(report.new_mail.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["hello"]);
 }

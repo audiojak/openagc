@@ -349,9 +349,19 @@ struct ThreadChangeHint: Sendable, Equatable {
 enum CoreClientEvent: Sendable, Equatable {
     enum SyncState: Sendable, Equatable { case idle, bootstrapping, syncing, offline, error }
 
+    /// A message that just arrived, unread in the Inbox.
+    struct NewMail: Sendable, Equatable {
+        let messageID: String
+        let threadID: String
+        let senderName: String
+        let subject: String
+        let snippet: String
+    }
+
     case threadsChanged(mailboxID: String, hint: ThreadChangeHint)
     case syncStatus(SyncState, pending: UInt32)
     case outboxStatus(pending: UInt32, failed: UInt32)
+    case newMail([NewMail])
     case error(CoreClientError)
 }
 
@@ -416,6 +426,12 @@ private extension CoreClientEvent {
             self = .outboxStatus(pending: pending, failed: failed)
         case let .error(kind, message):
             self = .error(CoreClientError(kind: .init(kind), message: message))
+        case let .newMail(messages):
+            self = .newMail(messages.map {
+                NewMail(messageID: $0.messageId, threadID: $0.threadId,
+                        senderName: $0.from.map { $0.name ?? $0.email } ?? "Unknown sender",
+                        subject: $0.subject, snippet: $0.snippet)
+            })
         case .log:
             return nil
         }

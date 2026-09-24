@@ -77,6 +77,27 @@ impl ChangeHint {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct NewMailInfo {
+    pub message_id: String,
+    pub thread_id: String,
+    pub from: Option<crate::ffi::AddressInfo>,
+    pub subject: String,
+    pub snippet: String,
+}
+
+impl From<mail_sync::NewMail> for NewMailInfo {
+    fn from(m: mail_sync::NewMail) -> Self {
+        Self {
+            message_id: m.id.0,
+            thread_id: m.thread_id.0,
+            from: m.from.map(Into::into),
+            subject: m.subject,
+            snippet: m.snippet,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum SyncState {
     Idle,
@@ -109,6 +130,11 @@ pub enum CoreEvent {
     Error {
         kind: ErrorKind,
         message: String,
+    },
+    /// Mail that just arrived, unread in the Inbox (spec §14.7). Only from
+    /// incremental sync, so a first sync never floods notifications.
+    NewMail {
+        messages: Vec<NewMailInfo>,
     },
     /// Warn/error log records from Rust, logged by Swift with `os.Logger`
     /// so unified-logging privacy stays under Swift's control (spec §17).

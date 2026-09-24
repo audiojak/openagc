@@ -347,6 +347,24 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, CoreEvent::SyncStatus { state: SyncState::Bootstrapping, .. }))
         );
+        // Only the message that arrived after the first sync is announced.
+        wait_for("a new-mail event", || {
+            recorder.0.lock().unwrap().iter().any(|e| matches!(e, CoreEvent::NewMail { .. }))
+        });
+        let announced: Vec<String> = recorder
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                CoreEvent::NewMail { messages } => {
+                    Some(messages.iter().map(|m| m.message_id.clone()).collect::<Vec<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(announced, vec!["m3"]);
         core.stop_sync();
     }
 

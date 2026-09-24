@@ -232,7 +232,13 @@ impl SyncService {
         let mut backoff = Duration::from_secs(5);
         loop {
             match self.engine.sync_incremental().await {
-                Ok(_) => backoff = Duration::from_secs(5),
+                Ok(report) => {
+                    backoff = Duration::from_secs(5);
+                    if !report.new_mail.is_empty() {
+                        let messages = report.new_mail.into_iter().map(Into::into).collect();
+                        self.events.emit(CoreEvent::NewMail { messages });
+                    }
+                }
                 Err(SyncError::ResyncStarted) => self.backfill_wake.notify_one(),
                 Err(e) if e.is_transient() => {
                     self.offline_or_error(&e);
