@@ -1418,9 +1418,14 @@ Every target in §1.3 traces to one of these rules.
 - Sidebar: mailboxes and labels, unread badges, drag-to-label target.
 - Thread list (AppKit): sender, subject, snippet, date, unread dot,
   attachment icon, label chips; multi-select; swipe actions (archive,
-  read); context menu; keyboard: `↑↓` move, `e` archive, `u`/`r`
-  read/unread, `l` label popover, `⌘⇧U` unread, `⌘R` reply, `⌘⇧R`
-  reply-all, `⌘⇧F` forward, `⌘N` new, `⌘F` search, `⌘K` agent prompt.
+  read); context menu; keyboard: `↑↓`/`j k` move, `e` archive, `u`
+  toggle read, `s` star, `l` label popover, `#`/`⌫` trash, `r` reply,
+  `a` reply-all, `f` forward, `c` compose, `/` search; menu equivalents
+  `⌃⌘A` archive, `⌘⌫` trash, `⌘⇧U` read/unread, `⌘⇧L` star, `⌘R`
+  reply, `⌘⇧R` reply-all, `⌘⇧F` forward, `⌘N` new, `⌘F` search,
+  `⌘1`–`⌘6` mailboxes, `⌘⇧N` check for new mail, `⌘K` agent prompt.
+  *(Amended in M2: `r` is reply, Gmail-style; `u` toggles read either
+  way.)*
 - Thread view: one locked-down `WKWebView` renders the whole thread as a
   single document, one `<details>` block per message (the latest and any
   unread open, the rest collapsed to a snippet, no JavaScript needed), with

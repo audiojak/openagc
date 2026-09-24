@@ -5,6 +5,7 @@ struct MainWindow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility = NavigationSplitViewVisibility.all
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         Group {
@@ -16,6 +17,7 @@ struct MainWindow: View {
                 mailWindow
             }
         }
+        .focusedSceneValue(\.isMailWindow, true)
         .task { if model.accountState == .starting { await model.start() } }
         .onAppear { model.openComposer = { openWindow(id: "compose", value: $0) } }
     }
@@ -31,6 +33,8 @@ struct MainWindow: View {
             detail
         }
         .searchable(text: Bindable(model).searchText, placement: .toolbar, prompt: "Search mail")
+        .searchFocused($searchFocused)
+        .onChange(of: model.searchFocusRequests) { searchFocused = true }
     }
 
     @ViewBuilder private var content: some View {

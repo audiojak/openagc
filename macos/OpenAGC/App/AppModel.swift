@@ -159,6 +159,20 @@ final class AppModel {
         }
     }
 
+    // MARK: Menus
+
+    var isMailOpen: Bool {
+        if case .open = accountState { return true }
+        return false
+    }
+
+    /// Bumped to move focus to the toolbar search field.
+    private(set) var searchFocusRequests = 0
+
+    func focusSearch() {
+        searchFocusRequests += 1
+    }
+
     // MARK: Notifications
 
     func updateBadge() {

@@ -142,6 +142,15 @@ struct ThreadListView: NSViewRepresentable {
 final class ThreadTableView: NSTableView {
     weak var model: AppModel?
 
+    /// Gmail-style j/k: move the selection like the arrow keys.
+    private func moveSelection(by delta: Int) {
+        guard numberOfRows > 0 else { return }
+        let current = selectedRow < 0 ? (delta > 0 ? -1 : numberOfRows) : selectedRow
+        let next = min(max(current + delta, 0), numberOfRows - 1)
+        selectRowIndexes(IndexSet(integer: next), byExtendingSelection: false)
+        scrollRowToVisible(next)
+    }
+
     override func keyDown(with event: NSEvent) {
         guard let model, event.modifierFlags.intersection([.command, .control, .option]).isEmpty else {
             super.keyDown(with: event)
@@ -157,6 +166,9 @@ final class ThreadTableView: NSTableView {
         case "a": model.reply(all: true)
         case "f": model.forward()
         case "c": model.compose(.new(to: nil))
+        case "j": moveSelection(by: 1)
+        case "k": moveSelection(by: -1)
+        case "/": model.focusSearch()
         default:
             if event.keyCode == 51 || event.keyCode == 117 { // delete, forward delete
                 model.trashSelection()

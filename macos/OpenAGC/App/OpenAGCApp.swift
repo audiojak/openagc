@@ -46,23 +46,80 @@ struct OpenAGCApp: App {
 /// thread being read.
 struct MailCommands: Commands {
     let model: AppModel
+    /// Set only while the main window is key, so a shortcut typed in a
+    /// composer (⌘⌫ deletes to line start there) never acts on the
+    /// selection behind it.
+    @FocusedValue(\.isMailWindow) private var isMailWindow
+
+    private var mailKey: Bool { isMailWindow == true && model.isMailOpen }
+    private var noTargets: Bool { !mailKey || model.actionTargets.isEmpty }
+    private var noReplyTarget: Bool { !mailKey || model.replyTargetMessageID == nil }
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Message") { model.compose(.new(to: nil)) }
                 .keyboardShortcut("n")
         }
+        CommandGroup(after: .textEditing) {
+            Button("Search Mail") { model.focusSearch() }
+                .keyboardShortcut("f")
+                .disabled(!mailKey)
+        }
+        CommandGroup(before: .sidebar) {
+            ForEach(Array(Self.mailboxShortcuts.enumerated()), id: \.offset) { index, item in
+                Button(item.title) { model.selectedMailboxID = item.id }
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))))
+                    .disabled(!mailKey)
+            }
+            Divider()
+            Button("Check for New Mail") { model.core?.syncNow() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(!mailKey)
+            Divider()
+        }
         CommandMenu("Message") {
             Button("Reply") { model.reply(all: false) }
                 .keyboardShortcut("r")
-                .disabled(model.replyTargetMessageID == nil)
+                .disabled(noReplyTarget)
             Button("Reply All") { model.reply(all: true) }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(model.replyTargetMessageID == nil)
+                .disabled(noReplyTarget)
             Button("Forward") { model.forward() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-                .disabled(model.replyTargetMessageID == nil)
+                .disabled(noReplyTarget)
+            Divider()
+            Button("Archive") { model.archiveSelection() }
+                .keyboardShortcut("a", modifiers: [.command, .control])
+                .disabled(noTargets)
+            Button("Move to Inbox") { model.moveSelectionToInbox() }
+                .keyboardShortcut("i", modifiers: [.command, .control])
+                .disabled(noTargets || model.selectedMailboxID == "INBOX")
+            Button("Move to Trash") { model.trashSelection() }
+                .keyboardShortcut(.delete)
+                .disabled(noTargets)
+            Divider()
+            Button("Mark as Read or Unread") { model.toggleReadSelection() }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+                .disabled(noTargets)
+            Button("Star or Unstar") { model.toggleStarSelection() }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .disabled(noTargets)
+            Divider()
+            Button("Load Remote Images") { model.reader.loadRemoteImagesForThread() }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(!mailKey || !model.reader.hasRemoteImages || model.reader.allowsRemoteImages)
         }
         TextFormattingCommands()
     }
+
+    /// `⌘1`… in the View menu, in sidebar order.
+    static let mailboxShortcuts: [(title: String, id: String)] = [
+        ("Inbox", "INBOX"), ("Starred", "STARRED"), ("Sent", "SENT"),
+        ("Drafts", "DRAFT"), ("Archive", "@archive"), ("Trash", "TRASH"),
+    ]
+}
+
+extension FocusedValues {
+    /// True in the main mail window's scene.
+    @Entry var isMailWindow: Bool?
 }

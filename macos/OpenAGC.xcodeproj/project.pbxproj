@@ -36,6 +36,7 @@
 		8AE4FC81B09805EFF46AE738 /* ActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACA440AC1C73AD0A9E18E993 /* ActionTests.swift */; };
 		8BCA879DA87A93071503AFD8 /* OpenAGCCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; };
 		936F90444AC202FD05E01DE6 /* NotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C869C66EBC8340DA185D26D9 /* NotificationTests.swift */; };
+		9975C69AAFFCD9AD909C4275 /* MenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1B952488DEE5A94BB9D8BF /* MenuTests.swift */; };
 		9CC3AECF8DB746BF967161B7 /* KeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700730FD7CE20073EC4E05F4 /* KeychainTests.swift */; };
 		A183D5AC94021A65ABDCCBDD /* ComposerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05AE95A75189A1675986338 /* ComposerStore.swift */; };
 		A469FDD2983D0CFA9FBD5AB6 /* RecipientField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */; };
@@ -135,6 +136,7 @@
 		D5D8587064562266E1C5E1DC /* SearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTests.swift; sourceTree = "<group>"; };
 		DE83811F68C4EBD9E870E49B /* CoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
 		E4C676A513B753ECEBB6FF97 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		EC1B952488DEE5A94BB9D8BF /* MenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuTests.swift; sourceTree = "<group>"; };
 		FDAEE7BA4E6152A7714BD298 /* ReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTests.swift; sourceTree = "<group>"; };
 		FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEventTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -264,6 +266,7 @@
 				FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */,
 				700730FD7CE20073EC4E05F4 /* KeychainTests.swift */,
 				7491CD8B391923F8E19F565D /* MailReadTests.swift */,
+				EC1B952488DEE5A94BB9D8BF /* MenuTests.swift */,
 				C869C66EBC8340DA185D26D9 /* NotificationTests.swift */,
 				56136D185C680F33C31C33A6 /* OnboardingTests.swift */,
 				4372C03A0DB7F78DF414F892 /* PerformanceTests.swift */,
@@ -539,6 +542,7 @@
 				F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */,
 				9CC3AECF8DB746BF967161B7 /* KeychainTests.swift in Sources */,
 				24C211EEAB25BC61A3BB4F70 /* MailReadTests.swift in Sources */,
+				9975C69AAFFCD9AD909C4275 /* MenuTests.swift in Sources */,
 				936F90444AC202FD05E01DE6 /* NotificationTests.swift in Sources */,
 				277A64612543D96AB16DA154 /* OnboardingTests.swift in Sources */,
 				319185B7856E5D37CAB6C52A /* PerformanceTests.swift in Sources */,
