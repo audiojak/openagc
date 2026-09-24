@@ -188,8 +188,7 @@ OpenAGC/
 │   │   └── Resources/
 │   ├── OpenAGCTests/
 │   ├── OpenAGCUITests/
-│   └── Packages/
-│       └── OpenAGCCore/           SwiftPM package wrapping the XCFramework + generated bindings
+│   └── (targets RustCore + OpenAGCCore wrap the XCFramework and generated bindings; see §4.1)
 ├── scripts/
 │   ├── build-core.sh              cargo build → uniffi-bindgen-swift → xcframework
 │   ├── notarize.sh
@@ -219,9 +218,15 @@ Build pipeline (`scripts/build-core.sh`):
 2. `uniffi-bindgen-swift --swift-sources --headers --modulemap --module-name
    OpenAGCCoreFFI` generates `OpenAGCCore.swift` and the C header.
 3. `xcodebuild -create-xcframework` wraps the static library and headers.
-4. `macos/Packages/OpenAGCCore` is a local SwiftPM package with a
-   `binaryTarget` for the XCFramework and a source target for the generated
-   Swift.
+4. In Xcode, an external-build `RustCore` target runs `build-core.sh` on
+   every build (cargo is incremental), and a static `OpenAGCCore`
+   framework target compiles the generated Swift and links the
+   XCFramework; the app depends on `OpenAGCCore`. *(Amended during M0: a
+   local SwiftPM `binaryTarget` was the original plan, but SwiftPM resolves
+   binary targets before any build phase runs, so Rust changes would not
+   be picked up by a normal Xcode build.)* The XCFramework wraps a plain
+   static library, so the modulemap is a plain `module`, not a
+   `framework module` — do not pass `--xcframework` to the bindgen.
 
 Static linking is deliberate: it avoids `disable-library-validation` in the
 hardened runtime and gives one Mach-O to sign.
