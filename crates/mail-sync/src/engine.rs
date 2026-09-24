@@ -61,11 +61,13 @@ pub struct SyncEngine {
     provider: Arc<dyn MailProvider>,
     db: Db,
     observer: Arc<dyn SyncObserver>,
+    /// Serializes outbox drains so one op is never sent twice.
+    pub(crate) drain_lock: tokio::sync::Mutex<()>,
 }
 
 impl SyncEngine {
     pub fn new(provider: Arc<dyn MailProvider>, db: Db, observer: Arc<dyn SyncObserver>) -> Self {
-        Self { provider, db, observer }
+        Self { provider, db, observer, drain_lock: tokio::sync::Mutex::new(()) }
     }
 
     /// True until the first bootstrap has listed every phase.
@@ -158,6 +160,8 @@ impl SyncEngine {
         let Some(cursor) = self.db.read(|c| read::sync_state(c, KEY_CURSOR)).await? else {
             return Err(SyncError::NotBootstrapped);
         };
+        // Push local intent first so history does not appear to undo it.
+        self.drain_outbox().await?;
         let set = match self.provider.changes_since(&provider_api::SyncCursor(cursor)).await {
             Ok(set) => set,
             Err(ProviderError::CursorExpired) => {
@@ -306,6 +310,18 @@ impl SyncEngine {
                 None => return Ok(()),
             }
         }
+    }
+
+    pub(crate) fn db(&self) -> &Db {
+        &self.db
+    }
+
+    pub(crate) fn provider(&self) -> &dyn MailProvider {
+        self.provider.as_ref()
+    }
+
+    pub(crate) fn publish_changes(&self, changes: &ThreadChanges) {
+        self.publish(changes);
     }
 
     fn publish(&self, changes: &ThreadChanges) {

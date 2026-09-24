@@ -54,6 +54,12 @@ pub(crate) struct AccountState {
     sync: Mutex<Option<Arc<SyncService>>>,
 }
 
+impl AccountState {
+    pub(crate) fn sync_service(&self) -> Option<Arc<SyncService>> {
+        self.sync.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+}
+
 fn client_key(account_id: &str) -> String {
     format!("oauth.client.{account_id}")
 }

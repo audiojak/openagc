@@ -22,6 +22,8 @@ pub struct FakeProvider {
     now: Millis,
     pub fetch_calls: AtomicU64,
     pub fetched_messages: AtomicU64,
+    /// Errors to return from the next write calls (modify, trash, send).
+    write_failures: Mutex<Vec<ProviderError>>,
 }
 
 #[derive(Default)]
@@ -48,6 +50,20 @@ impl FakeProvider {
             now,
             fetch_calls: AtomicU64::new(0),
             fetched_messages: AtomicU64::new(0),
+            write_failures: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Make the next `errors.len()` write calls fail, in order.
+    pub fn fail_next_writes(&self, errors: Vec<ProviderError>) {
+        let mut f = self.write_failures.lock().unwrap_or_else(|e| e.into_inner());
+        *f = errors.into_iter().rev().collect();
+    }
+
+    fn injected_failure(&self) -> ProviderResult<()> {
+        match self.write_failures.lock().unwrap_or_else(|e| e.into_inner()).pop() {
+            Some(e) => Err(e),
+            None => Ok(()),
         }
     }
 
@@ -188,6 +204,7 @@ impl MailProvider for FakeProvider {
     }
 
     async fn modify_labels(&self, op: &LabelOp) -> ProviderResult<()> {
+        self.injected_failure()?;
         let mut s = self.state();
         for id in &op.message_ids {
             apply_labels(&mut s, id, &op.add, &op.remove);
@@ -196,12 +213,14 @@ impl MailProvider for FakeProvider {
     }
 
     async fn move_to_trash(&self, id: &MessageId) -> ProviderResult<()> {
+        self.injected_failure()?;
         let mut s = self.state();
         apply_labels(&mut s, id, &[LabelId::new("TRASH")], &[LabelId::new("INBOX")]);
         Ok(())
     }
 
     async fn send(&self, raw: &[u8], thread: Option<&ThreadId>) -> ProviderResult<MessageId> {
+        self.injected_failure()?;
         let mut s = self.state();
         s.sent_counter += 1;
         let id = MessageId(format!("sent{}", s.sent_counter));

@@ -11,6 +11,7 @@ mod events;
 pub mod ffi;
 mod logging;
 mod mail;
+mod mutations;
 mod runtime;
 pub mod secrets;
 mod sync;
@@ -18,6 +19,7 @@ mod sync;
 pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, SyncState};
+pub use mutations::OutboxStatus;
 pub use secrets::SecretStore;
 
 /// Configuration the app passes when it creates the core.

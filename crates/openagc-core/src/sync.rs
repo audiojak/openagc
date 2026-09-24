@@ -58,6 +58,7 @@ pub(crate) struct SyncService {
     active: AtomicBool,
     poll_now: Notify,
     backfill_wake: Notify,
+    outbox_wake: Notify,
     tasks: std::sync::Mutex<Vec<JoinHandle<()>>>,
 }
 
@@ -69,6 +70,7 @@ impl SyncService {
             active: AtomicBool::new(true),
             poll_now: Notify::new(),
             backfill_wake: Notify::new(),
+            outbox_wake: Notify::new(),
             tasks: std::sync::Mutex::new(Vec::new()),
         });
         let main = handle.spawn(service.clone().run());
@@ -81,6 +83,15 @@ impl SyncService {
         if active && !was {
             self.poll_now.notify_one();
         }
+    }
+
+    pub fn engine(&self) -> &SyncEngine {
+        &self.engine
+    }
+
+    /// A change was queued; push it now.
+    pub fn outbox_changed(&self) {
+        self.outbox_wake.notify_one();
     }
 
     pub fn sync_now(&self) {
@@ -121,7 +132,9 @@ impl SyncService {
 
         let backfiller = self.clone();
         let backfill = tokio::spawn(async move { backfiller.backfill_loop().await });
-        self.tasks.lock().unwrap_or_else(|e| e.into_inner()).push(backfill);
+        let pusher = self.clone();
+        let outbox = tokio::spawn(async move { pusher.outbox_loop().await });
+        self.tasks.lock().unwrap_or_else(|e| e.into_inner()).extend([backfill, outbox]);
         self.poll_loop().await;
     }
 
@@ -147,6 +160,35 @@ impl SyncService {
                     self.fail(e);
                     return;
                 }
+            }
+        }
+    }
+
+    /// Push queued changes as they are made; wake again at the next retry.
+    async fn outbox_loop(self: Arc<Self>) {
+        loop {
+            match self.engine.drain_outbox().await {
+                Ok(_) => {}
+                Err(e) if matches!(e, SyncError::Provider(ProviderError::Unauthorized)) => {
+                    self.fail(e);
+                    return;
+                }
+                Err(e) => tracing::warn!(error = %e, "outbox drain failed"),
+            }
+            if let Ok(c) = self.engine.outbox_counts().await {
+                self.events.emit(CoreEvent::OutboxStatus { pending: c.pending, failed: c.failed });
+            }
+            let wait = self
+                .engine
+                .next_outbox_retry()
+                .await
+                .ok()
+                .flatten()
+                .map(|at| Duration::from_millis((at - mail_sync::now_millis()).max(250) as u64))
+                .unwrap_or(Duration::from_secs(60));
+            tokio::select! {
+                () = self.outbox_wake.notified() => {}
+                () = tokio::time::sleep(wait) => {}
             }
         }
     }
