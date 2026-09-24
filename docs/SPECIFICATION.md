@@ -1419,9 +1419,14 @@ Every target in §1.3 traces to one of these rules.
   read); context menu; keyboard: `↑↓` move, `e` archive, `u`/`r`
   read/unread, `l` label popover, `⌘⇧U` unread, `⌘R` reply, `⌘⇧R`
   reply-all, `⌘⇧F` forward, `⌘N` new, `⌘F` search, `⌘K` agent prompt.
-- Thread view: messages collapsed except the latest unread; each message a
-  header (`SwiftUI`) plus a body (`WKWebView`), quoted text collapsed;
-  attachments strip with Quick Look (`QLPreviewPanel`) and drag-out.
+- Thread view: one locked-down `WKWebView` renders the whole thread as a
+  single document, one `<details>` block per message (the latest and any
+  unread open, the rest collapsed to a snippet, no JavaScript needed), with
+  a SwiftUI header (subject, message count, remote-images banner) above it.
+  *(Amended in M1: the plan was a SwiftUI header plus a web view per
+  message; one document avoids measuring each web view's height and costs
+  one load per selection.)* Attachments strip with Quick Look
+  (`QLPreviewPanel`) and drag-out.
 - Bottom bar: the agent prompt field, "Ask Claude…"/"Ask Codex…" with the
   provider switcher.
 
