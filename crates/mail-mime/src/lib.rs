@@ -2,7 +2,9 @@
 //! §7.5, §14.4). Every parser bug fix adds a fixture under `fixtures/`.
 
 mod parse;
+mod sanitize;
 
 pub use parse::{
     ParseError, ParsedAttachment, ParsedHeaders, ParsedMessage, decode_text_part, html_to_text, parse, parse_headers,
 };
+pub use sanitize::{CID_SCHEME, REMOTE_SCHEME, SANITIZER_VERSION, Sanitized, sanitize_html, text_to_html};
