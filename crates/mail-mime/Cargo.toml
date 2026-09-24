@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 mail-domain.workspace = true
+mail-parser.workspace = true
+thiserror.workspace = true
 
 [lints]
 workspace = true

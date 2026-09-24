@@ -1,0 +1,19 @@
+From: Morgan Kim <morgan.kim@example.net>
+To: me@example.com
+Subject: Invitation: Design review
+Date: Wed, 23 Sep 2026 08:00:00 +0000
+Message-ID: <ics@example.net>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="c"
+
+--c
+Content-Type: text/plain
+
+You have been invited.
+--c
+Content-Type: text/calendar; method=REQUEST; name="invite.ics"
+Content-Disposition: attachment; filename="invite.ics"
+Content-Transfer-Encoding: base64
+
+QkVHSU46VkNBTEVOREFSDQpWRVJTSU9OOjIuMA0KRU5EOlZDQUxFTkRBUg0K
+--c--

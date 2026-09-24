@@ -1,0 +1,19 @@
+From: Taylor Novak <taylor.novak@example.com>
+To: me@example.com
+Subject: Signed contract
+Date: Mon, 21 Sep 2026 09:00:00 +0000
+Message-ID: <rfc2231@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="x"
+
+--x
+Content-Type: text/plain
+
+See attached.
+--x
+Content-Type: application/pdf
+Content-Disposition: attachment; filename*=UTF-8''Vertr%C3%A4ge%20%E2%80%93%20final.pdf
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgZmFrZSBwZGYgYnl0ZXMgZm9yIHRlc3Rpbmc=
+--x--

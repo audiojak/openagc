@@ -1,0 +1,27 @@
+From: Casey Silva <casey.silva@example.com>
+To: me@example.com
+Subject: Deck and notes
+Date: Tue, 22 Sep 2026 11:00:00 +0000
+Message-ID: <nested@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="outer"
+
+--outer
+Content-Type: multipart/alternative; boundary="inner"
+
+--inner
+Content-Type: text/plain; charset=utf-8
+
+Notes in plain text.
+--inner
+Content-Type: text/html; charset=utf-8
+
+<p>Notes in <i>HTML</i>.</p>
+--inner--
+--outer
+Content-Type: application/pdf; name="deck.pdf"
+Content-Disposition: attachment; filename="deck.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgZmFrZSBwZGYgYnl0ZXMgZm9yIHRlc3Rpbmc=
+--outer--

@@ -1,0 +1,8 @@
+From: Weekly Digest <digest@example.org>
+To: me@example.com
+Subject: This week in review
+Date: Fri, 18 Sep 2026 06:00:00 +0000
+Message-ID: <html.only@example.org>
+Content-Type: text/html; charset=utf-8
+
+<html><head><style>p{color:red}</style></head><body><h1>Top stories</h1><p>First story &amp; more.</p><script>alert(1)</script></body></html>

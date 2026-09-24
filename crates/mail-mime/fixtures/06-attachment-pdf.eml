@@ -1,0 +1,19 @@
+From: Billing <billing@example.net>
+To: me@example.com
+Subject: Invoice 4821
+Date: Sat, 19 Sep 2026 12:00:00 +0000
+Message-ID: <att.pdf@example.net>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="m1"
+
+--m1
+Content-Type: text/plain; charset=utf-8
+
+Your invoice is attached.
+--m1
+Content-Type: application/pdf; name="invoice-4821.pdf"
+Content-Disposition: attachment; filename="invoice-4821.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQgZmFrZSBwZGYgYnl0ZXMgZm9yIHRlc3Rpbmc=
+--m1--
