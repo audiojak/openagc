@@ -21,7 +21,7 @@ pub mod system_labels {
 }
 
 /// An address as it appears in a header: optional display name + address.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EmailAddress {
     pub name: Option<String>,
     pub email: String,

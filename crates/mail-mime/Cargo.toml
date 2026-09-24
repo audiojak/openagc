@@ -11,6 +11,7 @@ publish.workspace = true
 mail-domain.workspace = true
 mail-parser.workspace = true
 ammonia.workspace = true
+mail-builder.workspace = true
 thiserror.workspace = true
 
 [lints]

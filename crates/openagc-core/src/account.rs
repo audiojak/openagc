@@ -329,11 +329,24 @@ mod tests {
             block_on(core.list_threads("INBOX".into(), None, 10)).map(|p| p.rows.len() == 3).unwrap_or(false)
         });
 
-        let events = recorder.0.lock().unwrap().clone();
+        // Change events are coalesced for up to 50 ms, so wait for them
+        // rather than asserting the moment the data is visible.
+        wait_for("an inbox change event", || {
+            recorder
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, CoreEvent::ThreadsChanged { mailbox_id, .. } if mailbox_id == "INBOX"))
+        });
         assert!(
-            events.iter().any(|e| matches!(e, CoreEvent::ThreadsChanged { mailbox_id, .. } if mailbox_id == "INBOX"))
+            recorder
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, CoreEvent::SyncStatus { state: SyncState::Bootstrapping, .. }))
         );
-        assert!(events.iter().any(|e| matches!(e, CoreEvent::SyncStatus { state: SyncState::Bootstrapping, .. })));
         core.stop_sync();
     }
 
