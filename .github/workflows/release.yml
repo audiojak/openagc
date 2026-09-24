@@ -1,0 +1,60 @@
+# Tag v1.2.3 (or v1.2.3-beta1) → signed, notarized DMG and appcast.
+# Needs secrets: DEVELOPER_ID_P12 (base64), DEVELOPER_ID_P12_PASSWORD,
+# DEVELOPER_ID_APPLICATION, NOTARY_KEY (base64 .p8), NOTARY_KEY_ID,
+# NOTARY_ISSUER, SPARKLE_ED_PRIVATE_KEY. See docs/releasing.md.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchains
+        run: scripts/bootstrap.sh
+      - name: Signing identity
+        env:
+          P12: ${{ secrets.DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_P12_PASSWORD }}
+        run: |
+          security create-keychain -p ci build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p ci build.keychain
+          echo "$P12" | base64 --decode > id.p12
+          security import id.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
+          rm id.p12
+      - name: Notary profile
+        env:
+          KEY: ${{ secrets.NOTARY_KEY }}
+        run: |
+          echo "$KEY" | base64 --decode > notary.p8
+          xcrun notarytool store-credentials openagc --key notary.p8 \
+            --key-id "${{ secrets.NOTARY_KEY_ID }}" --issuer "${{ secrets.NOTARY_ISSUER }}"
+          rm notary.p8
+      - name: Build, sign, notarize
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ secrets.DEVELOPER_ID_APPLICATION }}
+          NOTARY_PROFILE: openagc
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          beta=""; [[ "$version" == *-* ]] && beta="--beta"
+          scripts/release.sh "$version" $beta
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          pre=""; [[ "$version" == *-* ]] && pre="--prerelease"
+          gh release create "$GITHUB_REF_NAME" build/release/*.dmg --title "OpenAGC $version" $pre --generate-notes
+      - name: Commit the appcast
+        run: |
+          git config user.name "OpenAGC release"
+          git config user.email "release@users.noreply.github.com"
+          git fetch origin main && git checkout main
+          cp build/appcast/appcast.xml appcast.xml
+          git add appcast.xml && git commit -m "Appcast for ${GITHUB_REF_NAME}" && git push origin main
