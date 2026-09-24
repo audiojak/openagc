@@ -13,6 +13,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "6.0"
+    # Apple Silicon only: the Rust core is built for aarch64 (spec §14.1).
+    ARCHS: arm64
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_APPROACHABLE_CONCURRENCY: NO
     ENABLE_USER_SCRIPT_SANDBOXING: YES

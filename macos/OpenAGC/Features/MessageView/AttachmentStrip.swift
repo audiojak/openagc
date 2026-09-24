@@ -111,17 +111,26 @@ struct AttachmentStrip: View {
         let core = model.core
         let id = attachment.id
         provider.registerFileRepresentation(forTypeIdentifier: type.identifier, fileOptions: [], visibility: .all) { done in
-            Task {
-                do {
-                    guard let core else { throw CoreClientError(kind: .internalError, message: "no core") }
-                    done(try await core.attachmentFile(id).url, false, nil)
-                } catch {
-                    done(nil, false, error)
-                }
-            }
+            Task { await Self.deliver(core: core, id: id, done: done) }
             return nil
         }
         return provider
+    }
+
+    /// Fetch the file for a drop. A separate function: the same code in the
+    /// closure above crashes the Release optimizer (Swift 6.4, Xcode 27).
+    private static func deliver(core: CoreClient?, id: String,
+                                done: @escaping @Sendable (URL?, Bool, (any Error)?) -> Void) async {
+        guard let core else {
+            done(nil, false, CoreClientError(kind: .internalError, message: "no core"))
+            return
+        }
+        do {
+            let file = try await core.attachmentFile(id)
+            done(file.url, false, nil)
+        } catch {
+            done(nil, false, error)
+        }
     }
 
     private static func icon(for attachment: AttachmentInfo) -> NSImage {

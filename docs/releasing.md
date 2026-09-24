@@ -29,7 +29,26 @@ maintainer. Nothing here runs in ordinary CI.
 1. Set `MARKETING_VERSION` (for example `0.2.0`) and increase
    `CURRENT_PROJECT_VERSION` in `macos/project.yml`. Sparkle compares
    `CURRENT_PROJECT_VERSION`, so it must always go up.
-2. Build, sign, notarize and staple the DMG (oagc-qtt, `release.yml`).
+2. Build, sign, notarize and staple the DMG:
+
+   ```bash
+   DEVELOPER_ID_APPLICATION="Developer ID Application: Actual AI (TEAMID)" \
+   NOTARY_PROFILE=openagc \
+   scripts/release.sh 0.2.0            # add --beta for a beta
+   ```
+
+   The script builds the Release configuration (Apple Silicon), re-signs
+   every nested Mach-O inside out with the hardened runtime and a secure
+   timestamp, checks that each one carries the runtime flag (Xcode skips it
+   for ad-hoc builds), makes the DMG, notarizes and staples it, and adds it
+   to the appcast. Without the two variables it still builds an ad-hoc
+   signed DMG — useful to check the pipeline, never to ship. (Ad-hoc dry runs
+   switch library validation off so the app can load its own frameworks; a
+   Developer ID build keeps it on.)
+
+   `.github/workflows/release.yml` does the same on a `v*` tag. It is not in
+   the repository yet: pushing workflow files needs the `workflow` scope
+   (`gh auth refresh -h github.com -s workflow`), then `git add -f` it.
 3. Optionally write release notes next to the DMG as
    `OpenAGC-0.2.0.md`.
 4. Add the release to the appcast:
