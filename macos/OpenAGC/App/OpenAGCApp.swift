@@ -5,6 +5,7 @@ import os
 struct OpenAGCApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel(core: OpenAGCApp.makeCore())
+    @State private var updater = Updater()
 
     var body: some Scene {
         WindowGroup("OpenAGC", id: "main") {
@@ -13,7 +14,13 @@ struct OpenAGCApp: App {
                 .onAppear { appDelegate.model = model }
         }
         .defaultSize(width: 1200, height: 760)
-        .commands { MailCommands(model: model) }
+        .commands {
+            MailCommands(model: model)
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.checkForUpdates() }
+                    .disabled(!updater.canCheckForUpdates)
+            }
+        }
 
         WindowGroup("New Message", id: "compose", for: ComposeRequest.self) { $request in
             if let request {
@@ -27,6 +34,7 @@ struct OpenAGCApp: App {
         Settings {
             SettingsView()
                 .environment(model)
+                .environment(updater)
         }
     }
 

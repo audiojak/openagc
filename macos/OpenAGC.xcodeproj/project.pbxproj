@@ -23,9 +23,11 @@
 		3383C90F028074A9FDD81433 /* GoogleClientConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33717E284E8BBBD24A611B4F /* GoogleClientConfiguration.swift */; };
 		36A454FB046BB704125EF7F3 /* CoreClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE83811F68C4EBD9E870E49B /* CoreClient.swift */; };
 		3CFA63FC5E129133E7001146 /* KeychainSecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD2ED5356A1BBFFEABB704F9 /* KeychainSecretStore.swift */; };
+		4B30B25AE957C2C75F0AC0FE /* Updater.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFD9EA8BFD3CDA270CCB8109 /* Updater.swift */; };
 		4BBB2B43CEEF1AFA6C20B2D3 /* AttachmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99F36E7595DF6E9B290AE189 /* AttachmentTests.swift */; };
 		4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */; };
 		4FF62FFF28E05444455223CB /* NewMailNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9494AAF5D25AD46911AD35 /* NewMailNotifier.swift */; };
+		58BD5F9A51D3C6CECFB92D99 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 2EC399F550012292CEA80ACA /* Sparkle */; };
 		5983A19ACD9796ACFA5E19D5 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB3DFF446CD804B9EB7984C8 /* AppModel.swift */; };
 		691D6124014BCD1F910B8B27 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26F65D12222A0363EDB8FFE0 /* OnboardingView.swift */; };
 		69662C039B9C1E122F754EDE /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A5694ECC8EA36F2A4119F98 /* ComposerView.swift */; };
@@ -50,6 +52,7 @@
 		C9F5E1202A2849397390D3AC /* MailboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD6458B52C0ABAB8AED1A828 /* MailboxStore.swift */; };
 		CC89EB36D485FE29C268F72A /* ThreadRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF32A9AE2D35843656097005 /* ThreadRowView.swift */; };
 		D9974F0610B1100DD537D0A5 /* ThreadListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A751B74E9626A3A08F4D905F /* ThreadListStore.swift */; };
+		D9D7C636BB9415D3857A891E /* UpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3FE3957640F5FB9A22D3965 /* UpdaterTests.swift */; };
 		DB3DC4EECF705D9820BC3B1E /* RichTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24E3C75C954D3F4970670D2 /* RichTextEditor.swift */; };
 		DD32FB186EAB5F8A98110A01 /* MainWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9036B10AEDC12CF3CF3416BD /* MainWindow.swift */; };
 		E65B21770ED2B172D35054C7 /* SyncStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5846BE9A95C68C7383B2B7C /* SyncStatusView.swift */; };
@@ -132,13 +135,16 @@
 		C869C66EBC8340DA185D26D9 /* NotificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationTests.swift; sourceTree = "<group>"; };
 		CD2ED5356A1BBFFEABB704F9 /* KeychainSecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretStore.swift; sourceTree = "<group>"; };
 		CF32A9AE2D35843656097005 /* ThreadRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadRowView.swift; sourceTree = "<group>"; };
+		D11E72641F92131C1AC579D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D24E3C75C954D3F4970670D2 /* RichTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextEditor.swift; sourceTree = "<group>"; };
 		D5D8587064562266E1C5E1DC /* SearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTests.swift; sourceTree = "<group>"; };
 		DE83811F68C4EBD9E870E49B /* CoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
 		E4C676A513B753ECEBB6FF97 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		EC1B952488DEE5A94BB9D8BF /* MenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuTests.swift; sourceTree = "<group>"; };
+		F3FE3957640F5FB9A22D3965 /* UpdaterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdaterTests.swift; sourceTree = "<group>"; };
 		FDAEE7BA4E6152A7714BD298 /* ReaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReaderTests.swift; sourceTree = "<group>"; };
 		FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreEventTests.swift; sourceTree = "<group>"; };
+		FFD9EA8BFD3CDA270CCB8109 /* Updater.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updater.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -147,6 +153,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8BCA879DA87A93071503AFD8 /* OpenAGCCore.framework in Frameworks */,
+				58BD5F9A51D3C6CECFB92D99 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -197,6 +204,7 @@
 				9036B10AEDC12CF3CF3416BD /* MainWindow.swift */,
 				88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */,
 				662ED4D20063A892C72301EF /* Snapshot.swift */,
+				FFD9EA8BFD3CDA270CCB8109 /* Updater.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -205,6 +213,7 @@
 			isa = PBXGroup;
 			children = (
 				19F04E00E0E6BE9B7678CEDB /* GoogleOAuth.plist */,
+				D11E72641F92131C1AC579D7 /* Info.plist */,
 				448D8466905D410325058CE5 /* OpenAGC.entitlements */,
 			);
 			path = Resources;
@@ -272,6 +281,7 @@
 				4372C03A0DB7F78DF414F892 /* PerformanceTests.swift */,
 				FDAEE7BA4E6152A7714BD298 /* ReaderTests.swift */,
 				D5D8587064562266E1C5E1DC /* SearchTests.swift */,
+				F3FE3957640F5FB9A22D3965 /* UpdaterTests.swift */,
 			);
 			path = OpenAGCTests;
 			sourceTree = "<group>";
@@ -415,6 +425,7 @@
 			);
 			name = OpenAGC;
 			packageProductDependencies = (
+				2EC399F550012292CEA80ACA /* Sparkle */,
 			);
 			productName = OpenAGC;
 			productReference = 2C8458B42683B1FC4F0EBB64 /* OpenAGC.app */;
@@ -470,6 +481,9 @@
 			);
 			mainGroup = E458C12428F8850BEEB621C7;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				857B33307D564E23399C3F43 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 84FAC93793B5EC1C8F00EF34 /* Products */;
 			projectDirPath = "";
@@ -548,6 +562,7 @@
 				319185B7856E5D37CAB6C52A /* PerformanceTests.swift in Sources */,
 				0665BDF0CA8EA8B79ED06F61 /* ReaderTests.swift in Sources */,
 				AB0A75C26EE77D8683A01474 /* SearchTests.swift in Sources */,
+				D9D7C636BB9415D3857A891E /* UpdaterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -584,6 +599,7 @@
 				B46DC7164B626E812E646EDE /* ThreadListView.swift in Sources */,
 				A67D0A6156AB71A08D7ABBAC /* ThreadReaderView.swift in Sources */,
 				CC89EB36D485FE29C268F72A /* ThreadRowView.swift in Sources */,
+				4B30B25AE957C2C75F0AC0FE /* Updater.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -749,6 +765,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OpenAGC/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAGC;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Actual AI and the OpenAGC contributors. MIT License.";
@@ -862,6 +879,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OpenAGC/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = OpenAGC;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Actual AI and the OpenAGC contributors. MIT License.";
@@ -916,6 +934,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		857B33307D564E23399C3F43 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = revision;
+				revision = eef1a539a373c1f1a320624b1130fc5de7b2e100;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2EC399F550012292CEA80ACA /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 857B33307D564E23399C3F43 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 74D97FBC20E6E452C2351EE4 /* Project object */;
 }

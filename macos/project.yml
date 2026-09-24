@@ -5,6 +5,11 @@ options:
     macOS: "26.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
+packages:
+  # Pinned by revision (spec §16 supply chain): Sparkle 2.10.0.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    revision: eef1a539a373c1f1a320624b1130fc5de7b2e100
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -55,6 +60,20 @@ targets:
       - path: OpenAGC
     dependencies:
       - target: OpenAGCCore
+      - package: Sparkle
+    info:
+      path: OpenAGC/Resources/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        # Sparkle compares this; release.yml sets it to the build number.
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Sparkle (spec §16). One appcast on main lists every release; betas
+        # carry the "beta" channel (scripts/make-appcast.sh).
+        SUFeedURL: https://raw.githubusercontent.com/audiojak/openagc/main/appcast.xml
+        # Set by the release maintainer (docs/releasing.md). Empty disables
+        # the updater, so development builds never check for updates.
+        SUPublicEDKey: ""
+        SUEnableInstallerLauncherService: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.actual.openagc
@@ -63,6 +82,7 @@ targets:
         ENABLE_HARDENED_RUNTIME: YES
         CODE_SIGN_ENTITLEMENTS: OpenAGC/Resources/OpenAGC.entitlements
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: OpenAGC/Resources/Info.plist
         INFOPLIST_KEY_CFBundleDisplayName: OpenAGC
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Actual AI and the OpenAGC contributors. MIT License."
