@@ -35,7 +35,11 @@ pub struct DraftInfo {
     pub cc: Vec<AddressInfo>,
     pub bcc: Vec<AddressInfo>,
     pub subject: String,
+    /// The editable body.
     pub body_html: String,
+    /// For a new reply or forward: the quoted original, shown below the
+    /// editor and appended on save. Empty for saved drafts.
+    pub quoted_html: String,
     pub attachments: Vec<DraftAttachmentInfo>,
     pub status: DraftStatus,
     pub error: Option<String>,
@@ -54,6 +58,7 @@ impl From<DraftRecord> for DraftInfo {
             bcc: addrs(d.bcc),
             subject: d.subject,
             body_html: d.body_html,
+            quoted_html: d.quoted_html,
             attachments: d
                 .attachments
                 .into_iter()
@@ -86,7 +91,9 @@ impl From<DraftInfo> for DraftRecord {
             cc: addrs(d.cc),
             bcc: addrs(d.bcc),
             subject: d.subject,
-            body_html: d.body_html,
+            // A quote not yet merged is saved as part of the body.
+            body_html: format!("{}{}", d.body_html, d.quoted_html),
+            quoted_html: String::new(),
             attachments: d
                 .attachments
                 .into_iter()
@@ -178,6 +185,17 @@ impl Core {
         .await
     }
 
+    /// Recipient suggestions for AppKit's token field, which asks
+    /// synchronously on the main thread. A deliberate exception to "sync
+    /// exports never block": it runs on a pooled read-only connection (no
+    /// wait on the writer in WAL mode) and takes well under a millisecond.
+    pub fn suggest_contacts_now(&self, text: String, limit: u32) -> Vec<AddressInfo> {
+        let Ok(db) = self.db() else { return vec![] };
+        db.read_blocking(|c| read::suggest_contacts(c, &text, limit))
+            .map(|v| v.into_iter().map(Into::into).collect())
+            .unwrap_or_default()
+    }
+
     /// Recipient suggestions, most-written-to first.
     pub async fn suggest_contacts(&self, text: String, limit: u32) -> Result<Vec<AddressInfo>, CoreError> {
         let db = self.db()?;
@@ -221,7 +239,7 @@ mod tests {
         let mut draft = block_on(core.reply_draft(last, false)).unwrap();
         assert!(draft.subject.starts_with("Re: "));
         assert!(!draft.to.is_empty());
-        draft.body_html = format!("<p>Sounds good.</p>{}", draft.body_html);
+        draft.body_html = "<p>Sounds good.</p>".into();
         let id = block_on(core.save_draft(draft)).unwrap();
         assert_eq!(block_on(core.list_drafts()).unwrap().len(), 1);
 

@@ -153,6 +153,10 @@ final class ThreadTableView: NSTableView {
         case "s": model.toggleStarSelection()
         case "l": showLabelMenu()
         case "#": model.trashSelection()
+        case "r": model.reply(all: false)
+        case "a": model.reply(all: true)
+        case "f": model.forward()
+        case "c": model.compose(.new(to: nil))
         default:
             if event.keyCode == 51 || event.keyCode == 117 { // delete, forward delete
                 model.trashSelection()

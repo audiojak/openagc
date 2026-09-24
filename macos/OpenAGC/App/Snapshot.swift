@@ -10,6 +10,8 @@ import os
 ///   -OpenAGCSnapshotSelectIndex <n>     select row n instead
 ///   -OpenAGCSnapshotAppearance dark|light
 ///   -OpenAGCSnapshotSearch <query>      type a search first
+///   -OpenAGCSnapshotCompose new|reply|forward   open a composer and
+///                                       capture it instead
 ///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
 ///                                       (catches layer-only SwiftUI content)
 @MainActor
@@ -43,19 +45,33 @@ enum Snapshot {
                     delegate.model?.selectedThreadID = rows[0].id
                 }
             }
+            var window: NSWindow?
+            if let compose = defaults.string(forKey: "OpenAGCSnapshotCompose"), let model = delegate.model {
+                try? await Task.sleep(for: .milliseconds(500))
+                switch compose {
+                case "reply": model.reply(all: true)
+                case "forward": model.forward()
+                default: model.compose(.new(to: nil))
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+                // The app may not be active when launched from a script, so
+                // there is no key window; find the composer by its scene id.
+                window = NSApp.windows.last { $0.isVisible && ($0.identifier?.rawValue.hasPrefix("compose") ?? false) }
+                FileHandle.standardError.write(Data("snapshot composer window: \(window != nil)\n".utf8))
+            }
             try? await Task.sleep(for: .seconds(delay / 2))
             if let model = delegate.model {
                 FileHandle.standardError.write(Data("snapshot state: \(model.accountState) rows=\(model.threads.rows.count)\n".utf8))
             } else {
                 FileHandle.standardError.write(Data("snapshot state: no model\n".utf8))
             }
-            capture(to: URL(filePath: path))
+            capture(window, to: URL(filePath: path))
             NSApp.terminate(nil)
         }
     }
 
-    private static func capture(to url: URL) {
-        guard let window = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }),
+    private static func capture(_ preferred: NSWindow?, to url: URL) {
+        guard let window = preferred ?? NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }),
               let view = window.contentView?.superview ?? window.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
         else {

@@ -3,6 +3,7 @@ import SwiftUI
 /// The three-column main window: mailboxes, threads, message (spec §14.3).
 struct MainWindow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility = NavigationSplitViewVisibility.all
 
     var body: some View {
@@ -16,6 +17,7 @@ struct MainWindow: View {
             }
         }
         .task { if model.accountState == .starting { await model.start() } }
+        .onAppear { model.openComposer = { openWindow(id: "compose", value: $0) } }
     }
 
     private var mailWindow: some View {

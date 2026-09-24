@@ -57,8 +57,8 @@ pub async fn reply_draft(db: &Db, message_id: &MessageId, all: bool, me: &[Strin
     let (parent, body) = db.read(move |c| Ok((read::get_message(c, &id)?, read::get_body(c, &id)?))).await?;
     let parent = parent.ok_or_else(|| StoreError::NotFound(format!("message {message_id}")))?;
     let (to, cc) = mail_mime::reply_recipients(parent.from.as_ref(), &parent.reply_to, &parent.to, &parent.cc, me, all);
-    let html = format!(
-        "<p><br></p><div>{}</div><blockquote>{}</blockquote>",
+    let quote = format!(
+        "<div>{}</div><blockquote>{}</blockquote>",
         quoted_header(parent.date, parent.from.as_ref()),
         parent_html(&body)
     );
@@ -68,7 +68,7 @@ pub async fn reply_draft(db: &Db, message_id: &MessageId, all: bool, me: &[Strin
         to,
         cc,
         subject: mail_mime::reply_subject(&parent.subject),
-        body_html: html,
+        quoted_html: quote,
         ..Default::default()
     })
 }
@@ -88,7 +88,7 @@ pub async fn forward_draft(db: &Db, message_id: &MessageId) -> SyncResult<DraftR
     Ok(DraftRecord {
         thread_id: Some(parent.thread_id.0.clone()),
         subject: mail_mime::forward_subject(&parent.subject),
-        body_html: format!("<p><br></p>{header}<br>{}", parent_html(&body)),
+        quoted_html: format!("{header}<br>{}", parent_html(&body)),
         ..Default::default()
     })
 }
@@ -116,6 +116,11 @@ pub async fn send_draft(db: &Db, draft_id: i64, from: EmailAddress, queue: bool)
         attachments.push(OutgoingAttachment { filename: a.filename.clone(), mime_type: a.mime_type.clone(), data });
     }
     let domain = from.email.rsplit('@').next().unwrap_or("localhost").to_owned();
+    let draft = DraftRecord {
+        body_html: format!("{}{}", draft.body_html, draft.quoted_html),
+        quoted_html: String::new(),
+        ..draft
+    };
     let rfc822_id = format!("{}.openagc@{domain}", random_token());
     let now = now_millis();
     let outgoing = OutgoingMessage {

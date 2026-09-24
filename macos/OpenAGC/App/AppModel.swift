@@ -44,6 +44,10 @@ final class AppModel {
     /// Failed changes that were undone, shown as a banner.
     private(set) var failedChanges: UInt32 = 0
 
+    /// Opens a composer window; set by the main window, which has SwiftUI's
+    /// `openWindow` action.
+    @ObservationIgnored var openComposer: ((ComposeRequest) -> Void)?
+
     let mailboxes: MailboxStore
     let threads: ThreadListStore
     let reader: ReaderStore
@@ -149,6 +153,29 @@ final class AppModel {
             logger.error("opening account failed: \(error.message, privacy: .public)")
             accountState = .failed(error.message)
         }
+    }
+
+    // MARK: Compose
+
+    /// The message Reply and Forward act on: the latest one in the thread
+    /// being read that is not a draft.
+    var replyTargetMessageID: String? {
+        guard let detail = reader.detail, detail.thread.id == selectedThreadID else { return nil }
+        return detail.messages.last { !$0.isDraft }?.id
+    }
+
+    func compose(_ request: ComposeRequest) {
+        openComposer?(request)
+    }
+
+    func reply(all: Bool) {
+        guard let id = replyTargetMessageID else { return }
+        compose(.reply(messageID: id, all: all))
+    }
+
+    func forward() {
+        guard let id = replyTargetMessageID else { return }
+        compose(.forward(messageID: id))
     }
 
     // MARK: Actions on the selection

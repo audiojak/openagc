@@ -108,6 +108,46 @@ final class CoreClient: Sendable {
         try await call { try await core.clearFailedChanges() }
     }
 
+    // MARK: Drafts and sending
+
+    func accountAddress() async throws(CoreClientError) -> String {
+        try await call { try await core.accountAddress() }
+    }
+
+    func replyDraft(to messageID: String, all: Bool) async throws(CoreClientError) -> DraftInfo {
+        try await call { try await core.replyDraft(messageId: messageID, replyAll: all) }
+    }
+
+    func forwardDraft(of messageID: String) async throws(CoreClientError) -> DraftInfo {
+        try await call { try await core.forwardDraft(messageId: messageID) }
+    }
+
+    /// Insert or update a draft; returns its id.
+    func saveDraft(_ draft: DraftInfo) async throws(CoreClientError) -> Int64 {
+        try await call { try await core.saveDraft(draft: draft) }
+    }
+
+    func draft(_ id: Int64) async throws(CoreClientError) -> DraftInfo? {
+        try await call { try await core.getDraft(id: id) }
+    }
+
+    func drafts() async throws(CoreClientError) -> [DraftInfo] {
+        try await call { try await core.listDrafts() }
+    }
+
+    func deleteDraft(_ id: Int64) async throws(CoreClientError) {
+        try await call { try await core.deleteDraft(id: id) }
+    }
+
+    func sendDraft(_ id: Int64) async throws(CoreClientError) {
+        try await call { try await core.sendDraft(id: id) }
+    }
+
+    /// Synchronous, for the recipient token field's completion callback.
+    func suggestContactsNow(_ text: String, limit: UInt32 = 8) -> [AddressInfo] {
+        core.suggestContactsNow(text: text, limit: limit)
+    }
+
     // MARK: Accounts and sync
 
     struct SignInStart: Sendable {
@@ -246,6 +286,9 @@ private extension CoreClientError.Kind {
 // into the core still go through CoreClient.
 typealias AddressInfo = OpenAGCCore.AddressInfo
 typealias AttachmentInfo = OpenAGCCore.AttachmentInfo
+typealias DraftAttachmentInfo = OpenAGCCore.DraftAttachmentInfo
+typealias DraftInfo = OpenAGCCore.DraftInfo
+typealias DraftStatus = OpenAGCCore.DraftStatus
 typealias LabelInfo = OpenAGCCore.LabelInfo
 typealias MailboxInfo = OpenAGCCore.MailboxInfo
 typealias MailboxKind = OpenAGCCore.MailboxKind

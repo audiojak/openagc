@@ -67,7 +67,12 @@ async fn a_reply_draft_is_prefilled_and_threaded() {
     assert_eq!(d.to, vec![EmailAddress::new(Some("Alex Rivera"), "alex@example.org")]);
     assert!(d.cc.is_empty());
     assert_eq!(d.thread_id.as_deref(), Some("t1"));
-    assert!(d.body_html.contains("<blockquote><p>Can we meet <b>Thursday</b>?</p></blockquote>"), "{}", d.body_html);
+    assert!(d.body_html.is_empty(), "the editable body starts empty");
+    assert!(
+        d.quoted_html.contains("<blockquote><p>Can we meet <b>Thursday</b>?</p></blockquote>"),
+        "{}",
+        d.quoted_html
+    );
     let all = reply_draft(&db, &MessageId::new("m1"), true, &me).await.unwrap();
     assert_eq!(all.cc, vec![EmailAddress::new(None, "sam@example.org")]);
 }
@@ -76,7 +81,7 @@ async fn a_reply_draft_is_prefilled_and_threaded() {
 async fn sending_shows_an_optimistic_copy_then_the_real_one_replaces_it() {
     let (fake, db, engine) = setup("send").await;
     let mut d = reply_draft(&db, &MessageId::new("m1"), false, &["me@example.com".to_owned()]).await.unwrap();
-    d.body_html = format!("<p>Thursday works.</p>{}", d.body_html);
+    d.body_html = format!("<p>Thursday works.</p>{}", d.quoted_html);
     let id = save(&db, d).await;
 
     send_draft(&db, id, me(), true).await.unwrap();
@@ -130,8 +135,9 @@ async fn forwarding_and_local_only_sending() {
     let (_fake, db, _engine) = setup("forward").await;
     let mut f = forward_draft(&db, &MessageId::new("m1")).await.unwrap();
     assert_eq!(f.subject, "Fwd: Q3 planning");
-    assert!(f.body_html.contains("Forwarded message"));
-    assert!(f.body_html.contains("Alex Rivera &lt;alex@example.org&gt;"));
+    assert!(f.quoted_html.contains("Forwarded message"));
+    assert!(f.quoted_html.contains("Alex Rivera &lt;alex@example.org&gt;"));
+    f.body_html = f.quoted_html.clone();
     assert!(f.to.is_empty());
     f.to = vec![EmailAddress::new(None, "jo@example.net")];
     let id = save(&db, f).await;

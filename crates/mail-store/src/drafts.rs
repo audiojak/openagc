@@ -57,6 +57,10 @@ pub struct DraftRecord {
     pub bcc: Vec<EmailAddress>,
     pub subject: String,
     pub body_html: String,
+    /// The quoted original of a new reply or forward, kept apart from the
+    /// editable body until the draft is first saved (not persisted: saved
+    /// drafts carry it inside `body_html`).
+    pub quoted_html: String,
     pub attachments: Vec<DraftAttachment>,
     pub updated_at: Millis,
     pub state: DraftState,
