@@ -311,6 +311,31 @@ final class CoreClient: Sendable {
         try await call { try await core.listRoutineRuns(id: id, limit: limit) }
     }
 
+    /// Create or update the routine at claude.ai through the user's CLI.
+    func publishRoutineToCloud(_ id: String) async throws(CoreClientError) -> RoutineInfo {
+        try await call { try await core.publishRoutineToCloud(id: id) }
+    }
+
+    func setRoutineEnabled(_ id: String, _ enabled: Bool) async throws(CoreClientError) -> RoutineInfo {
+        try await call { try await core.setRoutineEnabled(id: id, enabled: enabled) }
+    }
+
+    func runCloudRoutineNow(_ id: String) async throws(CoreClientError) -> String? {
+        try await call { try await core.runCloudRoutineNow(id: id) }
+    }
+
+    func refreshCloudRuns(_ id: String) async throws(CoreClientError) {
+        try await call { try await core.refreshCloudRuns(id: id) }
+    }
+
+    func routineHandoff(_ id: String) async throws(CoreClientError) -> RoutineHandoff {
+        try await call { try await core.routineHandoff(id: id) }
+    }
+
+    func attachCloudRoutine(_ id: String, urlOrID: String) async throws(CoreClientError) -> RoutineInfo {
+        try await call { try await core.attachCloudRoutine(id: id, urlOrId: urlOrID) }
+    }
+
     func describeSchedule(_ rrule: String) -> String { core.describeSchedule(rrule: rrule) }
     func nextRunAt(_ rrule: String) -> Int64? { core.nextRunAt(rrule: rrule) }
 
@@ -459,6 +484,7 @@ typealias AgentTranscriptItem = OpenAGCCore.AgentTranscriptItem
 typealias AgentStatusInfo = OpenAGCCore.AgentStatusInfo
 typealias AttachmentInfo = OpenAGCCore.AttachmentInfo
 typealias PromptContextInfo = OpenAGCCore.PromptContextInfo
+typealias RoutineHandoff = OpenAGCCore.RoutineHandoff
 typealias RoutineInfo = OpenAGCCore.RoutineInfo
 typealias RoutinePreviewRow = OpenAGCCore.RoutinePreviewRow
 typealias RoutineRunInfo = OpenAGCCore.RoutineRunInfo

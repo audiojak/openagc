@@ -2,6 +2,7 @@
 //! subprocess per turn resumed by session id.
 
 mod detect;
+pub mod routines;
 mod session;
 mod stream;
 

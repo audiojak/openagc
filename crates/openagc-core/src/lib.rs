@@ -8,6 +8,7 @@ uniffi::setup_scaffolding!();
 mod account;
 mod agents;
 mod attachments;
+mod cloud_routines;
 mod compose;
 mod error;
 mod events;
@@ -26,6 +27,7 @@ pub use agents::{
     PromptContextInfo, TextExtractor,
 };
 pub use attachments::AttachmentFileInfo;
+pub use cloud_routines::RoutineHandoff;
 pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};

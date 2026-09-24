@@ -56,6 +56,9 @@ pub(crate) struct AgentHub {
     /// Finished previews, by session.
     pub(crate) previews: Mutex<HashMap<String, Vec<crate::routines::RoutinePreviewRow>>>,
     pub(crate) scheduler: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Where cloud routine calls look for `claude`; tests point it at a
+    /// fake. `None` means the user's real CLI.
+    pub(crate) cloud_locator: Mutex<Option<agent_api::process::Locator>>,
 }
 
 /// The real agent adapters (spec §9.3, §9.4).

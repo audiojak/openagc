@@ -34,6 +34,7 @@ dependencies = [
  "mail-domain",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tracing",
 ]
@@ -1428,6 +1429,7 @@ dependencies = [
  "agent-codex",
  "agent-mcp",
  "async-trait",
+ "chrono",
  "futures",
  "getrandom 0.3.4",
  "mail-domain",

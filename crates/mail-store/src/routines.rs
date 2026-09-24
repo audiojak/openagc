@@ -151,6 +151,51 @@ pub fn add_run_threads(tx: &Transaction<'_>, run: i64, threads: &[(String, Optio
     Ok(())
 }
 
+/// Record a cloud run, or update the one with this session id.
+pub fn upsert_cloud_run(
+    tx: &Transaction<'_>,
+    routine_uuid: &str,
+    session_uuid: &str,
+    status: &str,
+    started_at: Millis,
+    ended_at: Option<Millis>,
+) -> StoreResult<Option<i64>> {
+    let Some(routine) = routine_rowid(tx, routine_uuid)? else { return Ok(None) };
+    let existing: Option<i64> = tx
+        .query_row(
+            "SELECT id FROM routine_runs WHERE routine_id = ?1 AND session_uuid = ?2",
+            params![routine, session_uuid],
+            |r| r.get(0),
+        )
+        .optional()?;
+    match existing {
+        Some(id) => {
+            tx.execute(
+                "UPDATE routine_runs SET status = ?2, ended_at = COALESCE(?3, ended_at) WHERE id = ?1",
+                params![id, status, ended_at],
+            )?;
+            Ok(Some(id))
+        }
+        None => {
+            tx.execute(
+                "INSERT INTO routine_runs (routine_id, inferred, session_uuid, started_at, ended_at, status)
+                 VALUES (?1, 0, ?2, ?3, ?4, ?5)",
+                params![routine, session_uuid, started_at, ended_at, status],
+            )?;
+            Ok(Some(tx.last_insert_rowid()))
+        }
+    }
+}
+
+pub fn run_report(conn: &Connection, run: i64) -> StoreResult<Option<String>> {
+    Ok(conn.query_row("SELECT report_text FROM routine_runs WHERE id = ?1", [run], |r| r.get(0)).optional()?.flatten())
+}
+
+pub fn set_report(tx: &Transaction<'_>, run: i64, report: &str) -> StoreResult<()> {
+    tx.execute("UPDATE routine_runs SET report_text = ?2 WHERE id = ?1", params![run, report])?;
+    Ok(())
+}
+
 pub fn mark_undone(tx: &Transaction<'_>, run: i64, now: Millis) -> StoreResult<()> {
     tx.execute("UPDATE routine_runs SET undone_at = ?2, status = 'undone' WHERE id = ?1", params![run, now])?;
     Ok(())

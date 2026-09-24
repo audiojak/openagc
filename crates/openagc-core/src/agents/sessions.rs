@@ -292,6 +292,11 @@ impl Core {
             Arc::new(agent_api::fake::FakeAgent::with_status(ProviderId::Codex, AgentStatus::NotInstalled)),
         ];
         let _ = self.agents.fake_providers.set(fakes);
+        // With scripted agents, cloud routines must not reach the real CLI.
+        let mut cloud = self.agents.cloud_locator.lock().unwrap_or_else(|e| e.into_inner());
+        if cloud.is_none() {
+            *cloud = Some(agent_api::process::Locator::only(vec![]));
+        }
     }
 
     /// Installed agents and whether they can be used. Cached per launch
