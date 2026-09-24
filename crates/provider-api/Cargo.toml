@@ -1,0 +1,26 @@
+[package]
+name = "provider-api"
+description = "The MailProvider trait plus shared HTTP, retry and rate-limit utilities."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mail-domain.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["time", "sync"] }
+tracing.workspace = true
+fastrand.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+wiremock.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,92 @@
+{
+  "template_id": "sort-important",
+  "template_version": 1,
+  "name": "Sort important mail",
+  "schedule": { "rrule": "FREQ=HOURLY;BYMINUTE=44" },
+  "scope": "is:important newer_than:1d -in:sent -in:draft",
+  "parent_label": "Marked Important",
+  "leave_alone": {
+    "human_threads": true,
+    "replied_by_me": true,
+    "starred": true,
+    "spam_trash": true,
+    "custom": []
+  },
+  "buckets": [
+    {
+      "id": "daily",
+      "label_name": "1-Daily",
+      "color": "red",
+      "cadence": "daily",
+      "title": "Needs action soon",
+      "description": "Automated mail that needs a human action soon: service and infrastructure alerts (outages, end-of-support notices, security warnings), failed or declined payments, expiring cards, account suspension warnings, deadlines within about a week, legal or compliance notices, and anything marked \"Action Required\" that is genuinely actionable.",
+      "positive_examples": ["cloud provider health and outage alerts", "\"your payment was declined\"", "\"your card expires this month\""],
+      "negative_examples": [],
+      "priority_when_ambiguous": "When something is both an alert and a receipt, prefer this label.",
+      "list_individually_in_report": true
+    },
+    {
+      "id": "newsletters",
+      "label_name": "2-Weekly-Newsletters",
+      "color": "blue",
+      "cadence": "weekly",
+      "title": "Reading material",
+      "description": "Newsletters, Substack and similar sends, mailing-list digests, keyword-alert bots, industry news roundups, and vendor product-marketing announcements the user did not personally ask about. Reading material, no action.",
+      "positive_examples": ["Substack and beehiiv newsletters", "Google Groups digests", "vendor product-update announcements"],
+      "negative_examples": [],
+      "priority_when_ambiguous": null,
+      "list_individually_in_report": false
+    },
+    {
+      "id": "events",
+      "label_name": "3-Weekly-Events",
+      "color": "green",
+      "cadence": "weekly",
+      "title": "Event invitations",
+      "description": "Event invitations and logistics from platforms: meetups, conferences, summits, webinars, demo days, ticketing and RSVP-platform invites, RSVP-activity and post-event survey notifications, early-bird deadlines.",
+      "positive_examples": ["Eventbrite and Luma invitations", "conference early-bird reminders", "webinar registrations"],
+      "negative_examples": ["Event mail from a named human collaborator about an event the user is co-hosting is person-to-person correspondence: leave it in the inbox."],
+      "priority_when_ambiguous": null,
+      "list_individually_in_report": false
+    },
+    {
+      "id": "finance",
+      "label_name": "4-Weekly-Finance",
+      "color": "orange",
+      "cadence": "weekly",
+      "title": "Receipts and statements",
+      "description": "Receipts, invoices, billing statements, payment confirmations, subscription renewals, bank and card statements, expense-tool and travel-spend reports, routine payment-account notices. Successful and routine only.",
+      "positive_examples": ["\"your receipt from …\"", "monthly card statements", "subscription renewal confirmations"],
+      "negative_examples": ["Anything failed or overdue belongs in 1-Daily."],
+      "priority_when_ambiguous": null,
+      "list_individually_in_report": false
+    },
+    {
+      "id": "pitches",
+      "label_name": "5-Monthly-Pitches",
+      "color": "gray",
+      "cadence": "monthly",
+      "title": "Cold outreach",
+      "description": "Cold outbound from vendors and founders, sales follow-ups (\"just following up\", \"one last message\"), recruiting-service and candidate-sourcing blasts, sponsorship and expo solicitations, unsolicited demo requests. Low priority, batch-review monthly.",
+      "positive_examples": ["\"just following up on my last note\"", "sponsorship packages", "\"can I get 15 minutes on your calendar?\""],
+      "negative_examples": [],
+      "priority_when_ambiguous": null,
+      "list_individually_in_report": false
+    },
+    {
+      "id": "hiring",
+      "label_name": "6-Weekly-Hiring",
+      "color": "purple",
+      "cadence": "weekly",
+      "title": "Applicants",
+      "description": "Inbound hiring pipeline for the user's own open roles: automated new-application notifications, applicant-tracking and job-board notices about candidates who applied, interview-scheduling bot mail. These are people who applied and deserve a real weekly pass.",
+      "positive_examples": ["\"new application for …\" from an applicant-tracking system", "job-board candidate notifications"],
+      "negative_examples": ["Recruiting vendors selling sourcing services or blasting candidate lists are cold outreach: 5-Monthly-Pitches.", "A named candidate or hiring collaborator writing directly is person-to-person correspondence: leave it in the inbox."],
+      "priority_when_ambiguous": "Direction matters: candidates coming in belong here; vendors selling in do not.",
+      "list_individually_in_report": true
+    }
+  ],
+  "unmatched": { "kind": "leave_and_report" },
+  "report": { "counts": true, "max_lines": 15 },
+  "limits": { "max_threads_per_run": 200, "get_thread_only_when_needed": true }
+}

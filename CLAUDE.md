@@ -2,6 +2,16 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+## OpenAGC project notes
+
+- Spec: `docs/SPECIFICATION.md` is the source of truth; beads issue descriptions cite its sections (§N).
+- Toolchain PATH (not in the default shell snapshot): `export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"`.
+- The app's self-snapshot (`-OpenAGCSnapshot`) cannot capture some pure-SwiftUI surfaces on macOS 26 (Form/List content, the onboarding scroll view): they come out blank although the view tree (`-OpenAGCSnapshotDumpViews YES`) shows them. AppKit views and the agent column capture fine. Real window capture needs Screen Recording permission.
+- Checks before closing any issue: `scripts/gate.sh` (wraps `scripts/check.sh` without hiding its exit status) (fmt, clippy -D warnings, tests, check-deps, deny; exits non-zero) and `scripts/test-macos.sh` for the app. Never pipe the gate into `grep`/`tail` before `&& git commit`: the pipe's status wins and a failed gate commits anyway. Use `if scripts/gate.sh >log 2>&1; then …; fi`.
+- Only `openagc-core` may depend on UniFFI; dependency direction is enforced by `cargo xtask check-deps`.
+- Never touch real Gmail, Google/Apple accounts, or create Claude cloud routines from automation; test against fakes.
+- Overnight work happens on the `overnight` branch; push after each closed issue.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
 

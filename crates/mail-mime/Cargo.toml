@@ -1,0 +1,20 @@
+[package]
+name = "mail-mime"
+description = "MIME parsing and building, HTML sanitization, text extraction."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mail-domain.workspace = true
+mail-parser.workspace = true
+ammonia.workspace = true
+mail-builder.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+pulldown-cmark.workspace = true
+
+[lints]
+workspace = true

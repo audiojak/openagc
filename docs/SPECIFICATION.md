@@ -27,7 +27,7 @@ The short version. Everything below elaborates on these.
 | Platform | macOS 26 Tahoe or later, Apple Silicon only for MVP |
 | UI | Swift 6.x, SwiftUI shell, AppKit where speed or fidelity demands it |
 | Core | Rust (stable, edition 2024), one Cargo workspace |
-| Swift↔Rust | UniFFI 0.32+, proc-macro mode, in-process static library, XCFramework via SwiftPM |
+| Swift↔Rust | UniFFI 0.32+, proc-macro mode, in-process static library built by an Xcode pre-build phase |
 | Async runtime | tokio multi-thread runtime owned by the core, never UniFFI's ambient runtime |
 | Storage | SQLite via `rusqlite` (bundled, FTS5), single-writer thread, WAL mode |
 | Search | SQLite FTS5 external-content tables: `unicode61` for text, `trigram` for addresses |
@@ -188,8 +188,7 @@ OpenAGC/
 │   │   └── Resources/
 │   ├── OpenAGCTests/
 │   ├── OpenAGCUITests/
-│   └── Packages/
-│       └── OpenAGCCore/           SwiftPM package wrapping the XCFramework + generated bindings
+│   └── (the OpenAGCCore target builds the Rust core and compiles its bindings; see §4.1)
 ├── scripts/
 │   ├── build-core.sh              cargo build → uniffi-bindgen-swift → xcframework
 │   ├── notarize.sh
@@ -201,7 +200,9 @@ OpenAGC/
 
 Crate boundaries follow the dependency direction `domain ← store ← sync ←
 core`; `provider-*` and `agent-*` depend only on their `*-api` crate and
-`mail-domain`. `openagc-core` is the only crate that knows about UniFFI.
+`mail-domain` (providers may also use `mail-mime` to decode what they
+fetch; it depends only on `mail-domain`). `cargo xtask check-deps`
+enforces this. `openagc-core` is the only crate that knows about UniFFI.
 
 ---
 
@@ -214,14 +215,29 @@ etc.), "library mode" binding generation so no UDL file is maintained.
 
 Build pipeline (`scripts/build-core.sh`):
 
-1. `cargo build --release -p openagc-core --target aarch64-apple-darwin`
-   produces `libopenagc_core.a`.
-2. `uniffi-bindgen-swift --swift-sources --headers --modulemap --module-name
-   OpenAGCCoreFFI` generates `OpenAGCCore.swift` and the C header.
-3. `xcodebuild -create-xcframework` wraps the static library and headers.
-4. `macos/Packages/OpenAGCCore` is a local SwiftPM package with a
-   `binaryTarget` for the XCFramework and a source target for the generated
-   Swift.
+1. `cargo build -p openagc-core --target aarch64-apple-darwin` (release
+   for Release builds) produces `libopenagc_core.a`.
+2. `uniffi-bindgen-swift` generates `openagc_core.swift`, the C header and a
+   plain `module openagc_coreFFI` modulemap (not `--xcframework`, which
+   emits a `framework module`).
+3. The script installs them under `build/core/{swift,include,lib}`,
+   rewriting only files whose content changed so unchanged builds stay
+   incremental.
+4. In Xcode, the static `OpenAGCCore` framework target runs the script as
+   an always-run pre-build phase with **declared output files**, compiles
+   the generated Swift, and finds the C module through
+   `SWIFT_INCLUDE_PATHS`; the app links `-lopenagc_core` from
+   `LIBRARY_SEARCH_PATHS` and depends on `OpenAGCCore`.
+
+*Amended during M0.* The original plan was a local SwiftPM package with an
+XCFramework `binaryTarget`. Two Xcode behaviors ruled it out: SwiftPM
+resolves binary targets before any build phase runs, and Xcode copies
+XCFramework headers in a step planned before the Rust script runs, so a
+regenerated header was silently stale until the following build. Reading
+the artifacts from fixed paths, with the producing phase's outputs
+declared, fixes both (verified: a new Rust export flows through a single
+incremental `xcodebuild`, and a clean build succeeds). An XCFramework can
+still be produced for distribution if the core is ever shipped separately.
 
 Static linking is deliberate: it avoids `disable-library-validation` in the
 hardened runtime and gives one Mach-O to sign.
@@ -283,7 +299,12 @@ Rules:
   must never `block_on` (§4.4).
 - **Pagination is keyset-based** (`after: (sort_key, thread_id)`), never
   offset-based, so scrolling a 100k-thread list stays O(page).
-- **All IDs are newtype records** (`ThreadId(String)`), never bare strings.
+- **Inside Rust, all IDs are newtypes** (`ThreadId(String)`), never bare
+  strings. At the FFI they cross as `String`: UniFFI custom newtypes
+  become Swift typealiases, which add no type safety, so the Swift record
+  field names (`threadId`, `labelIds`) carry the meaning instead. Plain
+  data records are typealiased in `CoreClient.swift` for the app to use;
+  calls into the core still go only through `CoreClient`.
 - Every fallible call returns `CoreError`, a flat `uniffi::Error` enum with a
   `message: String` plus a machine-readable `kind`.
 
@@ -313,8 +334,11 @@ pub enum CoreEvent {
 Swift wraps the listener in an `AsyncStream<CoreEvent>` delivered on the
 main actor. Change events are **coalesced** in Rust (max one
 `ThreadsChanged` per mailbox per 50 ms) so a sync of 500 messages produces a
-handful of UI refreshes, not 500. Events carry hints (`Inserted(ids)`,
-`Updated(ids)`, `Invalidate`) so the list can patch rows in place.
+handful of UI refreshes, not 500. Events carry a `ChangeHint { inserted,
+updated, removed, invalidate }` so the list can patch rows in place. Hints
+merge within a window (insert-then-remove cancels; update-after-insert stays
+an insert) and degrade to `invalidate` above 200 ids. Warn/error `tracing`
+records also arrive as `CoreEvent::Log` for Swift to log (§17).
 
 ### 4.4 Async runtime **(Verified gotcha)**
 
@@ -381,8 +405,15 @@ migration.
 ### 6.2 Schema (v1)
 
 Migrations are numbered SQL files embedded with `include_str!`, applied in
-order, tracked in `schema_migrations`. Every table has integer rowid primary
-keys; Gmail IDs are unique-indexed text columns.
+order, tracked by `PRAGMA user_version` (set in the same transaction as the
+migration, so a crash cannot leave the two out of step; a database newer
+than the build is refused). Every table has integer rowid primary keys;
+Gmail IDs are unique-indexed text columns.
+
+*The authoritative schema is `crates/mail-store/migrations/0001_initial.sql`.*
+The sketch below was the plan; the implemented schema differs as noted
+after it (single-row `account` table, `participants.position`, an
+`attachments.part_id`, a `contacts` table, a virtual `@archive` label).
 
 ```sql
 CREATE TABLE accounts (
@@ -481,31 +512,43 @@ CREATE TABLE agent_transcript (
 
 `thread_labels` is the table the inbox actually reads: `WHERE label_id = ?
 ORDER BY last_message_at DESC, thread_id DESC LIMIT 100` is an index-only
-scan. Triggers on `message_labels` and `messages` maintain it and the
-`threads.unread_count` / `message_count` counters, so the list never
-aggregates at query time.
+scan. The store's write API maintains it and the thread aggregates
+(`unread_count`, `message_count`, participants, label ids) by recomputing
+the affected threads in the same transaction as each change. *(Amended in
+M1: the plan said SQL triggers; since the store is the only writer, doing
+it in Rust gives the same guarantee and is far easier to test.)* Archive
+is a virtual label row (`@archive`, kind `virtual`) whose `thread_labels`
+entries mark threads with no INBOX label that are not wholly spam or trash,
+so Archive lists use the same index as every other mailbox.
 
 ### 6.3 Full-text search **(Verified)**
 
-Two FTS5 tables, both **external-content** so bodies are stored once:
+Two FTS5 tables *(amended in M1)*:
 
 ```sql
+-- rowid = messages.id; contentless with contentless_delete (SQLite ≥ 3.43)
 CREATE VIRTUAL TABLE messages_fts USING fts5(
-  subject, from_name, from_email, to_text, body_text,
-  content='messages_fts_source', content_rowid='message_id',
-  tokenize='unicode61 remove_diacritics 2');
+  subject, from_text, to_text, body, attachment_names,
+  content = '', contentless_delete = 1,
+  tokenize = 'unicode61 remove_diacritics 2');
 
-CREATE VIRTUAL TABLE addresses_fts USING fts5(
-  name, email, content='participants_view', content_rowid='rowid',
-  tokenize='trigram');
+-- Everyone corresponded with, for autocomplete (frecency) and partial matches
+CREATE TABLE contacts (id, email UNIQUE COLLATE NOCASE, name,
+  sent_count, received_count, last_seen);
+CREATE VIRTUAL TABLE contacts_fts USING fts5(
+  name, email, content = 'contacts', content_rowid = 'id', tokenize = 'trigram');
 ```
 
-`messages_fts_source` is a view joining `messages`, `bodies.text_plain` and
-a concatenated recipient string. Triggers keep the FTS index in step
-(`INSERT INTO messages_fts(messages_fts, rowid, ...) VALUES('delete', ...)`
-on update/delete). The trigram table serves as-you-type sender/recipient
-matching (`"joh"` matches `john@`), which `unicode61` prefix queries cannot do
-inside an address.
+The plan was external-content tables over views. External content requires
+every delete to replay the *old* column values exactly, or the index is
+silently corrupted; a contentless table with `contentless_delete=1` deletes
+by rowid and stores no second copy either. The cost — no `snippet()` /
+`highlight()` from the index — does not apply, since results are rendered
+from the message tables. The contacts table replaces a trigram index over a
+participants view: it is what composer autocomplete needs anyway (§14.5),
+and its three triggers are trivial. The trigram table serves as-you-type
+address matching (`"ohn"` matches `john@`), which `unicode61` prefix queries
+cannot do inside an address.
 
 Search query grammar (§8) compiles to `MATCH` plus structured `WHERE` clauses.
 Ranking: `bm25(messages_fts, 10.0, 5.0, 5.0, 2.0, 1.0)` weighted toward
@@ -775,7 +818,16 @@ claude -p <prompt>
 
 Transport: one long-lived `codex app-server` subprocess per app launch
 (started lazily), JSON-RPC 2.0 over stdio, newline-delimited, `"jsonrpc"`
-field omitted on the wire as the protocol specifies. This is the protocol
+field omitted on the wire as the protocol specifies.
+
+*(Amended in M3, verified against codex-cli 0.145: one app-server per
+OpenAGC **session**, since the MCP server's `--session` binding is
+process-level configuration. `--ignore-user-config` does not exist; the
+adapter replaces the whole `mcp_servers` table with `-c` and turns off the
+shell, exec, browser, apps, plugins, hooks and other features with
+`--disable`. `tools.web_search`/`tools.view_image` are not valid keys;
+`web_search="disabled"` is. The flag set was checked with
+`--strict-config`; see `crates/agent-codex/schema/README.md`.)* This is the protocol
 the VS Code extension uses. It is labelled experimental by OpenAI but is
 the only path that gives host-mediated approvals and interruption;
 `codex exec` has neither and `codex mcp-server` was removed in 0.154.
@@ -869,13 +921,17 @@ same definitions are rendered to `docs/mcp.md` by a `cargo xtask`.
 
 ### 10.2 Tool set (MVP)
 
+*(Amended in M3: tool names use underscores, `mail_search` rather than
+`mail.search`, because the Anthropic and OpenAI APIs only accept
+`[a-zA-Z0-9_-]` in tool names. Dotted names below map one-to-one.)*
+
 | Tool | Risk | Description |
 |---|---|---|
 | `mail.search` | ReadOnly | Query string or structured `SearchQuery`; returns thread summaries (id, subject, participants, date, snippet, labels, unread). Max 50 per call, cursor for more. |
 | `mail.get_thread` | ReadOnly | Messages in a thread with `text_plain` bodies (HTML converted), truncated per message at 20 KB with a `truncated` flag; attachments listed as metadata. |
 | `mail.get_message` | ReadOnly | One message, same shape; `include_quoted: bool` (default false strips quoted replies). |
 | `mail.list_labels` | ReadOnly | Labels with counts. |
-| `mail.get_attachment_text` | ReadOnly | Extracted text for `text/*`, PDF (via `pdf-extract`), and `.docx`; cap 100 KB. No binary bytes are ever returned. |
+| `mail.get_attachment_text` | ReadOnly | Extracted text for `text/*`, PDF (via PDFKit in the app, through a foreign trait; *amended in M3: `pdf-extract` depends on the unmaintained `ttf-parser` and would parse untrusted PDFs in-process*), and `.docx`; cap 100 KB. No binary bytes are ever returned. |
 | `mail.present_threads` | ReadOnly | Instructs the UI to show a result set; returns nothing. |
 | `mail.create_draft` | Reversible | Reply or new; body as Markdown, converted to HTML+text by the core. Returns draft id. |
 | `mail.update_draft` | Reversible | |
@@ -1352,7 +1408,8 @@ Every target in §1.3 traces to one of these rules.
 
 - macOS 26.0+, Apple Silicon. Intel is not built for MVP (a `x86_64` slice
   can be added later; nothing precludes it).
-- Xcode 26.x, Swift 6.2+ with strict concurrency (`-strict-concurrency=complete`).
+- Xcode 27 (macOS 27 SDK), Swift 6.4 in Swift 6 language mode with complete
+  strict concurrency; deployment target macOS 26.0.
 - Project generated by **XcodeGen** from `macos/project.yml` so the
   `.xcodeproj` is not hand-merged; it is committed for convenience.
 
@@ -1374,12 +1431,22 @@ Every target in §1.3 traces to one of these rules.
 - Sidebar: mailboxes and labels, unread badges, drag-to-label target.
 - Thread list (AppKit): sender, subject, snippet, date, unread dot,
   attachment icon, label chips; multi-select; swipe actions (archive,
-  read); context menu; keyboard: `↑↓` move, `e` archive, `u`/`r`
-  read/unread, `l` label popover, `⌘⇧U` unread, `⌘R` reply, `⌘⇧R`
-  reply-all, `⌘⇧F` forward, `⌘N` new, `⌘F` search, `⌘K` agent prompt.
-- Thread view: messages collapsed except the latest unread; each message a
-  header (`SwiftUI`) plus a body (`WKWebView`), quoted text collapsed;
-  attachments strip with Quick Look (`QLPreviewPanel`) and drag-out.
+  read); context menu; keyboard: `↑↓`/`j k` move, `e` archive, `u`
+  toggle read, `s` star, `l` label popover, `#`/`⌫` trash, `r` reply,
+  `a` reply-all, `f` forward, `c` compose, `/` search; menu equivalents
+  `⌃⌘A` archive, `⌘⌫` trash, `⌘⇧U` read/unread, `⌘⇧L` star, `⌘R`
+  reply, `⌘⇧R` reply-all, `⌘⇧F` forward, `⌘N` new, `⌘F` search,
+  `⌘1`–`⌘6` mailboxes, `⌘⇧N` check for new mail, `⌘K` agent prompt.
+  *(Amended in M2: `r` is reply, Gmail-style; `u` toggles read either
+  way.)*
+- Thread view: one locked-down `WKWebView` renders the whole thread as a
+  single document, one `<details>` block per message (the latest and any
+  unread open, the rest collapsed to a snippet, no JavaScript needed), with
+  a SwiftUI header (subject, message count, remote-images banner) above it.
+  *(Amended in M1: the plan was a SwiftUI header plus a web view per
+  message; one document avoids measuring each web view's height and costs
+  one load per selection.)* Attachments strip with Quick Look
+  (`QLPreviewPanel`) and drag-out.
 - Bottom bar: the agent prompt field, "Ask Claude…"/"Ask Codex…" with the
   provider switcher.
 
@@ -1484,8 +1551,9 @@ approving a bad send. These are documented in `docs/security.md`.
 
 ## 16. Build, Signing, Distribution **(Verified)**
 
-- **Toolchains**: Rust stable pinned in `rust-toolchain.toml` (≥ 1.92, the
-  `rmcp` MSRV); Xcode 26.x; XcodeGen and `uniffi-bindgen-swift` installed
+- **Toolchains**: Rust pinned in `rust-toolchain.toml` (1.98.1; `rust-version`
+  1.92, the `rmcp` MSRV); Xcode 27; XcodeGen via Homebrew and
+  `uniffi-bindgen-swift` built from the workspace, all installed
   via Homebrew/cargo in `scripts/bootstrap.sh`.
 - **Signing**: Developer ID Application certificate; hardened runtime on
   the app, `openagc-mcp`, and Sparkle's XPC services; entitlements:
@@ -1620,6 +1688,6 @@ release notes and documentation.
 
 ## Appendix B — Local environment at time of writing
 
-macOS 26.6.2; Swift 6.3.3 (Command Line Tools only — Xcode.app must be
-installed and selected); Rust toolchain not yet installed; Claude Code
+macOS 26.6.2; Xcode 27.0 (Swift 6.4, macOS 27 SDK); Rust 1.98.1 via
+Homebrew rustup; XcodeGen 2.46; cargo-deny 0.20; Claude Code
 2.1.267; Codex CLI 0.145.0; beads 1.3.0.

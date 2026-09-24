@@ -1,0 +1,43 @@
+[package]
+name = "openagc-core"
+description = "The Rust core behind the OpenAGC app: UniFFI exports, runtime and event bus."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["lib", "staticlib"]
+name = "openagc_core"
+
+[dependencies]
+mail-domain.workspace = true
+mail-store.workspace = true
+mail-mime.workspace = true
+mail-sync.workspace = true
+provider-api.workspace = true
+provider-gmail.workspace = true
+agent-api.workspace = true
+agent-claude.workspace = true
+agent-codex.workspace = true
+agent-mcp.workspace = true
+permissions.workspace = true
+uniffi.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+getrandom.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+
+[dev-dependencies]
+futures = "0.3"
+tokio = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

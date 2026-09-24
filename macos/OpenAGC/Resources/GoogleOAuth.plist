@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The shipped Google OAuth desktop client (spec §7.3). Installed apps cannot
+  keep secrets, so these values are not confidential. Empty until the
+  project's Google Cloud client exists; until then users bring their own
+  (Settings › Accounts › Advanced, docs/google-oauth-client.md).
+-->
+<plist version="1.0">
+<dict>
+    <key>ClientID</key>
+    <string></string>
+    <key>ClientSecret</key>
+    <string></string>
+</dict>
+</plist>

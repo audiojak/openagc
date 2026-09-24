@@ -1,0 +1,18 @@
+From: "Sam Chen" <sam.chen@example.org>
+To: me@example.com, "Jordan Park" <jordan.park@example.net>
+Cc: team@example.org
+Subject: Q3 planning
+Date: Wed, 16 Sep 2026 14:00:00 +0000
+Message-ID: <alt.1@example.org>
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="b1"
+
+--b1
+Content-Type: text/plain; charset=utf-8
+
+Plain version of the plan.
+--b1
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>HTML version of the <b>plan</b>.</p></body></html>
+--b1--

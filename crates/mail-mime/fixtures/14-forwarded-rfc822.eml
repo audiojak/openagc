@@ -1,0 +1,22 @@
+From: Riley Haddad <riley.haddad@example.org>
+To: me@example.com
+Subject: Fwd: Original thread
+Date: Wed, 23 Sep 2026 09:00:00 +0000
+Message-ID: <fwd@example.org>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="f"
+
+--f
+Content-Type: text/plain
+
+FYI, see below.
+--f
+Content-Type: message/rfc822
+
+From: Quinn Park <quinn.park@example.com>
+To: riley.haddad@example.org
+Subject: Original thread
+Content-Type: text/plain
+
+The original message body.
+--f--
