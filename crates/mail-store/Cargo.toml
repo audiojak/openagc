@@ -9,6 +9,15 @@ publish.workspace = true
 
 [dependencies]
 mail-domain.workspace = true
+rusqlite.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 
 [lints]
 workspace = true

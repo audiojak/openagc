@@ -403,8 +403,15 @@ migration.
 ### 6.2 Schema (v1)
 
 Migrations are numbered SQL files embedded with `include_str!`, applied in
-order, tracked in `schema_migrations`. Every table has integer rowid primary
-keys; Gmail IDs are unique-indexed text columns.
+order, tracked by `PRAGMA user_version` (set in the same transaction as the
+migration, so a crash cannot leave the two out of step; a database newer
+than the build is refused). Every table has integer rowid primary keys;
+Gmail IDs are unique-indexed text columns.
+
+*The authoritative schema is `crates/mail-store/migrations/0001_initial.sql`.*
+The sketch below was the plan; the implemented schema differs as noted
+after it (single-row `account` table, `participants.position`, an
+`attachments.part_id`, a `contacts` table, a virtual `@archive` label).
 
 ```sql
 CREATE TABLE accounts (
@@ -503,31 +510,43 @@ CREATE TABLE agent_transcript (
 
 `thread_labels` is the table the inbox actually reads: `WHERE label_id = ?
 ORDER BY last_message_at DESC, thread_id DESC LIMIT 100` is an index-only
-scan. Triggers on `message_labels` and `messages` maintain it and the
-`threads.unread_count` / `message_count` counters, so the list never
-aggregates at query time.
+scan. The store's write API maintains it and the thread aggregates
+(`unread_count`, `message_count`, participants, label ids) by recomputing
+the affected threads in the same transaction as each change. *(Amended in
+M1: the plan said SQL triggers; since the store is the only writer, doing
+it in Rust gives the same guarantee and is far easier to test.)* Archive
+is a virtual label row (`@archive`, kind `virtual`) whose `thread_labels`
+entries mark threads with no INBOX label that are not wholly spam or trash,
+so Archive lists use the same index as every other mailbox.
 
 ### 6.3 Full-text search **(Verified)**
 
-Two FTS5 tables, both **external-content** so bodies are stored once:
+Two FTS5 tables *(amended in M1)*:
 
 ```sql
+-- rowid = messages.id; contentless with contentless_delete (SQLite ≥ 3.43)
 CREATE VIRTUAL TABLE messages_fts USING fts5(
-  subject, from_name, from_email, to_text, body_text,
-  content='messages_fts_source', content_rowid='message_id',
-  tokenize='unicode61 remove_diacritics 2');
+  subject, from_text, to_text, body, attachment_names,
+  content = '', contentless_delete = 1,
+  tokenize = 'unicode61 remove_diacritics 2');
 
-CREATE VIRTUAL TABLE addresses_fts USING fts5(
-  name, email, content='participants_view', content_rowid='rowid',
-  tokenize='trigram');
+-- Everyone corresponded with, for autocomplete (frecency) and partial matches
+CREATE TABLE contacts (id, email UNIQUE COLLATE NOCASE, name,
+  sent_count, received_count, last_seen);
+CREATE VIRTUAL TABLE contacts_fts USING fts5(
+  name, email, content = 'contacts', content_rowid = 'id', tokenize = 'trigram');
 ```
 
-`messages_fts_source` is a view joining `messages`, `bodies.text_plain` and
-a concatenated recipient string. Triggers keep the FTS index in step
-(`INSERT INTO messages_fts(messages_fts, rowid, ...) VALUES('delete', ...)`
-on update/delete). The trigram table serves as-you-type sender/recipient
-matching (`"joh"` matches `john@`), which `unicode61` prefix queries cannot do
-inside an address.
+The plan was external-content tables over views. External content requires
+every delete to replay the *old* column values exactly, or the index is
+silently corrupted; a contentless table with `contentless_delete=1` deletes
+by rowid and stores no second copy either. The cost — no `snippet()` /
+`highlight()` from the index — does not apply, since results are rendered
+from the message tables. The contacts table replaces a trigram index over a
+participants view: it is what composer autocomplete needs anyway (§14.5),
+and its three triggers are trivial. The trigram table serves as-you-type
+address matching (`"ohn"` matches `john@`), which `unicode61` prefix queries
+cannot do inside an address.
 
 Search query grammar (§8) compiles to `MATCH` plus structured `WHERE` clauses.
 Ranking: `bm25(messages_fts, 10.0, 5.0, 5.0, 2.0, 1.0)` weighted toward
