@@ -49,6 +49,27 @@ final class ThreadListStore {
         await refresh()
     }
 
+    /// Remove rows now, ahead of the core's change event (spec §13 rule 7).
+    func optimisticallyRemove(_ ids: Set<String>) {
+        let kept = rows.filter { !ids.contains($0.id) }
+        guard kept.count != rows.count else { return }
+        rows = kept
+        generation += 1
+    }
+
+    /// Patch rows now, ahead of the core's change event.
+    func optimisticallyUpdate(_ ids: Set<String>, _ transform: (inout ThreadRow) -> Void) {
+        var changed = false
+        var updated = rows
+        for i in updated.indices where ids.contains(updated[i].id) {
+            transform(&updated[i])
+            changed = true
+        }
+        guard changed else { return }
+        rows = updated
+        generation += 1
+    }
+
     func refresh() async {
         let count = UInt32(max(rows.count, Int(Self.pageSize)))
         nextCursor = nil

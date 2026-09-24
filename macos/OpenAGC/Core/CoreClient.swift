@@ -69,6 +69,41 @@ final class CoreClient: Sendable {
         try await call { try await core.getRenderedBody(messageId: messageID) }
     }
 
+    // MARK: Mutations (applied locally at once, then pushed to Gmail)
+
+    func archive(_ threadIDs: [String]) async throws(CoreClientError) {
+        try await call { try await core.archive(threadIds: threadIDs) }
+    }
+
+    func moveToInbox(_ threadIDs: [String]) async throws(CoreClientError) {
+        try await call { try await core.moveToInbox(threadIds: threadIDs) }
+    }
+
+    func setRead(_ threadIDs: [String], _ read: Bool) async throws(CoreClientError) {
+        try await call { try await core.setRead(threadIds: threadIDs, read: read) }
+    }
+
+    func setStarred(_ threadIDs: [String], _ starred: Bool) async throws(CoreClientError) {
+        try await call { try await core.setStarred(threadIds: threadIDs, starred: starred) }
+    }
+
+    func modifyLabels(_ threadIDs: [String], add: [String], remove: [String]) async throws(CoreClientError) {
+        try await call { try await core.modifyLabels(threadIds: threadIDs, add: add, remove: remove) }
+    }
+
+    func trash(_ threadIDs: [String]) async throws(CoreClientError) {
+        try await call { try await core.trash(threadIds: threadIDs) }
+    }
+
+    func outboxStatus() async throws(CoreClientError) -> (pending: UInt32, failed: UInt32) {
+        let status = try await call { try await core.outboxStatus() }
+        return (status.pending, status.failed)
+    }
+
+    func clearFailedChanges() async throws(CoreClientError) {
+        try await call { try await core.clearFailedChanges() }
+    }
+
     // MARK: Accounts and sync
 
     struct SignInStart: Sendable {

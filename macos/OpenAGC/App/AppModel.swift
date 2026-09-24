@@ -35,6 +35,10 @@ final class AppModel {
         didSet { if selectedMailboxID != oldValue { mailboxChanged() } }
     }
     var selectedThreadID: String?
+    /// Every selected thread; actions apply to all of them.
+    var selectedThreadIDs: Set<String> = []
+    /// Failed changes that were undone, shown as a banner.
+    private(set) var failedChanges: UInt32 = 0
 
     let mailboxes: MailboxStore
     let threads: ThreadListStore
@@ -143,6 +147,90 @@ final class AppModel {
         }
     }
 
+    // MARK: Actions on the selection
+
+    /// The threads an action applies to: the multi-selection, else the one
+    /// being read.
+    var actionTargets: [String] {
+        if !selectedThreadIDs.isEmpty { return threads.rows.map(\.id).filter(selectedThreadIDs.contains) }
+        return selectedThreadID.map { [$0] } ?? []
+    }
+
+    /// Archive (or trash): rows leave at once and the next row is selected.
+    func archiveSelection() { removeFromList(action: { core, ids in try await core.archive(ids) }) }
+    func trashSelection() { removeFromList(action: { core, ids in try await core.trash(ids) }) }
+
+    func moveSelectionToInbox() {
+        let ids = actionTargets
+        guard let core, !ids.isEmpty else { return }
+        if selectedMailboxID != "INBOX" { dropFromList(ids) }
+        Task { await perform { try await core.moveToInbox(ids) } }
+    }
+
+    /// Toggle read: if any target is unread, mark all read; else all unread.
+    func toggleReadSelection() {
+        let ids = actionTargets
+        guard let core, !ids.isEmpty else { return }
+        let anyUnread = threads.rows.contains { ids.contains($0.id) && $0.unreadCount > 0 }
+        threads.optimisticallyUpdate(Set(ids)) { $0.unreadCount = anyUnread ? 0 : max($0.unreadCount, 1) }
+        Task { await perform { try await core.setRead(ids, anyUnread) } }
+    }
+
+    func toggleStarSelection() {
+        let ids = actionTargets
+        guard let core, !ids.isEmpty else { return }
+        let allStarred = threads.rows.filter { ids.contains($0.id) }.allSatisfy(\.isStarred)
+        threads.optimisticallyUpdate(Set(ids)) { $0.isStarred = !allStarred }
+        if selectedMailboxID == "STARRED", allStarred { dropFromList(ids) }
+        Task { await perform { try await core.setStarred(ids, !allStarred) } }
+    }
+
+    func setLabel(_ labelID: String, applied: Bool) {
+        let ids = actionTargets
+        guard let core, !ids.isEmpty else { return }
+        if !applied, selectedMailboxID == labelID { dropFromList(ids) }
+        Task {
+            await perform {
+                try await core.modifyLabels(ids, add: applied ? [labelID] : [], remove: applied ? [] : [labelID])
+            }
+        }
+    }
+
+    func dismissFailedChanges() {
+        guard let core else { return }
+        Task { try? await core.clearFailedChanges() }
+    }
+
+    private func removeFromList(action: @escaping @Sendable (CoreClient, [String]) async throws -> Void) {
+        let ids = actionTargets
+        guard let core, !ids.isEmpty else { return }
+        dropFromList(ids)
+        Task { await perform { try await action(core, ids) } }
+    }
+
+    /// Remove rows and move the selection to the row after the last one
+    /// removed, like Mail.
+    private func dropFromList(_ ids: [String]) {
+        let removed = Set(ids)
+        let rows = threads.rows
+        let lastIndex = rows.lastIndex { removed.contains($0.id) } ?? 0
+        let next = rows[(lastIndex + 1)...].first { !removed.contains($0.id) }
+            ?? rows[..<lastIndex].last { !removed.contains($0.id) }
+        threads.optimisticallyRemove(removed)
+        selectedThreadIDs = []
+        selectedThreadID = next?.id
+    }
+
+    private func perform(_ body: () async throws -> Void) async {
+        do {
+            try await body()
+        } catch {
+            logger.error("action failed: \(String(describing: error), privacy: .public)")
+            // The store was not changed; bring the list back in line.
+            await threads.refresh()
+        }
+    }
+
     /// Poll faster while active; sync at once on activation, wake from
     /// sleep, and when the network comes back (spec §7.4).
     private func observeLifecycle() {
@@ -164,6 +252,7 @@ final class AppModel {
 
     private func mailboxChanged() {
         selectedThreadID = nil
+        selectedThreadIDs = []
         guard case .open = accountState, let id = selectedMailboxID else { return }
         Task { await threads.show(mailboxID: id) }
     }
@@ -194,8 +283,8 @@ final class AppModel {
             case .offline: syncDisplay = .offline
             case .error: syncDisplay = .error
             }
-        case .outboxStatus:
-            break
+        case let .outboxStatus(_, failed):
+            failedChanges = failed
         }
     }
 }

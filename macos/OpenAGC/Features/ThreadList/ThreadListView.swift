@@ -13,7 +13,8 @@ struct ThreadListView: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let table = NSTableView()
+        let table = ThreadTableView()
+        table.model = model
         table.headerView = nil
         table.style = .inset
         table.rowHeight = ThreadRowView.height
@@ -40,7 +41,8 @@ struct ThreadListView: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let store = model.threads
-        context.coordinator.update(rows: store.rows, generation: store.generation, selectedID: model.selectedThreadID)
+        context.coordinator.update(rows: store.rows, generation: store.generation,
+                                   selected: model.selectedThreadIDs.union(model.selectedThreadID.map { [$0] } ?? []))
     }
 
     @MainActor
@@ -55,15 +57,12 @@ struct ThreadListView: NSViewRepresentable {
             self.model = model
         }
 
-        func update(rows newRows: [ThreadRow], generation newGeneration: Int, selectedID: String?) {
+        func update(rows newRows: [ThreadRow], generation newGeneration: Int, selected: Set<String>) {
             guard let table else { return }
             if newGeneration != generation {
                 generation = newGeneration
                 rows = newRows
                 table.reloadData()
-                if newRows.isEmpty == false, table.selectedRow < 0, selectedID == nil {
-                    table.scrollRowToVisible(0)
-                }
             } else if newRows.count > rows.count, newRows.starts(with: rows, by: { $0.id == $1.id }) {
                 let added = IndexSet(integersIn: rows.count..<newRows.count)
                 rows = newRows
@@ -72,24 +71,18 @@ struct ThreadListView: NSViewRepresentable {
                 rows = newRows
                 table.reloadData()
             }
-            select(id: selectedID)
+            select(selected)
         }
 
-        private func select(id: String?) {
+        /// Make the table's selection match the model's, by thread id.
+        private func select(_ ids: Set<String>) {
             guard let table else { return }
-            let target = id.flatMap { id in rows.firstIndex { $0.id == id } }
-            let current = table.selectedRowIndexes
-            if let target {
-                guard !current.contains(target) else { return }
-                applyingSelection = true
-                table.selectRowIndexes([target], byExtendingSelection: false)
-                table.scrollRowToVisible(target)
-                applyingSelection = false
-            } else if id == nil, !current.isEmpty {
-                applyingSelection = true
-                table.deselectAll(nil)
-                applyingSelection = false
-            }
+            let target = IndexSet(rows.indices.filter { ids.contains(rows[$0].id) })
+            guard target != table.selectedRowIndexes else { return }
+            applyingSelection = true
+            table.selectRowIndexes(target, byExtendingSelection: false)
+            if let first = target.first, target.count == 1 { table.scrollRowToVisible(first) }
+            applyingSelection = false
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -106,9 +99,131 @@ struct ThreadListView: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard !applyingSelection, let table else { return }
-            let selected = table.selectedRowIndexes
+            let selected = table.selectedRowIndexes.filter { $0 < rows.count }
             // One thread shows in the reader; multi-select is for bulk actions.
+            model.selectedThreadIDs = selected.count > 1 ? Set(selected.map { rows[$0].id }) : []
             model.selectedThreadID = selected.count == 1 ? rows[selected.first!].id : nil
         }
+
+        /// Swipe left to archive, right to toggle read (spec §14.3).
+        func tableView(_ tableView: NSTableView, rowActionsForRow row: Int,
+                       edge: NSTableView.RowActionEdge) -> [NSTableViewRowAction] {
+            guard row < rows.count else { return [] }
+            let id = rows[row].id
+            let model = self.model
+            switch edge {
+            case .trailing:
+                let archive = NSTableViewRowAction(style: .destructive, title: "Archive") { _, _ in
+                    model.selectedThreadIDs = []
+                    model.selectedThreadID = id
+                    model.archiveSelection()
+                }
+                archive.backgroundColor = .systemPurple
+                return [archive]
+            case .leading:
+                let unread = rows[row].unreadCount > 0
+                let toggle = NSTableViewRowAction(style: .regular, title: unread ? "Read" : "Unread") { _, _ in
+                    model.selectedThreadIDs = []
+                    model.selectedThreadID = id
+                    model.toggleReadSelection()
+                    tableView.rowActionsVisible = false
+                }
+                toggle.backgroundColor = .systemBlue
+                return [toggle]
+            @unknown default:
+                return []
+            }
+        }
     }
+}
+
+/// The thread table, with Mail-style single-key shortcuts and a context
+/// menu (spec §14.3). Keys act on the selection.
+final class ThreadTableView: NSTableView {
+    weak var model: AppModel?
+
+    override func keyDown(with event: NSEvent) {
+        guard let model, event.modifierFlags.intersection([.command, .control, .option]).isEmpty else {
+            super.keyDown(with: event)
+            return
+        }
+        switch event.charactersIgnoringModifiers {
+        case "e": model.archiveSelection()
+        case "u": model.toggleReadSelection()
+        case "s": model.toggleStarSelection()
+        case "l": showLabelMenu()
+        case "#": model.trashSelection()
+        default:
+            if event.keyCode == 51 || event.keyCode == 117 { // delete, forward delete
+                model.trashSelection()
+            } else {
+                super.keyDown(with: event)
+            }
+        }
+    }
+
+    /// Right-click acts on the clicked row, or the whole selection if the
+    /// clicked row is part of it.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let row = self.row(at: convert(event.locationInWindow, from: nil))
+        guard row >= 0, let model else { return nil }
+        if !selectedRowIndexes.contains(row) {
+            selectRowIndexes([row], byExtendingSelection: false)
+        }
+        let menu = NSMenu()
+        menu.addItem(ActionItem("Archive", key: "e") { model.archiveSelection() })
+        menu.addItem(ActionItem("Move to Inbox") { model.moveSelectionToInbox() })
+        menu.addItem(.separator())
+        menu.addItem(ActionItem("Mark as Read / Unread", key: "u") { model.toggleReadSelection() })
+        menu.addItem(ActionItem("Star / Unstar", key: "s") { model.toggleStarSelection() })
+        let labels = NSMenuItem(title: "Label", action: nil, keyEquivalent: "")
+        labels.submenu = labelMenu()
+        menu.addItem(labels)
+        menu.addItem(.separator())
+        menu.addItem(ActionItem("Move to Trash", key: "\u{8}") { model.trashSelection() })
+        return menu
+    }
+
+    private func labelMenu() -> NSMenu {
+        let menu = NSMenu()
+        guard let model else { return menu }
+        let targets = Set(model.actionTargets)
+        let rows = model.threads.rows.filter { targets.contains($0.id) }
+        for label in model.mailboxes.labels {
+            guard let id = label.labelId else { continue }
+            let applied = !rows.isEmpty && rows.allSatisfy { $0.labelIds.contains(id) }
+            let item = ActionItem(label.name) { model.setLabel(id, applied: !applied) }
+            item.state = applied ? .on : .off
+            menu.addItem(item)
+        }
+        if menu.items.isEmpty {
+            let empty = NSMenuItem(title: "No Labels", action: nil, keyEquivalent: "")
+            empty.isEnabled = false
+            menu.addItem(empty)
+        }
+        return menu
+    }
+
+    private func showLabelMenu() {
+        let row = selectedRow >= 0 ? selectedRow : 0
+        let rect = rect(ofRow: row)
+        labelMenu().popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.maxY), in: self)
+    }
+}
+
+/// A menu item that runs a closure.
+final class ActionItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, key: String = "", handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        target = self
+        if !key.isEmpty { keyEquivalent = key; keyEquivalentModifierMask = [] }
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func run() { handler() }
 }
