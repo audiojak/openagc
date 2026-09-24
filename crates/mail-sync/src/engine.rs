@@ -316,7 +316,7 @@ impl SyncEngine {
         &self.db
     }
 
-    pub(crate) fn provider(&self) -> &dyn MailProvider {
+    pub fn provider(&self) -> &dyn MailProvider {
         self.provider.as_ref()
     }
 

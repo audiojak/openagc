@@ -25,6 +25,7 @@ pub fn to_incoming(m: FetchedMessage) -> IncomingMessage {
                     size: a.size,
                     content_id: a.content_id,
                     is_inline: a.is_inline,
+                    data: a.data,
                 })
                 .collect();
             (Some(body), attachments)

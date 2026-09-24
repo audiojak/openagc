@@ -8,6 +8,8 @@ import WebKit
 struct MessageWebView: NSViewRepresentable {
     let html: String
     let allowRemoteImages: Bool
+    /// Inline images by content id; the page reloads when more arrive.
+    var inlineImages: [String: InlineImage] = [:]
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -37,7 +39,11 @@ struct MessageWebView: NSViewRepresentable {
         let coordinator = context.coordinator
         let remoteChanged = coordinator.remoteImages.allowRemote != allowRemoteImages
         coordinator.remoteImages.allowRemote = allowRemoteImages
-        guard html != coordinator.loadedHTML || remoteChanged else { return }
+        let images = inlineImages
+        coordinator.inlineImages.provider = { cid in images[cid].map { ($0.data, $0.mimeType) } }
+        let imagesChanged = coordinator.loadedInlineImages != Set(images.keys)
+        coordinator.loadedInlineImages = Set(images.keys)
+        guard html != coordinator.loadedHTML || remoteChanged || imagesChanged else { return }
         coordinator.loadedHTML = html
         coordinator.suspiciousLinks = LinkSafety.mismatchedLinks(in: html)
         // A fixed, opaque base URL: nothing in the document can resolve
@@ -50,6 +56,7 @@ struct MessageWebView: NSViewRepresentable {
         let remoteImages = RemoteImageSchemeHandler()
         let inlineImages = CidSchemeHandler()
         var loadedHTML = ""
+        var loadedInlineImages: Set<String> = []
         var suspiciousLinks: [String: String] = [:]
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {

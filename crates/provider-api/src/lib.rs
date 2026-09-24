@@ -93,6 +93,8 @@ pub struct FetchedAttachment {
     pub size: u64,
     pub content_id: Option<String>,
     pub is_inline: bool,
+    /// Bytes returned with the message (small parts with no attachment id).
+    pub data: Option<Vec<u8>>,
 }
 
 /// One change in the provider's history.

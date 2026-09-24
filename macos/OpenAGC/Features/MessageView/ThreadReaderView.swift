@@ -11,12 +11,16 @@ struct ThreadReaderView: View {
         VStack(spacing: 0) {
             if let detail = reader.detail {
                 header(detail)
+                if !reader.attachments.isEmpty {
+                    AttachmentStrip(attachments: reader.attachments)
+                }
                 if reader.hasRemoteImages && !reader.allowsRemoteImages {
                     remoteImagesBanner
                 }
                 MessageWebView(
                     html: EmailDocument.thread(reader.documentMessages, isDark: colorScheme == .dark),
-                    allowRemoteImages: reader.allowsRemoteImages)
+                    allowRemoteImages: reader.allowsRemoteImages,
+                    inlineImages: reader.inlineImages)
             } else {
                 Color.clear
             }

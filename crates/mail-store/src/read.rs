@@ -343,3 +343,36 @@ pub(crate) fn decode_cursor(c: &str) -> StoreResult<(i64, i64)> {
     let parse = |s: &str| s.parse::<i64>().map_err(|_| StoreError::Invalid(format!("bad cursor {c:?}")));
     Ok((parse(a)?, parse(b)?))
 }
+
+/// Everything needed to produce an attachment's bytes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachmentSource {
+    pub message_id: MessageId,
+    pub part_id: Option<String>,
+    pub provider_attachment_id: Option<String>,
+    pub filename: String,
+    pub mime_type: String,
+    pub content_id: Option<String>,
+    pub data: Option<Vec<u8>>,
+}
+
+/// An attachment by the id the UI was given (its row id).
+pub fn attachment_source(conn: &Connection, id: i64) -> StoreResult<Option<AttachmentSource>> {
+    Ok(conn
+        .prepare_cached(
+            "SELECT m.gmail_id, a.part_id, a.gmail_attachment_id, a.filename, a.mime_type, a.content_id, a.data
+             FROM attachments a JOIN messages m ON m.id = a.message_id WHERE a.id = ?1",
+        )?
+        .query_row([id], |r| {
+            Ok(AttachmentSource {
+                message_id: MessageId(r.get(0)?),
+                part_id: r.get(1)?,
+                provider_attachment_id: r.get(2)?,
+                filename: r.get(3)?,
+                mime_type: r.get(4)?,
+                content_id: r.get(5)?,
+                data: r.get(6)?,
+            })
+        })
+        .optional()?)
+}

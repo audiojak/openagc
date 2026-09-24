@@ -108,6 +108,40 @@ final class CoreClient: Sendable {
         try await call { try await core.clearFailedChanges() }
     }
 
+    // MARK: Attachments
+
+    struct AttachmentFile: Sendable, Equatable {
+        let url: URL
+        let filename: String
+        let mimeType: String
+        let contentID: String?
+    }
+
+    /// The local copy of an attachment, downloaded first if needed. New
+    /// downloads are quarantined like any browser download (spec §15.3), so
+    /// Gatekeeper checks them before anything opens.
+    func attachmentFile(_ attachmentID: String) async throws(CoreClientError) -> AttachmentFile {
+        let info = try await call { try await core.attachmentFile(attachmentId: attachmentID) }
+        let url = URL(filePath: info.path)
+        if info.downloaded { Self.quarantine(url) }
+        return AttachmentFile(url: url, filename: info.filename, mimeType: info.mimeType, contentID: info.contentId)
+    }
+
+    static func quarantine(_ url: URL) {
+        var values = URLResourceValues()
+        values.quarantineProperties = [
+            kLSQuarantineAgentNameKey as String: "OpenAGC",
+            kLSQuarantineTypeKey as String: kLSQuarantineTypeOtherAttachment as String,
+        ]
+        var url = url
+        do {
+            try url.setResourceValues(values)
+        } catch {
+            Logger(subsystem: "ai.actual.openagc", category: "attachments")
+                .error("quarantine failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: Drafts and sending
 
     func accountAddress() async throws(CoreClientError) -> String {

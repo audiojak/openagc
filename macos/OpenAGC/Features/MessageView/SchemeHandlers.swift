@@ -71,6 +71,12 @@ final class RemoteImageSchemeHandler: NSObject, WKURLSchemeHandler {
     }
 }
 
+/// An inline image's bytes, served for `openagc-cid:` references.
+struct InlineImage: Equatable, Sendable {
+    let data: Data
+    let mimeType: String
+}
+
 /// Serves `openagc-cid:<content-id>` inline images from the message's
 /// attachments. Until attachment bytes are fetched on demand (spec §14.3),
 /// inline images render as transparent placeholders.

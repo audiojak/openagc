@@ -13,6 +13,8 @@ final class ReaderStore {
     private(set) var threadID: String?
     private(set) var detail: ThreadDetail?
     private(set) var bodies: [String: RenderedBody] = [:]
+    /// Inline (`cid:`) images for the thread, by content id.
+    private(set) var inlineImages: [String: InlineImage] = [:]
     /// Remote images were requested for this thread in this session.
     private(set) var remoteImagesAllowedForThread = false
 
@@ -40,6 +42,7 @@ final class ReaderStore {
         guard threadID != self.threadID else { return }
         self.threadID = threadID
         remoteImagesAllowedForThread = false
+        inlineImages = [:]
         loadGeneration += 1
         let generation = loadGeneration
         guard let threadID, let core else {
@@ -59,6 +62,37 @@ final class ReaderStore {
             remember(body)
             bodies[message.id] = body
         }
+        await loadInlineImages(of: loaded, generation: generation)
+    }
+
+    /// Largest inline image fetched automatically.
+    static let inlineImageLimit: UInt64 = 10_000_000
+
+    /// Fetch the images a body references by content id. They come from
+    /// the account's own mail, so unlike remote images they are not gated.
+    private func loadInlineImages(of detail: ThreadDetail, generation: Int) async {
+        guard let core else { return }
+        for message in detail.messages where bodies[message.id]?.html?.contains("openagc-cid:") == true {
+            for attachment in message.attachments {
+                guard let cid = attachment.contentId.map(Self.normalizedContentID), !cid.isEmpty,
+                      attachment.mimeType.hasPrefix("image/"), attachment.size <= Self.inlineImageLimit,
+                      inlineImages[cid] == nil,
+                      let file = try? await core.attachmentFile(attachment.id),
+                      generation == loadGeneration,
+                      let data = try? Data(contentsOf: file.url, options: .mappedIfSafe)
+                else { continue }
+                inlineImages[cid] = InlineImage(data: data, mimeType: attachment.mimeType)
+            }
+        }
+    }
+
+    static func normalizedContentID(_ cid: String) -> String {
+        cid.trimmingCharacters(in: CharacterSet(charactersIn: "<> "))
+    }
+
+    /// Files attached to the thread (not inline images), oldest first.
+    var attachments: [AttachmentInfo] {
+        (detail?.messages ?? []).flatMap { $0.attachments.filter { !$0.isInline } }
     }
 
     func loadRemoteImagesForThread() {

@@ -189,14 +189,17 @@ pub fn generate(db: &Db, spec: &DemoSpec) -> StoreResult<DemoStats> {
             let body_html =
                 format!("<p>Hi,</p><p>{}</p><p>Best,<br>{}</p>", text, if from_me { "Me" } else { sender.display() });
             let attachments = if rng.chance(12) {
+                let pdf = one_page_pdf(&capitalize(&topic));
                 vec![IncomingAttachment {
                     part_id: Some("2".into()),
-                    provider_attachment_id: Some(format!("att{t}-{i}")),
+                    provider_attachment_id: None,
                     filename: format!("{}.pdf", topic.replace(' ', "-").replace('#', "")),
                     mime_type: "application/pdf".into(),
-                    size: 20_000 + rng.below(2_000_000),
+                    size: pdf.len() as u64,
                     content_id: None,
                     is_inline: false,
+                    // The demo has no server: its attachments come with it.
+                    data: Some(pdf),
                 }]
             } else {
                 vec![]
@@ -255,6 +258,37 @@ fn capitalize(s: &str) -> String {
         Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
         None => String::new(),
     }
+}
+
+/// A minimal valid one-page PDF showing `title`, so demo attachments open
+/// in Quick Look.
+fn one_page_pdf(title: &str) -> Vec<u8> {
+    let text: String = title.chars().filter(|c| c.is_ascii_alphanumeric() || *c == ' ').collect();
+    let stream = format!("BT /F1 28 Tf 72 700 Td ({text}) Tj ET");
+    let objects = [
+        "<< /Type /Catalog /Pages 2 0 R >>".to_owned(),
+        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_owned(),
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R \
+         /Resources << /Font << /F1 5 0 R >> >> >>"
+            .to_owned(),
+        format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_owned(),
+    ];
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::with_capacity(objects.len());
+    for (i, body) in objects.iter().enumerate() {
+        offsets.push(out.len());
+        out.extend_from_slice(format!("{} 0 obj\n{body}\nendobj\n", i + 1).as_bytes());
+    }
+    let xref = out.len();
+    out.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+    for offset in offsets {
+        out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+    }
+    out.extend_from_slice(
+        format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n", objects.len() + 1).as_bytes(),
+    );
+    out
 }
 
 #[cfg(test)]

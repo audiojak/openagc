@@ -59,6 +59,8 @@ pub struct IncomingAttachment {
     pub size: u64,
     pub content_id: Option<String>,
     pub is_inline: bool,
+    /// Bytes that came with the message, if any.
+    pub data: Option<Vec<u8>>,
 }
 
 /// Per mailbox (label id, including `@archive`): thread ids that entered,
@@ -423,7 +425,7 @@ impl<'t> MailWriter<'t> {
         self.tx.prepare_cached("DELETE FROM attachments WHERE message_id = ?1")?.execute([message_rowid])?;
         let mut insert = self.tx.prepare_cached(
             "INSERT INTO attachments (message_id, part_id, gmail_attachment_id, filename, mime_type, size,
-               content_id, is_inline) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+               content_id, is_inline, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         )?;
         for a in attachments {
             insert.execute(params![
@@ -434,7 +436,8 @@ impl<'t> MailWriter<'t> {
                 if a.mime_type.is_empty() { "application/octet-stream" } else { &a.mime_type },
                 a.size as i64,
                 a.content_id,
-                a.is_inline
+                a.is_inline,
+                a.data
             ])?;
         }
         Ok(())

@@ -274,6 +274,7 @@ impl Walk {
             size: body.size,
             content_id,
             is_inline,
+            data: if body.attachment_id.is_none() { body.data.as_deref().and_then(decode_base64url) } else { None },
         });
         // A forwarded message's own parts are not part of this body.
         if mime == "message/rfc822" {
