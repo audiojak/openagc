@@ -30,7 +30,19 @@ struct MainWindow: View {
             content
                 .navigationSplitViewColumnWidth(min: 300, ideal: 380)
         } detail: {
-            detail
+            // The agent column sits beside the reader. (SwiftUI's
+            // `.inspector` left its split item collapsed at zero width here.)
+            HStack(spacing: 0) {
+                detail
+                    .frame(maxWidth: .infinity)
+                if model.agent.isPresented {
+                    Divider()
+                    AgentInspector()
+                        .frame(width: 340)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(.snappy(duration: 0.2), value: model.agent.isPresented)
         }
         .searchable(text: Bindable(model).searchText, placement: .toolbar, prompt: "Search mail")
         .searchFocused($searchFocused)
@@ -65,6 +77,7 @@ struct MainWindow: View {
                 } else {
                     ThreadListView()
                 }
+                AgentPromptBar()
             }
         }
     }

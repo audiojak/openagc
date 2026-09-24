@@ -52,6 +52,7 @@ final class AppModel {
     let mailboxes: MailboxStore
     let threads: ThreadListStore
     let reader: ReaderStore
+    let agent: AgentStore
     let core: CoreClient?
 
     private let logger = Logger(subsystem: "ai.actual.openagc", category: "app")
@@ -65,6 +66,7 @@ final class AppModel {
         mailboxes = MailboxStore(core: core)
         threads = ThreadListStore(core: core)
         reader = ReaderStore(core: core)
+        agent = AgentStore(core: core)
     }
 
     /// Open the remembered account, or the demo when asked for on launch.
@@ -171,6 +173,22 @@ final class AppModel {
 
     func focusSearch() {
         searchFocusRequests += 1
+    }
+
+    // MARK: Agent
+
+    /// Bumped to move focus to the agent prompt (⌘K).
+    private(set) var agentFocusRequests = 0
+
+    func focusAgentPrompt() {
+        agentFocusRequests += 1
+    }
+
+    /// Ask the agent, with references to what the user is looking at.
+    func askAgent(_ prompt: String) async {
+        let context = PromptContextInfo(mailboxId: selectedMailboxID, selectedThreadIds: actionTargets,
+                                        searchQuery: threads.searchQuery)
+        await agent.send(prompt, context: context)
     }
 
     // MARK: Notifications
@@ -353,8 +371,8 @@ final class AppModel {
             failedChanges = failed
         case let .newMail(mail):
             notifier.announce(mail)
-        case .agent:
-            break // The agent panel (oagc-mxw) consumes these.
+        case let .agent(sessionID, events):
+            await agent.apply(sessionID: sessionID, events: events)
         }
     }
 }

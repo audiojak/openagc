@@ -12,6 +12,9 @@ import os
 ///   -OpenAGCSnapshotSearch <query>      type a search first
 ///   -OpenAGCSnapshotCompose new|reply|forward   open a composer and
 ///                                       capture it instead
+///   -OpenAGCSnapshotAgentPrompt <text>  ask the agent first (use with
+///                                       -OpenAGCFakeAgents YES)
+///   -OpenAGCSnapshotWidth <points>      resize the main window first
 ///   -OpenAGCSnapshotMode layer          render the CALayer tree instead
 ///                                       (catches layer-only SwiftUI content)
 @MainActor
@@ -29,6 +32,15 @@ enum Snapshot {
         default: break
         }
         Task { @MainActor in
+            // Some AppKit animations (split view items) only run in the
+            // active app.
+            NSApp.activate()
+            if let width = Double(defaults.string(forKey: "OpenAGCSnapshotWidth") ?? ""),
+               let main = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) }) {
+                var frame = main.frame
+                frame.size.width = width
+                main.setFrame(frame, display: true)
+            }
             try? await Task.sleep(for: .seconds(delay / 2))
             if let mailbox = defaults.string(forKey: "OpenAGCSnapshotMailbox") {
                 delegate.model?.selectedMailboxID = mailbox
@@ -44,6 +56,11 @@ enum Snapshot {
                 } else if defaults.bool(forKey: "OpenAGCSnapshotSelectFirst") {
                     delegate.model?.selectedThreadID = rows[0].id
                 }
+            }
+            if let prompt = defaults.string(forKey: "OpenAGCSnapshotAgentPrompt"), let model = delegate.model {
+                await model.agent.loadProviders()
+                await model.askAgent(prompt)
+                try? await Task.sleep(for: .milliseconds(800))
             }
             var window: NSWindow?
             if let compose = defaults.string(forKey: "OpenAGCSnapshotCompose"), let model = delegate.model {
@@ -61,13 +78,24 @@ enum Snapshot {
             }
             try? await Task.sleep(for: .seconds(delay / 2))
             if let model = delegate.model {
-                FileHandle.standardError.write(Data("snapshot state: \(model.accountState) rows=\(model.threads.rows.count)\n".utf8))
+                FileHandle.standardError.write(Data("snapshot state: \(model.accountState) rows=\(model.threads.rows.count) agent=\(model.agent.isPresented)/\(model.agent.entries.count)/\(model.agent.providers.count)\n".utf8))
             } else {
                 FileHandle.standardError.write(Data("snapshot state: no model\n".utf8))
+            }
+            if defaults.bool(forKey: "OpenAGCSnapshotDumpViews"), let root = (window ?? NSApp.windows.first)?.contentView {
+                dump(root, depth: 0)
             }
             capture(window, to: URL(filePath: path))
             NSApp.terminate(nil)
         }
+    }
+
+    /// Debugging layouts: the view tree with frames, to stderr.
+    private static func dump(_ view: NSView, depth: Int) {
+        guard depth < 14 else { return }
+        let line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame.integral) hidden=\(view.isHidden)\n"
+        FileHandle.standardError.write(Data(line.utf8))
+        for sub in view.subviews { dump(sub, depth: depth + 1) }
     }
 
     private static func capture(_ preferred: NSWindow?, to url: URL) {

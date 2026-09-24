@@ -113,6 +113,13 @@ struct MailCommands: Commands {
                 .keyboardShortcut("l", modifiers: [.command, .shift])
                 .disabled(noTargets)
             Divider()
+            Button("Ask \(model.agent.providerName)…") { model.focusAgentPrompt() }
+                .keyboardShortcut("k")
+                .disabled(!mailKey)
+            Button(model.agent.isPresented ? "Hide Agent" : "Show Agent") { model.agent.isPresented.toggle() }
+                .keyboardShortcut("i", modifiers: [.command, .option])
+                .disabled(!mailKey)
+            Divider()
             Button("Load Remote Images") { model.reader.loadRemoteImagesForThread() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
                 .disabled(!mailKey || !model.reader.hasRemoteImages || model.reader.allowsRemoteImages)

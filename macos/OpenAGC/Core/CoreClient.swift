@@ -35,9 +35,17 @@ final class CoreClient: Sendable {
         core.configureAgents(
             shimPath: bundle.bundleURL.appending(path: "Contents/MacOS/openagc-mcp").path,
             systemPromptPath: bundle.url(forResource: "agent-system-prompt", withExtension: "md")?.path ?? "")
-        if UserDefaults.standard.bool(forKey: "OpenAGCFakeAgents") {
+        // Tests never run the user's real agent CLIs (which would use their
+        // account); neither do UI runs that ask for fakes.
+        if UserDefaults.standard.bool(forKey: "OpenAGCFakeAgents") || Self.isRunningTests {
             core.debugUseFakeAgents()
         }
+    }
+
+    static var isRunningTests: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["XCTestConfigurationFilePath"] != nil || env["XCTestBundlePath"] != nil
+            || env["XCTestSessionIdentifier"] != nil || NSClassFromString("XCTestCase") != nil
     }
 
     var version: String { core.version() }

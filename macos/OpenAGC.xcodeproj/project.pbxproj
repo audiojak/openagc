@@ -49,11 +49,14 @@
 		AB0A75C26EE77D8683A01474 /* SearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D8587064562266E1C5E1DC /* SearchTests.swift */; };
 		ACA4618DFA7FBAF468B9AF9C /* OpenAGCCore.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 24AC691869E94971A95182AF /* OpenAGCCore.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B0F9127F48B25962A0D3E324 /* AgentFFITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE6FF06BED85F5FE72CF32A5 /* AgentFFITests.swift */; };
+		B2F035E69CB0D6421F8A763E /* AgentPanelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90CE9D77767388614457FBCE /* AgentPanelTests.swift */; };
 		B453F38BECAF82D76E2FE0BF /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */; };
 		B46DC7164B626E812E646EDE /* ThreadListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D0633FEBD199D3028E73DAA /* ThreadListView.swift */; };
 		B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D8D9EFB8321E02452EFCF26 /* AppDelegate.swift */; };
 		C9F5E1202A2849397390D3AC /* MailboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD6458B52C0ABAB8AED1A828 /* MailboxStore.swift */; };
+		CB74E21E4FDF9E9140826A70 /* AgentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B53574C86CCC4F40FC00A1 /* AgentStore.swift */; };
 		CC89EB36D485FE29C268F72A /* ThreadRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF32A9AE2D35843656097005 /* ThreadRowView.swift */; };
+		CF4F91CC076301CA21FE2C86 /* AgentPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AFC64B77AEDD827390E1C08 /* AgentPanel.swift */; };
 		D9974F0610B1100DD537D0A5 /* ThreadListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A751B74E9626A3A08F4D905F /* ThreadListStore.swift */; };
 		D9D7C636BB9415D3857A891E /* UpdaterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3FE3957640F5FB9A22D3965 /* UpdaterTests.swift */; };
 		DB3DC4EECF705D9820BC3B1E /* RichTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D24E3C75C954D3F4970670D2 /* RichTextEditor.swift */; };
@@ -100,6 +103,7 @@
 		0853C589261B9BC5E99D0106 /* ComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTests.swift; sourceTree = "<group>"; };
 		0F2806227B342184B9664E7D /* LinkSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkSafety.swift; sourceTree = "<group>"; };
 		11B84FAD449704789E8707C7 /* SchemeHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemeHandlers.swift; sourceTree = "<group>"; };
+		17B53574C86CCC4F40FC00A1 /* AgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStore.swift; sourceTree = "<group>"; };
 		19F04E00E0E6BE9B7678CEDB /* GoogleOAuth.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = GoogleOAuth.plist; sourceTree = "<group>"; };
 		1CD3817AE3B32FC2F3B89845 /* MessageWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageWebView.swift; sourceTree = "<group>"; };
 		24AC691869E94971A95182AF /* OpenAGCCore.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = OpenAGCCore.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -121,11 +125,13 @@
 		6EA889A74036D5319EED2E94 /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		700730FD7CE20073EC4E05F4 /* KeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTests.swift; sourceTree = "<group>"; };
 		7491CD8B391923F8E19F565D /* MailReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailReadTests.swift; sourceTree = "<group>"; };
+		7AFC64B77AEDD827390E1C08 /* AgentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanel.swift; sourceTree = "<group>"; };
 		7DFBC630572AC27DA6ED8285 /* AgentSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettings.swift; sourceTree = "<group>"; };
 		83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAGCApp.swift; sourceTree = "<group>"; };
 		8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipientField.swift; sourceTree = "<group>"; };
 		9036B10AEDC12CF3CF3416BD /* MainWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindow.swift; sourceTree = "<group>"; };
+		90CE9D77767388614457FBCE /* AgentPanelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanelTests.swift; sourceTree = "<group>"; };
 		948C111ADD342515B7C70DDB /* OpenAGCTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OpenAGCTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		99F36E7595DF6E9B290AE189 /* AttachmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentTests.swift; sourceTree = "<group>"; };
 		A3ECF1113029DF896EFBDA03 /* openagc_core.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = openagc_core.swift; sourceTree = "<group>"; };
@@ -200,7 +206,9 @@
 		1D30BC16B523BE0C4B1F7695 /* Agent */ = {
 			isa = PBXGroup;
 			children = (
+				7AFC64B77AEDD827390E1C08 /* AgentPanel.swift */,
 				7DFBC630572AC27DA6ED8285 /* AgentSettings.swift */,
+				17B53574C86CCC4F40FC00A1 /* AgentStore.swift */,
 			);
 			path = Agent;
 			sourceTree = "<group>";
@@ -278,6 +286,7 @@
 			children = (
 				ACA440AC1C73AD0A9E18E993 /* ActionTests.swift */,
 				BE6FF06BED85F5FE72CF32A5 /* AgentFFITests.swift */,
+				90CE9D77767388614457FBCE /* AgentPanelTests.swift */,
 				6106757A4B6B179819362741 /* AgentSettingsTests.swift */,
 				83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */,
 				AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */,
@@ -584,6 +593,7 @@
 			files = (
 				8AE4FC81B09805EFF46AE738 /* ActionTests.swift in Sources */,
 				B0F9127F48B25962A0D3E324 /* AgentFFITests.swift in Sources */,
+				B2F035E69CB0D6421F8A763E /* AgentPanelTests.swift in Sources */,
 				72B799A4785C73464A0783BC /* AgentSettingsTests.swift in Sources */,
 				B453F38BECAF82D76E2FE0BF /* AppModelTests.swift in Sources */,
 				4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */,
@@ -607,7 +617,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CF4F91CC076301CA21FE2C86 /* AgentPanel.swift in Sources */,
 				70D4EC96D9BC0BC67EAE0885 /* AgentSettings.swift in Sources */,
+				CB74E21E4FDF9E9140826A70 /* AgentStore.swift in Sources */,
 				B739287D44855F0E839EDAB4 /* AppDelegate.swift in Sources */,
 				5983A19ACD9796ACFA5E19D5 /* AppModel.swift in Sources */,
 				A64492AC04FB122343BA17D2 /* AttachmentStrip.swift in Sources */,
