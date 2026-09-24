@@ -12,6 +12,7 @@ mod error;
 pub mod outbox;
 pub mod queue;
 pub mod read;
+pub mod routines;
 pub mod search;
 mod write;
 

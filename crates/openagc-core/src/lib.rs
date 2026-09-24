@@ -15,6 +15,7 @@ pub mod ffi;
 mod logging;
 mod mail;
 mod mutations;
+mod routines;
 mod runtime;
 pub mod secrets;
 mod sync;
@@ -29,6 +30,7 @@ pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};
 pub use mutations::OutboxStatus;
+pub use routines::RoutineInfo;
 pub use secrets::SecretStore;
 
 /// Configuration the app passes when it creates the core.
