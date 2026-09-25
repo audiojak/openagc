@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- OpenAGC app icon: an open envelope with a letter rising out of it,
+       carrying a spark. 1024 canvas; the tile spans 100–924 like system icons. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3D6BFF"/>
+      <stop offset="1" stop-color="#1B2C8F"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="pocket" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D6E0FF"/>
+    </linearGradient>
+    <linearGradient id="flap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9DB4FF"/>
+      <stop offset="1" stop-color="#7A96F2"/>
+    </linearGradient>
+    <linearGradient id="letter" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#EEF3FF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFD166" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#FFD166" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000" flood-opacity="0.26"/>
+    </filter>
+    <clipPath id="tile">
+      <path d="M100 330 C100 190 190 100 330 100 L694 100 C834 100 924 190 924 330 L924 694 C924 834 834 924 694 924 L330 924 C190 924 100 834 100 694 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- tile -->
+  <g clip-path="url(#tile)">
+    <rect x="100" y="100" width="824" height="824" fill="url(#bg)"/>
+    <rect x="100" y="100" width="824" height="412" fill="url(#gloss)"/>
+  </g>
+
+  <!-- flap, folded back behind everything -->
+  <path d="M212 540 L512 318 L812 540 Z" fill="url(#flap)"/>
+  <!-- envelope back (inside) -->
+  <path d="M212 540 L812 540 L812 752 C812 780 790 802 762 802 L262 802 C234 802 212 780 212 752 Z" fill="#6B88E8"/>
+
+  <!-- letter rising out, with the spark -->
+  <g filter="url(#shadow)">
+    <rect x="286" y="372" width="452" height="420" rx="28" fill="url(#letter)"/>
+  </g>
+  <circle cx="512" cy="500" r="150" fill="url(#glow)"/>
+  <g fill="#FFC53D">
+    <path d="M512 388 C520 464 542 486 618 494 C542 502 520 524 512 600 C504 524 482 502 406 494 C482 486 504 464 512 388 Z"/>
+    <path d="M630 414 C633 438 640 445 664 448 C640 451 633 458 630 482 C627 458 620 451 596 448 C620 445 627 438 630 414 Z"/>
+  </g>
+
+  <!-- envelope front pocket -->
+  <g filter="url(#shadow)">
+    <path d="M208 540 L512 738 L816 540 L816 756 C816 784 794 806 766 806 L258 806 C230 806 208 784 208 756 Z" fill="url(#pocket)"/>
+    <path d="M208 540 L512 738 L816 540" fill="none" stroke="#1B2C8F" stroke-opacity="0.14" stroke-width="14" stroke-linejoin="round"/>
+  </g>
+</svg>
