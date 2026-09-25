@@ -1,9 +1,10 @@
 # Use your own Google OAuth client
 
-OpenAGC signs in to Gmail with an OAuth "Desktop app" client. Until the
-project's own client is verified by Google, you can create a client in your
-own Google Cloud project. It takes about five minutes, and your mail still
-goes only from Google to your Mac.
+OpenAGC signs in to Gmail with an OAuth "Desktop app" client and ships
+with the project's own. Until Google verifies that client it is in
+*Testing* status, so only listed test users can sign in with it; everyone
+else can create a client in their own Google Cloud project. It takes about
+five minutes, and your mail still goes only from Google to your Mac.
 
 ## 1. Create a project and enable the Gmail API
 

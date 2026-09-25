@@ -8,10 +8,11 @@ struct GoogleClientConfigurationTests {
         return (UserDefaults(suiteName: suite)!, KeychainSecretStore(service: suite))
     }
 
-    @Test func theShippedClientIsEmptyUntilConfigured() {
+    @Test func theShippedClientIsTheProjectsDesktopClient() {
         let shipped = GoogleClientConfiguration.shipped()
         #expect(!shipped.isCustom)
-        #expect(!shipped.isUsable, "GoogleOAuth.plist ships empty until the project's client exists")
+        #expect(shipped.isUsable, "GoogleOAuth.plist carries the project's client (spec §7.3)")
+        #expect(shipped.clientID.hasSuffix(".apps.googleusercontent.com"))
     }
 
     @Test func aCustomClientOverridesTheShippedOneAndCanBeCleared() throws {

@@ -2,15 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
   The shipped Google OAuth desktop client (spec §7.3). Installed apps cannot
-  keep secrets, so these values are not confidential. Empty until the
-  project's Google Cloud client exists; until then users bring their own
+  keep secrets, so these values are not confidential (Google's own guidance;
+  Thunderbird and rclone ship theirs the same way). Google Cloud project
+  "openagc". Users can still bring their own client
   (Settings › Accounts › Advanced, docs/google-oauth-client.md).
 -->
 <plist version="1.0">
 <dict>
     <key>ClientID</key>
-    <string></string>
+    <string>69587311094-4056s6fveblk60gnctio140t3co9r719.apps.googleusercontent.com</string>
     <key>ClientSecret</key>
-    <string></string>
+    <string>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</string>
 </dict>
 </plist>
