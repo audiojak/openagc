@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ACTION="${1:-test}"
 shift || true
 
+"$ROOT/scripts/clean-test-scratch.sh"
 mkdir -p "$ROOT/build"
 cd "$ROOT/macos"
 # Optional per-developer signing overrides (scripts/dev-signing.sh).

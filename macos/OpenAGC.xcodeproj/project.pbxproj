@@ -54,6 +54,7 @@
 		9975C69AAFFCD9AD909C4275 /* MenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1B952488DEE5A94BB9D8BF /* MenuTests.swift */; };
 		9B11BCAE65ABE713E3F20AC7 /* AccountAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331D2F57E10A1874F6103AFF /* AccountAvatar.swift */; };
 		9CC3AECF8DB746BF967161B7 /* KeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700730FD7CE20073EC4E05F4 /* KeychainTests.swift */; };
+		9EA6082C5120AB0A63AA34E5 /* ArchiveAccountTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 813AFF04D4AA06CBAF57266A /* ArchiveAccountTests.swift */; };
 		A183D5AC94021A65ABDCCBDD /* ComposerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05AE95A75189A1675986338 /* ComposerStore.swift */; };
 		A469FDD2983D0CFA9FBD5AB6 /* RecipientField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */; };
 		A63769C5AD66664F34653DEE /* AccountMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECC21C8EFCB7A1F70BD6BF9 /* AccountMenu.swift */; };
@@ -157,6 +158,7 @@
 		7491CD8B391923F8E19F565D /* MailReadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailReadTests.swift; sourceTree = "<group>"; };
 		7AFC64B77AEDD827390E1C08 /* AgentPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentPanel.swift; sourceTree = "<group>"; };
 		7DFBC630572AC27DA6ED8285 /* AgentSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettings.swift; sourceTree = "<group>"; };
+		813AFF04D4AA06CBAF57266A /* ArchiveAccountTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveAccountTests.swift; sourceTree = "<group>"; };
 		83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		88FDA6A53B22BE15E4B5B603 /* OpenAGCApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAGCApp.swift; sourceTree = "<group>"; };
 		8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipientField.swift; sourceTree = "<group>"; };
@@ -362,6 +364,7 @@
 				6106757A4B6B179819362741 /* AgentSettingsTests.swift */,
 				83C030F70A3EC9DE875D6F6C /* AppModelTests.swift */,
 				AE47B2F1BDB2A00655547EA9 /* AppShellTests.swift */,
+				813AFF04D4AA06CBAF57266A /* ArchiveAccountTests.swift */,
 				99F36E7595DF6E9B290AE189 /* AttachmentTests.swift */,
 				0853C589261B9BC5E99D0106 /* ComposerTests.swift */,
 				6EA889A74036D5319EED2E94 /* CoreClientTests.swift */,
@@ -682,6 +685,7 @@
 				72B799A4785C73464A0783BC /* AgentSettingsTests.swift in Sources */,
 				B453F38BECAF82D76E2FE0BF /* AppModelTests.swift in Sources */,
 				4BDBFCA9AB0E6E20DC8E6EA0 /* AppShellTests.swift in Sources */,
+				9EA6082C5120AB0A63AA34E5 /* ArchiveAccountTests.swift in Sources */,
 				4BBB2B43CEEF1AFA6C20B2D3 /* AttachmentTests.swift in Sources */,
 				169E901DDE62D2B0DE7DEF3F /* ComposerTests.swift in Sources */,
 				1970C5710634017B9B3E926B /* CoreClientTests.swift in Sources */,

@@ -68,6 +68,8 @@ final class AppModel {
     private var agentStores: [String: AgentStore] = [:]
     private let fallbackAgent: AgentStore
     var agent: AgentStore { openAccountID.flatMap { agentStores[$0] } ?? fallbackAgent }
+    /// Imports by archive account, latest status (spec §7.8).
+    private(set) var imports: [String: ImportStatus] = [:]
     /// The user's accounts in their order, with Inbox unread counts.
     private(set) var accounts: [AccountSummary] = []
     /// Where each account's window was (mailbox, thread), restored on switch.
@@ -215,7 +217,8 @@ final class AppModel {
             }
             needsReauthentication = false
             reauthenticationReason = nil
-            if accountID != Self.demoAccountID {
+            // An imported mailbox has no server and no sign-in (spec §7.8).
+            if accountID != Self.demoAccountID, !core.isArchive(accountID) {
                 // A Keychain that will not hand over the sign-in (for example
                 // after an unsigned rebuild) means "sign in again", not silence.
                 let hasCredentials: Bool
@@ -600,6 +603,9 @@ final class AppModel {
             case let .newMail(mail):
                 notifier.announce(mail, account: notificationTag(for: tagged.accountID))
                 await reloadAccounts()
+            case let .importProgress(status):
+                imports[tagged.accountID ?? ""] = status
+                if status.done { await reloadAccounts() }
             case .threadsChanged:
                 // Another account's counts moved: refresh the menu and Dock
                 // at most every few seconds rather than on every batch.
@@ -638,6 +644,13 @@ final class AppModel {
             await agent.apply(sessionID: sessionID, events: events)
         case .routinesChanged:
             routinesRevision += 1
+        case let .importProgress(status):
+            imports[tagged.accountID ?? ""] = status
+            if status.done {
+                await mailboxes.reload()
+                await threads.refresh()
+                await reloadAccounts()
+            }
         }
     }
 }

@@ -144,6 +144,11 @@ fn existing_account_id(data_dir: &Path, email: &str) -> Option<String> {
     None
 }
 
+/// A fresh account id (also used for archive accounts).
+pub(crate) fn new_account_id() -> Result<String, CoreError> {
+    random_id()
+}
+
 fn random_id() -> Result<String, CoreError> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?;

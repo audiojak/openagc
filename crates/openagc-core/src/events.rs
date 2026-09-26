@@ -146,6 +146,10 @@ pub enum CoreEvent {
         session_id: String,
         events: Vec<crate::agents::AgentEventInfo>,
     },
+    /// A mailbox import moved on or finished (spec §7.8).
+    ImportProgress {
+        status: crate::ImportStatus,
+    },
     /// Warn/error log records from Rust, logged by Swift with `os.Logger`
     /// so unified-logging privacy stays under Swift's control (spec §17).
     Log {

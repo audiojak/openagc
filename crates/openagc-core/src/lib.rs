@@ -7,6 +7,7 @@ uniffi::setup_scaffolding!();
 
 mod account;
 mod agents;
+mod archive;
 mod attachments;
 mod cloud_routines;
 mod compose;
@@ -27,6 +28,7 @@ pub use agents::{
     AgentActionInfo, AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem,
     PromptContextInfo, TextExtractor,
 };
+pub use archive::{ImportStatus, MailboxScan};
 pub use attachments::AttachmentFileInfo;
 pub use cloud_routines::RoutineHandoff;
 pub use compose::{AccountComposer, DraftAttachmentInfo, DraftInfo, DraftStatus};
@@ -57,6 +59,7 @@ pub struct Core {
     open_accounts: RwLock<registry::OpenAccounts>,
     /// Serializes changes to `accounts/index.json`.
     index_lock: tokio::sync::Mutex<()>,
+    imports: archive::Imports,
     accounts: account::AccountState,
     agents: agents::AgentHub,
 }
@@ -81,6 +84,7 @@ impl Core {
             secrets,
             open_accounts: RwLock::new(registry::OpenAccounts::default()),
             index_lock: tokio::sync::Mutex::new(()),
+            imports: Default::default(),
             accounts: Default::default(),
             agents: Default::default(),
         }))

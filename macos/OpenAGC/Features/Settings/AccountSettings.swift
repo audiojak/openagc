@@ -105,6 +105,10 @@ struct AccountRow: View {
                 if account.id != model.openAccountID {
                     Button("Show") { Task { await model.switchAccount(to: account.id) } }
                 }
+                if account.kind == .archive {
+                    Button("Re-import…") { Task { _ = try? await model.core?.reimportArchive(account.id) } }
+                        .disabled(model.imports[account.id].map { !$0.done } ?? false)
+                }
                 if signedIn == false {
                     Button("Sign In…") {
                         Task {
@@ -139,7 +143,12 @@ struct AccountRow: View {
 
     private var status: String {
         switch (account.kind, signedIn) {
-        case (.archive, _): "Imported mailbox · read only"
+        case (.archive, _):
+            if let status = model.imports[account.id], !status.done {
+                "Importing… \(status.imported.formatted()) messages"
+            } else {
+                "Imported mailbox · cannot send"
+            }
         case (_, false?): "Not syncing — sign in again"
         case (_, true?): account.id == model.openAccountID ? "Showing · syncing" : "Syncing in the background"
         default: " "

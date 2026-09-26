@@ -86,6 +86,26 @@ final class CoreClient: Sendable {
         try await call { try await core.removeAccount(accountId: accountID) }
     }
 
+    // MARK: Archive accounts (spec §7.8)
+
+    func scanMailbox(_ path: String) async throws(CoreClientError) -> MailboxScan {
+        try await call { try await core.scanMailbox(path: path) }
+    }
+
+    /// Start importing; returns the archive account's id. Progress arrives
+    /// as `importProgress` events tagged with it.
+    func startImport(path: String, name: String, myAddresses: [String], into accountID: String? = nil) async throws(CoreClientError) -> String {
+        try await call { try await core.startImport(path: path, name: name, myAddresses: myAddresses, accountId: accountID) }
+    }
+
+    func reimportArchive(_ accountID: String) async throws(CoreClientError) -> String {
+        try await call { try await core.reimportArchive(accountId: accountID) }
+    }
+
+    func cancelImport(_ accountID: String) { core.cancelImport(accountId: accountID) }
+
+    func isArchive(_ accountID: String) -> Bool { core.accountIsArchive(accountId: accountID) }
+
     /// Development/test hook: a listed account with a synthetic mailbox and
     /// no sign-in.
     func addDemoAccount(_ accountID: String, email: String, name: String? = nil, threads: UInt32 = 60) async throws(CoreClientError) {
@@ -586,6 +606,8 @@ typealias MailboxInfo = OpenAGCCore.MailboxInfo
 typealias SyncWindow = OpenAGCCore.SyncWindow
 typealias AccountSummary = OpenAGCCore.AccountSummary
 typealias AccountKind = OpenAGCCore.AccountKind
+typealias ImportStatus = OpenAGCCore.ImportStatus
+typealias MailboxScan = OpenAGCCore.MailboxScan
 typealias MailboxKind = OpenAGCCore.MailboxKind
 typealias MessageInfo = OpenAGCCore.MessageInfo
 typealias RenderedBody = OpenAGCCore.RenderedBody
@@ -628,6 +650,7 @@ enum CoreClientEvent: Sendable, Equatable {
     case newMail([NewMail])
     case agent(sessionID: String, events: [AgentEventInfo])
     case routinesChanged
+    case importProgress(ImportStatus)
     case error(CoreClientError)
 }
 
@@ -714,6 +737,8 @@ private extension CoreClientEvent {
                         senderName: $0.from.map { $0.name ?? $0.email } ?? "Unknown sender",
                         subject: $0.subject, snippet: $0.snippet)
             })
+        case let .importProgress(status):
+            self = .importProgress(status)
         case .log:
             return nil
         }
