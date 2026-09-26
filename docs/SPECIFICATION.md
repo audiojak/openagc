@@ -68,7 +68,7 @@ The short version. Everything below elaborates on these.
 ### 1.2 Non-Goals (MVP)
 
 Everything in the product spec's §27: no cloud, no mobile, no Windows/Linux,
-no calendar, no multi-account, no autonomous background sending, no
+no calendar, no autonomous background sending, no
 embeddings, no shell access for agents, no App Store build.
 
 ### 1.3 The performance goal
@@ -620,7 +620,8 @@ turns into eight 60-second stalls.
   browser and existing Google session are used; no embedded web view for
   login (Google blocks it).
 - Scopes: `https://www.googleapis.com/auth/gmail.modify` and
-  `https://www.googleapis.com/auth/userinfo.email`. Every useful
+  `https://www.googleapis.com/auth/userinfo.email` (plus `openid` and
+  `userinfo.profile` for the avatar since the §7.7 amendment). Every useful
   combination (`readonly`+`compose`+`send`) is equally *restricted* in
   Google's classification, so splitting scopes buys nothing and complicates
   consent. `mail.google.com` (full access) is never requested.
@@ -768,6 +769,58 @@ pass `threadId` in the `messages.send` body — Gmail requires all three to
 thread. The raw RFC 5322 bytes are base64url-encoded into `raw`. Sent
 messages appear in the local store via the next history sync; the outbox
 inserts an optimistic sent copy that is reconciled by `rfc822_message_id`.
+
+### 7.7 Multiple accounts **(Amendment 2026-09-26)**
+
+Multi-account was an MVP non-goal (§1.2); it is now in scope, in the form
+the maintainer asked for: several Gmail accounts, **one visible at a time**,
+switched from an avatar button. Nothing is ever merged across accounts: no
+unified inbox, no cross-account search, no cross-account agent tools.
+
+**Model.** An account is what §6.1 already makes it: one directory under
+`accounts/<id>/` with its own `mail.sqlite`, attachments cache, routines,
+agent sessions and Keychain items. New pieces:
+
+- `accounts/index.json`: `[{id, email, display_name?, avatar_file?,
+  added_at, position}]`. Built on first launch after the upgrade by
+  scanning the directories (each store records its `account_email`), then
+  kept in step by sign-in and sign-out. The current account id lives in
+  `UserDefaults` on the Swift side, not in the index.
+- Identity: sign-in requests `openid` and `userinfo.profile` alongside the
+  existing scopes (both non-sensitive; no verification change) and reads
+  `https://openidconnect.googleapis.com/v1/userinfo` once for `name` and
+  `picture`. The picture is downloaded to `accounts/<id>/avatar.jpg`
+  (refreshed weekly) and shown at 24 pt; without one, an initials disc
+  coloured deterministically from the address. Adding an account uses the
+  same sign-in flow with `prompt=select_account`, so Google shows the
+  chooser instead of silently reusing the browser's current session.
+- Core: `Core` holds every opened account (`HashMap<id, Account>`) and
+  their `SyncService`s, plus a *current* id. Sync, notifications and local
+  routines run for **all** accounts in the background; only the UI is
+  scoped. Every `CoreEvent` carries `account_id`; Swift drops events that
+  are not for the current account except `NewMail` (notification) and
+  `SyncStatus`/unread counts (menu badges). API: `list_accounts()`,
+  `set_current_account(id)`, `remove_account(id)`; `open_account` becomes
+  internal. Agent sessions and tools stay bound to the account they were
+  started on; an agent never sees another account's mail.
+- Switching: the window swaps its model (`AppModel` per account, kept warm
+  once opened) so the sidebar, list, thread and composer all re-bind;
+  unsent composer drafts belong to their account and survive the switch.
+
+**UI (§14.3 addendum).** An avatar button in the sidebar header, left of
+the search field's row. Clicking it opens a menu: one row per account
+(avatar, display name, address, unread count), a check mark on the current
+one, then *Add Account…* and *Accounts Settings…*. Keyboard: `⌃1`–`⌃9`
+switch by position; `⌃⌥A` opens the menu. The Dock badge sums unread
+across accounts; the app menu's *Accounts* submenu mirrors the button.
+Notifications name the account when more than one exists and switch to it
+when clicked. Settings › Accounts lists every account with its own sign-in
+state, sync window and *Remove…*; removing the current account switches to
+the next.
+
+**Not in scope.** A unified inbox, moving mail between accounts, per-account
+signatures beyond what the composer already does, and non-Gmail accounts
+(the IMAP work in §7.4 is backfill only).
 
 ### 7.6 Provider abstraction
 
@@ -1507,7 +1560,8 @@ Every target in §1.3 traces to one of these rules.
 
 ### 14.3 Main window
 
-- Sidebar: mailboxes and labels, unread badges, drag-to-label target.
+- Sidebar: account avatar button (§7.7), mailboxes and labels, unread
+  badges, drag-to-label target.
 - Thread list (AppKit): sender, subject, snippet, date, unread dot,
   attachment icon, label chips; multi-select; swipe actions (archive,
   read); context menu; keyboard: `↑↓`/`j k` move, `e` archive, `u`
