@@ -74,6 +74,11 @@ final class CoreClient: Sendable {
         try await call { try await core.listLabels() }
     }
 
+    /// Create a label; a `/` path creates missing parents.
+    func createLabel(_ path: String, color: String? = nil) async throws(CoreClientError) -> LabelInfo {
+        try await call { try await core.createLabel(name: path, color: color) }
+    }
+
     func threads(in mailboxID: String, after cursor: String? = nil, limit: UInt32 = 100) async throws(CoreClientError) -> ThreadPage {
         try await call { try await core.listThreads(mailboxId: mailboxID, cursor: cursor, limit: limit) }
     }

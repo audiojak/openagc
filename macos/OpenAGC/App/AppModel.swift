@@ -321,6 +321,31 @@ final class AppModel {
         }
     }
 
+    /// User labels by id, for the chips on thread rows.
+    var chipLabels: [String: ThreadRowView.Chip] {
+        model_chipLabels(mailboxes)
+    }
+
+    /// Create a label (a `/` path creates missing parents) and apply it to
+    /// the threads the next action targets. Returns an error message to
+    /// show, or nil on success.
+    func createLabel(path: String, applyToTargets: Bool = true) async -> String? {
+        guard let core else { return "OpenAGC is not ready." }
+        let ids = actionTargets
+        do {
+            let label = try await core.createLabel(path)
+            await mailboxes.reload()
+            if applyToTargets, !ids.isEmpty {
+                try await core.modifyLabels(ids, add: [label.id], remove: [])
+                await mailboxes.reload()
+                await threads.refresh()
+            }
+            return nil
+        } catch {
+            return error.message
+        }
+    }
+
     /// Label threads dropped on a sidebar label (they need not be selected).
     func addLabel(_ labelID: String, toThreads ids: [String]) {
         guard let core, !ids.isEmpty else { return }
@@ -429,5 +454,13 @@ final class AppModel {
         case .routinesChanged:
             routinesRevision += 1
         }
+    }
+}
+
+@MainActor
+private func model_chipLabels(_ mailboxes: MailboxStore) -> [String: ThreadRowView.Chip] {
+    mailboxes.labels.reduce(into: [:]) { acc, m in
+        guard let id = m.labelId else { return }
+        acc[id] = ThreadRowView.Chip(path: m.name, color: mailboxes.labelColors[id])
     }
 }
