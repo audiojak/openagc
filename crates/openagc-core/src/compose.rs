@@ -124,6 +124,7 @@ impl Core {
     }
 
     pub async fn reply_draft(&self, message_id: String, reply_all: bool) -> Result<DraftInfo, CoreError> {
+        self.refuse_if_archive()?;
         let me = vec![self.own_address().await?];
         let db = self.db()?;
         runtime::run(
@@ -133,12 +134,14 @@ impl Core {
     }
 
     pub async fn forward_draft(&self, message_id: String) -> Result<DraftInfo, CoreError> {
+        self.refuse_if_archive()?;
         let db = self.db()?;
         runtime::run(async move { Ok(mail_sync::forward_draft(&db, &MessageId(message_id)).await?.into()) }).await
     }
 
     /// Save (autosave) a draft; returns its id.
     pub async fn save_draft(&self, draft: DraftInfo) -> Result<i64, CoreError> {
+        self.refuse_if_archive()?;
         let db = self.db()?;
         runtime::run(async move {
             let record: DraftRecord = draft.into();
@@ -180,6 +183,7 @@ impl Core {
     /// Send a saved draft. With Gmail connected it goes through the outbox
     /// (retried if offline); the demo mailbox "sends" locally.
     pub async fn send_draft(&self, id: i64) -> Result<(), CoreError> {
+        self.refuse_if_archive()?;
         let from = EmailAddress::new(None, &self.own_address().await?);
         let db = self.db()?;
         let service = self.sync_service();

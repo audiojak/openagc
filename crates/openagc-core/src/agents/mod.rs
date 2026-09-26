@@ -3,7 +3,7 @@
 
 mod approvals;
 mod sessions;
-mod tools;
+pub(crate) mod tools;
 
 pub use approvals::AgentActionInfo;
 

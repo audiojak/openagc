@@ -96,10 +96,45 @@ fn write_meta(dir: &Path, meta: &ArchiveMeta) -> Result<(), CoreError> {
     std::fs::write(dir.join(META_FILE), bytes).map_err(|e| CoreError::new(ErrorKind::Storage, e.to_string()))
 }
 
+/// What an archive cannot do, in one sentence for errors and the agent.
+pub(crate) const CANNOT_SEND: &str =
+    "This account is an imported mailbox: it cannot draft, reply, forward or send mail.";
+
+/// Appended to the agent's system prompt in an archive account.
+const ARCHIVE_PROMPT: &str = "\n\n## This account is an archive\n\nThe mailbox you are working in \
+was imported from a file. It has no mail server: you can search, read, label and sort it, but \
+drafting, replying, forwarding and sending are impossible here and those tools will refuse. When \
+a task would need an email written, write the text in your answer instead.\n";
+
 impl Core {
     /// Whether an account is an archive (reads its directory).
     pub(crate) fn is_archive(&self, account_id: &str) -> bool {
         read_meta(&accounts_dir(&self.data_path()).join(account_id)).is_some()
+    }
+
+    /// Refuse sending-side work when the account this work acts on is an
+    /// archive (spec §7.8). The boundary lives here, not in the UI.
+    pub(crate) fn refuse_if_archive(&self) -> Result<(), CoreError> {
+        match self.effective_account_id() {
+            Some(id) if self.is_archive(&id) => Err(CoreError::new(ErrorKind::InvalidInput, CANNOT_SEND)),
+            _ => Ok(()),
+        }
+    }
+
+    /// The agent system prompt for this account: the shipped one, plus the
+    /// archive note in an archive (written next to the session).
+    pub(crate) fn system_prompt_for_session(&self, shipped: &Path, session_dir: &Path) -> PathBuf {
+        let archive = self.effective_account_id().is_some_and(|id| self.is_archive(&id));
+        if !archive {
+            return shipped.to_path_buf();
+        }
+        let mut text = std::fs::read_to_string(shipped).unwrap_or_default();
+        text.push_str(ARCHIVE_PROMPT);
+        let path = session_dir.join("system-prompt.md");
+        match std::fs::write(&path, text) {
+            Ok(()) => path,
+            Err(_) => shipped.to_path_buf(),
+        }
     }
 }
 
@@ -415,5 +450,75 @@ mod tests {
         block_on(core.remove_account(id.clone())).unwrap();
         assert!(block_on(core.list_accounts()).unwrap().is_empty());
         assert!(!accounts_dir(&t.0.join("data")).join(&id).exists());
+    }
+
+    #[test]
+    fn an_archive_reads_and_sorts_but_never_drafts_or_sends() {
+        use agent_mcp::Outcome;
+        use permissions::{Scope, Tool};
+        use serde_json::json;
+
+        let t = Temp(std::env::temp_dir().join(format!("openagc-archive-nosend-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&t.0);
+        std::fs::create_dir_all(&t.0).unwrap();
+        let file = t.0.join("old.mbox");
+        std::fs::write(&file, build(&(1..=5).map(FixtureMessage::simple).collect::<Vec<_>>())).unwrap();
+        let events = Arc::new(Imports::default());
+        let core = Core::new(
+            CoreConfig { data_dir: t.0.join("data").to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            events.clone(),
+        )
+        .unwrap();
+        let id = block_on(core.clone().start_import(file.to_string_lossy().into_owned(), "Old".into(), vec![], None))
+            .unwrap();
+        wait_done(&events, &id, 1);
+        block_on(core.clone().set_current_account(id.clone())).unwrap();
+
+        // The core refuses every sending-side call.
+        let refused = |r: Result<(), CoreError>| {
+            let CoreError::Failed { message, .. } = r.unwrap_err();
+            assert_eq!(message, CANNOT_SEND);
+        };
+        let thread = block_on(core.list_threads("INBOX".into(), None, 1)).unwrap().rows.remove(0);
+        let detail = block_on(core.get_thread(thread.id.clone())).unwrap().unwrap();
+        let message_id = detail.messages[0].id.clone();
+        refused(block_on(core.reply_draft(message_id.clone(), false)).map(|_| ()));
+        refused(block_on(core.forward_draft(message_id)).map(|_| ()));
+        refused(block_on(core.send_draft(1)));
+
+        // Agents: reading and local sorting work; drafting is refused with
+        // a final, structured answer.
+        core.agents.register("s", Scope::Mailbox, None);
+        let call = |tool: Tool, args: serde_json::Value| {
+            crate::runtime::runtime().block_on(crate::agents::tools::call(&core, "s", tool, args))
+        };
+        assert!(matches!(call(Tool::Search, json!({ "query": "", "limit": 5 })), Outcome::Ok { .. }));
+        assert!(
+            matches!(call(Tool::CreateLabel, json!({ "name": "Sorted/Later" })), Outcome::Ok { .. }),
+            "local labels are fine"
+        );
+        match call(Tool::CreateDraft, json!({ "to": ["a@example.com"], "subject": "x", "body_markdown": "x" })) {
+            Outcome::Error { code, message } => {
+                assert_eq!(code, "cannot_send");
+                assert_eq!(message, CANNOT_SEND);
+            }
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+
+        // No cloud routine can reach it, and the agent is told what it is.
+        let routine = block_on(core.create_routine_from_template("claude_cloud".into())).unwrap();
+        assert!(block_on(core.publish_routine_to_cloud(routine.id)).is_err());
+        let dir = t.0.join("session");
+        std::fs::create_dir_all(&dir).unwrap();
+        let shipped = t.0.join("prompt.md");
+        std::fs::write(&shipped, "Base prompt.").unwrap();
+        let prompt = std::fs::read_to_string(core.system_prompt_for_session(&shipped, &dir)).unwrap();
+        assert!(prompt.starts_with("Base prompt.") && prompt.contains("This account is an archive"));
+
+        // A Gmail account gets the shipped prompt untouched.
+        block_on(core.clone().set_current_account("gmail".into())).unwrap();
+        assert_eq!(core.system_prompt_for_session(&shipped, &dir), shipped);
+        assert!(core.refuse_if_archive().is_ok());
     }
 }

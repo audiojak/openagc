@@ -51,6 +51,14 @@ impl Core {
     /// Create or update the routine at claude.ai through the user's CLI.
     /// Errors mean: use the paste hand-off.
     pub async fn publish_routine_to_cloud(&self, id: String) -> Result<RoutineInfo, CoreError> {
+        // A cloud routine works through the Gmail connector; an imported
+        // mailbox is on this Mac only (spec §7.8).
+        if self.effective_account_id().is_some_and(|a| self.is_archive(&a)) {
+            return Err(CoreError::new(
+                ErrorKind::InvalidInput,
+                "an imported mailbox lives only on this Mac, so a cloud routine could not reach it; run it locally",
+            ));
+        }
         let mut routine = self.load_routine(&id).await?;
         if routine.runner != Runner::ClaudeCloud {
             return Err(CoreError::new(ErrorKind::InvalidInput, "this routine does not run on Claude cloud"));

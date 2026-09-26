@@ -122,8 +122,7 @@ struct ThreadListView: NSViewRepresentable {
                 act("Move to Trash") { $0.trashSelection() },
                 act(row.unreadCount > 0 ? "Mark as Read" : "Mark as Unread") { $0.toggleReadSelection() },
                 act(row.isStarred ? "Unstar" : "Star") { $0.toggleStarSelection() },
-                act("Reply") { $0.reply(all: false) },
-            ]
+            ] + (model.isArchive ? [] : [act("Reply") { $0.reply(all: false) }])
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {

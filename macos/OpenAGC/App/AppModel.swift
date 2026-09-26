@@ -454,7 +454,17 @@ final class AppModel {
         return detail.messages.last { !$0.isDraft }?.id
     }
 
+    /// The account on screen is an imported mailbox (spec §7.8): it cannot
+    /// compose, reply, forward or send. The core refuses too; this keeps
+    /// the commands from being offered.
+    var isArchive: Bool {
+        accounts.first { $0.id == openAccountID }?.kind == .archive
+    }
+
+    static let cannotSendReason = "This is an imported mailbox; it cannot send mail."
+
     func compose(_ request: ComposeRequest) {
+        guard !isArchive else { return }
         openComposer?(request)
     }
 

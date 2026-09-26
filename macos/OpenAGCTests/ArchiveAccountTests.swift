@@ -110,3 +110,35 @@ struct ArchiveAccountTests {
         #expect(ImportDraft.estimate(bytes: 9_600_000_000) == "about 4 hours")
     }
 }
+
+@MainActor
+struct ArchiveCannotSendTests {
+    @Test func inAnArchiveTheWindowOffersNoComposingAndTheCoreRefusesAnyway() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appending(path: "old.mbox")
+        try ArchiveAccountTests.mbox(at: file)
+        let core = try CoreClient(dataDirectory: dir.appending(path: "data"))
+        let model = AppModel(core: core, defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        await model.start(openDemo: true)
+        #expect(!model.isArchive)
+        let id = try await core.startImport(path: file.path, name: "Old", myAddresses: ["owner@example.com"])
+        let deadline = ContinuousClock.now + .seconds(10)
+        while model.imports[id]?.done != true, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(25)) }
+        await model.switchAccount(to: id)
+        #expect(model.isArchive)
+
+        var opened: [ComposeRequest] = []
+        model.openComposer = { opened.append($0) }
+        model.compose(.new(to: nil))
+        model.selectedThreadID = model.threads.rows.first?.id
+        model.reply(all: false)
+        model.forward()
+        #expect(opened.isEmpty, "no composer opens in an archive")
+
+        let message = try #require(try await core.thread(model.threads.rows[0].id)?.messages.first)
+        await #expect(throws: CoreClientError.self) { try await core.replyDraft(to: message.id, all: false) }
+        await #expect(throws: CoreClientError.self) { try await core.sendDraft(1) }
+    }
+}

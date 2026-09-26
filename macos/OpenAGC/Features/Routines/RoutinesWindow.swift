@@ -309,7 +309,8 @@ private struct RoutineEditor: View {
                     .disabled(store.runner == .chatGptCloud || store.runner == .claudeDesktop
                         || (store.runner == .claudeCloud && store.draft?.cloud.triggerId == nil))
                 Button(publishTitle(store.runner)) { Task { await store.publish() } }
-                    .disabled(store.runner == .local)
+                    .disabled(store.runner == .local || model.isArchive)
+                    .help(model.isArchive ? "An imported mailbox lives only on this Mac; run the routine locally." : "")
                 Button("Revert") { store.revert() }.disabled(!store.hasUnsavedChanges)
                 Button("Save") { Task { await store.save() } }
                     .keyboardShortcut("s")

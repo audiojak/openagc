@@ -103,6 +103,8 @@ struct MailCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Message") { model.compose(.new(to: nil)) }
                 .keyboardShortcut("n")
+                .disabled(model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
         }
         CommandGroup(after: .newItem) {
             Divider()
@@ -139,13 +141,16 @@ struct MailCommands: Commands {
         CommandMenu("Message") {
             Button("Reply") { model.reply(all: false) }
                 .keyboardShortcut("r")
-                .disabled(noReplyTarget)
+                .disabled(noReplyTarget || model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
             Button("Reply All") { model.reply(all: true) }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(noReplyTarget)
+                .disabled(noReplyTarget || model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
             Button("Forward") { model.forward() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-                .disabled(noReplyTarget)
+                .disabled(noReplyTarget || model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
             Divider()
             Button("Archive") { model.archiveSelection() }
                 .keyboardShortcut("a", modifiers: [.command, .control])

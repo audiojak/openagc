@@ -479,7 +479,7 @@ impl Core {
         let cfg = SessionConfig {
             session_id: id.clone(),
             mcp: McpEndpoint { shim_path: resources.shim_path, socket_path },
-            system_prompt_file: resources.system_prompt_path,
+            system_prompt_file: self.system_prompt_for_session(&resources.system_prompt_path, &working_dir),
             working_dir,
             model: None,
             max_turns: SessionConfig::DEFAULT_MAX_TURNS,
