@@ -234,6 +234,24 @@ async fn backfill_bodies_come_from_the_configured_source() {
 }
 
 #[tokio::test]
+async fn server_search_downloads_matches_outside_the_window() {
+    let (fake, db, _recorder, engine) = setup("server-search");
+    seed_mailbox(&fake);
+    // Six months: "ancient" (900 days) stays on the server.
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    engine.backfill_all().await.unwrap();
+    assert!(db.read(|c| read::get_thread(c, &ThreadId::new("t5"))).await.unwrap().is_none());
+
+    assert_eq!(engine.search_server("t5", 10).await.unwrap(), 1, "the subject matches");
+    let (summary, _) = db.read(|c| read::get_thread(c, &ThreadId::new("t5"))).await.unwrap().unwrap();
+    assert_eq!(summary.subject, "Subject t5");
+    assert_eq!(engine.search_server("t5", 10).await.unwrap(), 0, "already here");
+    assert_eq!(engine.search_server("nothing-like-this", 10).await.unwrap(), 0);
+    assert_consistent(&db);
+}
+
+#[tokio::test]
 async fn incremental_sync_applies_new_mail_label_changes_and_deletions() {
     let (fake, db, recorder, engine) = setup("incremental");
     seed_mailbox(&fake);

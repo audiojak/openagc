@@ -104,6 +104,12 @@ final class CoreClient: Sendable {
 
     func cancelImport(_ accountID: String) { core.cancelImport(accountId: accountID) }
 
+    /// Ask Gmail for `query` and download missing matches; returns how many
+    /// arrived (0 for accounts without a server).
+    func searchServer(_ query: String, limit: UInt32) async throws(CoreClientError) -> UInt32 {
+        try await call { try await core.searchServer(query: query, limit: limit) }
+    }
+
     /// Download these messages' bodies next (opened with headers only).
     func prioritizeMessages(_ ids: [String]) async {
         try? await call { try await core.prioritizeMessages(messageIds: ids) }

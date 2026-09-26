@@ -354,6 +354,36 @@ impl SyncEngine {
         Ok(stored)
     }
 
+    /// Search Gmail itself for `query` and download up to `max` matching
+    /// messages this store does not have (mail outside the sync window;
+    /// spec §7.4 follow-up). Interactive priority: the user is waiting.
+    /// Returns how many were downloaded.
+    pub async fn search_server(&self, query: &str, max: usize) -> SyncResult<usize> {
+        let filter = ListFilter { label_ids: vec![], query: Some(query.to_owned()), include_spam_trash: false };
+        let page = self.provider.list_message_ids(&filter, None).await?;
+        let ids: Vec<MessageId> = page.ids.into_iter().map(|(id, _)| id).take(max).collect();
+        let missing = self.db.read(move |c| queue::missing(c, &ids)).await?;
+        if missing.is_empty() {
+            return Ok(0);
+        }
+        let fetched = self.provider.fetch_messages(&missing, Priority::Interactive).await?;
+        let incoming: Vec<_> = fetched.into_iter().map(to_incoming).collect();
+        let count = incoming.len();
+        let changes = self
+            .db
+            .write(move |tx| {
+                let mut w = MailWriter::new(tx);
+                for m in &incoming {
+                    w.upsert_message(m)?;
+                }
+                queue::remove(tx, &missing)?;
+                w.finish()
+            })
+            .await?;
+        self.publish(&changes);
+        Ok(count)
+    }
+
     /// Fetch these messages next (the user opened one whose body is not
     /// here yet).
     pub async fn prioritize(&self, ids: Vec<MessageId>) -> SyncResult<()> {

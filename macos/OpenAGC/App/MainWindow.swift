@@ -79,6 +79,15 @@ struct MainWindow: View {
                         .foregroundStyle(.secondary)
                         .padding(8)
                 }
+                if model.threads.isSearchingServer {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Also searching Gmail for older mail…")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                }
                 if model.threads.rows.isEmpty {
                     if model.threads.searchQuery != nil {
                         ContentUnavailableView.search(text: model.searchText)

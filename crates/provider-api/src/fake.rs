@@ -1,6 +1,7 @@
 //! An in-memory provider implementing the full [`MailProvider`] contract,
 //! for sync-engine tests and for running the app without a real account.
-//! Supports a small subset of Gmail search (`is:unread`, `newer_than:Nd`)
+//! Supports a small subset of Gmail search (`is:unread`, `newer_than:Nd`,
+//! plain words matched against the subject)
 //! and a history log that can be expired to force a resync.
 
 use std::collections::BTreeMap;
@@ -161,6 +162,11 @@ fn matches(m: &FetchedMessage, filter: &ListFilter, now: Millis) -> bool {
         let days =
             term.strip_prefix("newer_than:").and_then(|d| d.strip_suffix('d')).and_then(|d| d.parse::<i64>().ok());
         if days.is_some_and(|days| m.internal_date < now - days * 86_400_000) {
+            return false;
+        }
+        // A plain word: the subject must contain it (enough for tests of
+        // server-side search).
+        if !term.contains(':') && !m.subject.to_lowercase().contains(&term.to_lowercase()) {
             return false;
         }
     }

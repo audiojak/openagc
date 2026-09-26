@@ -502,6 +502,17 @@ impl Core {
         self.start_sync_with_backfill(provider, imap)
     }
 
+    /// Ask Gmail for `query` too and download up to `limit` matching
+    /// messages this Mac does not have (outside the sync window). Returns
+    /// how many arrived; 0 for accounts without a server.
+    pub async fn search_server(&self, query: String, limit: u32) -> Result<u32, CoreError> {
+        let Some(service) = self.sync_service() else { return Ok(0) };
+        runtime::run(async move {
+            Ok(service.engine().search_server(&query, limit as usize).await.map_err(CoreError::from)? as u32)
+        })
+        .await
+    }
+
     /// Download these messages' bodies next: the user opened a message
     /// that only has headers so far (spec §7.4 headers-first).
     pub async fn prioritize_messages(&self, message_ids: Vec<String>) -> Result<(), CoreError> {

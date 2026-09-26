@@ -60,8 +60,29 @@ final class ThreadListStore {
             searchQuery = query
             nextCursor = nil
             await load(replacing: true, limit: Self.pageSize)
+            await searchServerIfFew(query)
         }
     }
+
+    /// Few local results: ask Gmail too, for mail outside the sync window,
+    /// after a pause so typing does not spend quota (spec §7.4 follow-up).
+    private func searchServerIfFew(_ query: String) async {
+        guard let core, searchError == nil, rows.count < Self.serverSearchBelow else { return }
+        try? await Task.sleep(for: Self.serverSearchDelay)
+        guard !Task.isCancelled, searchQuery == query else { return }
+        isSearchingServer = true
+        defer { isSearchingServer = false }
+        let arrived = (try? await core.searchServer(query, limit: Self.serverSearchLimit)) ?? 0
+        guard !Task.isCancelled, searchQuery == query, arrived > 0 else { return }
+        nextCursor = nil
+        await load(replacing: true, limit: Self.pageSize)
+    }
+
+    static let serverSearchBelow = 20
+    static let serverSearchDelay: Duration = .milliseconds(600)
+    static let serverSearchLimit: UInt32 = 50
+    /// Gmail is being searched for older mail.
+    private(set) var isSearchingServer = false
 
     /// Called as rows become visible; fetches the next page near the end.
     func rowWillAppear(at index: Int) {
