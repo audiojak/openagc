@@ -104,6 +104,8 @@ pub(crate) struct AccountState {
     pending: Mutex<HashMap<String, (PendingAuthorization, OAuthClientConfig)>>,
     /// IMAP backfill sources by account, for status.
     imap: Mutex<HashMap<String, Arc<provider_gmail::imap::ImapBackfill>>>,
+    /// Cancels for sign-ins waiting on the browser.
+    cancels: Mutex<HashMap<String, Arc<tokio::sync::Notify>>>,
     /// One sync service per account; every signed-in account syncs in the
     /// background, whichever the window shows (spec §7.7).
     sync: Mutex<HashMap<String, Arc<SyncService>>>,
@@ -186,6 +188,11 @@ impl Core {
         let imap = Arc::new(provider_gmail::imap::ImapBackfill::new(config, tokens, rest, labels.clone()));
         self.accounts.imap.lock().unwrap_or_else(|e| e.into_inner()).insert(account_id.to_owned(), imap.clone());
         Some(Arc::new(LabelRefreshingImap { inner: imap, labels, db }))
+    }
+
+    /// Drop an account's IMAP source (removal).
+    pub(crate) fn forget_imap(&self, account_id: &str) {
+        self.accounts.imap.lock().unwrap_or_else(|e| e.into_inner()).remove(account_id);
     }
 
     /// Stop one account's sync (removal, sign-in again).
@@ -415,6 +422,11 @@ impl Core {
         let session_id = random_id()?;
         let url = pending.url.clone();
         self.accounts.pending.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.clone(), (pending, client));
+        self.accounts
+            .cancels
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(session_id.clone(), Arc::new(tokio::sync::Notify::new()));
         Ok(SignInStart { session_id, authorization_url: url })
     }
 
@@ -429,9 +441,19 @@ impl Core {
             .unwrap_or_else(|e| e.into_inner())
             .remove(&session_id)
             .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no sign-in in progress"))?;
+        let cancel = self.accounts.cancels.lock().unwrap_or_else(|e| e.into_inner()).get(&session_id).cloned();
         let core = self.clone();
-        runtime::run(async move {
-            let code = pending.wait_for_code(SIGN_IN_TIMEOUT).await?;
+        let session = session_id.clone();
+        let result = runtime::run(async move {
+            let code = match cancel {
+                Some(cancel) => tokio::select! {
+                    code = pending.wait_for_code(SIGN_IN_TIMEOUT) => code?,
+                    () = cancel.notified() => {
+                        return Err(CoreError::new(ErrorKind::Cancelled, "sign-in cancelled"));
+                    }
+                },
+                None => pending.wait_for_code(SIGN_IN_TIMEOUT).await?,
+            };
             let client = OAuthClient {
                 client_id: config.client_id.trim().to_owned(),
                 client_secret: config.client_secret.clone().filter(|s| !s.is_empty()).map(Redacted::new),
@@ -485,11 +507,18 @@ impl Core {
             tracing::info!(account = %account_id, "gmail account connected");
             Ok(ConnectedAccount { account_id, email: profile.email })
         })
-        .await
+        .await;
+        self.accounts.cancels.lock().unwrap_or_else(|e| e.into_inner()).remove(&session);
+        result
     }
 
+    /// Stop a sign-in, whether or not the app is already waiting on it.
     pub fn cancel_gmail_sign_in(&self, session_id: String) {
         self.accounts.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id);
+        if let Some(cancel) = self.accounts.cancels.lock().unwrap_or_else(|e| e.into_inner()).remove(&session_id) {
+            // A stored permit: works even if the wait has not started yet.
+            cancel.notify_one();
+        }
     }
 
     /// Start syncing the open account with Gmail.
@@ -557,7 +586,11 @@ impl Core {
                         continue;
                     }
                 };
-                core.store_for(&entry.id).await?;
+                // One account's broken store must not stop the others.
+                if let Err(e) = core.store_for(&entry.id).await {
+                    tracing::warn!(account = %entry.id, error = %e, "not syncing: the store would not open");
+                    continue;
+                }
                 let imap = core.imap_if_granted(&entry.id, provider.clone());
                 let started = crate::registry::SCOPED_ACCOUNT
                     .sync_scope(entry.id.clone(), || core.start_sync_with_backfill(provider, imap));
@@ -930,6 +963,36 @@ mod tests {
         assert_eq!(existing_account_id(dir.path(), "old@example.com").as_deref(), Some("aaaa"));
         assert_eq!(existing_account_id(dir.path(), "new@example.com"), None);
         assert_eq!(existing_account_id(&dir.path().join("missing"), "me@example.com"), None);
+    }
+
+    #[test]
+    fn cancelling_a_sign_in_ends_the_wait_at_once() {
+        let dir = std::env::temp_dir().join(format!("openagc-core-cancel-{}", std::process::id()));
+        let core = Core::new(
+            CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(Recorder::default()),
+        )
+        .unwrap();
+        // Only a loopback listener is opened; nothing contacts Google.
+        let start = block_on(core.begin_gmail_sign_in(
+            OAuthClientConfig { client_id: "id.apps.googleusercontent.com".into(), client_secret: None },
+            None,
+            false,
+        ))
+        .unwrap();
+        let waiting = {
+            let core = core.clone();
+            let session = start.session_id.clone();
+            std::thread::spawn(move || block_on(core.complete_gmail_sign_in(session)))
+        };
+        std::thread::sleep(Duration::from_millis(100));
+        let began = std::time::Instant::now();
+        core.cancel_gmail_sign_in(start.session_id);
+        let err = waiting.join().unwrap().unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::Cancelled);
+        assert!(began.elapsed() < Duration::from_secs(2), "not the 5-minute timeout");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

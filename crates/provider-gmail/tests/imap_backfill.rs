@@ -164,3 +164,19 @@ async fn headers_come_without_bodies_for_a_browsable_list() {
     let (_s2, _r2, refused) = setup("wrong-token").await;
     assert!(refused.fetch_headers(&[hex(MSG_A)]).await.unwrap().is_none(), "no cheap headers without IMAP");
 }
+
+#[tokio::test]
+async fn a_message_that_left_all_mail_since_the_map_loaded_comes_over_the_api() {
+    let (server, rest, source) = setup("good-token").await;
+    source.fetch(&[hex(MSG_A)]).await.unwrap(); // loads the map, including B
+    rest.seed(FetchedMessage {
+        id: hex(MSG_B),
+        thread_id: ThreadId(format!("{THREAD:x}")),
+        subject: "B from REST".into(),
+        ..Default::default()
+    });
+    server.remove(11); // B moved to Trash
+    let fetched = source.fetch(&[hex(MSG_B)]).await.unwrap();
+    assert_eq!(fetched.len(), 1, "never silently dropped");
+    assert_eq!(fetched[0].subject, "B from REST");
+}

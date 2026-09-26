@@ -378,20 +378,25 @@ impl Core {
 
     /// A stored conversation's prompts and events, for showing it again.
     pub async fn agent_transcript(&self, session_id: String) -> Result<Vec<AgentTranscriptItem>, CoreError> {
-        let db = self.db()?;
-        runtime::run(async move {
-            let rows = db.read(move |c| mail_store::agents::transcript(c, &session_id)).await?;
-            Ok(rows
-                .into_iter()
-                .filter_map(|r| match r.role.as_str() {
-                    "user" => serde_json::from_str::<String>(&r.content_json)
-                        .ok()
-                        .map(|text| AgentTranscriptItem::Prompt { text }),
-                    _ => serde_json::from_str::<AgentEvent>(&r.content_json)
-                        .ok()
-                        .map(|e| AgentTranscriptItem::Event { event: e.into() }),
-                })
-                .collect())
+        // The session's own account, whatever the window shows (§7.7).
+        let account = self.agents.session_account(&session_id).or_else(|| self.effective_account_id());
+        crate::registry::scoped(account, async move {
+            let db = self.db()?;
+            runtime::run(async move {
+                let rows = db.read(move |c| mail_store::agents::transcript(c, &session_id)).await?;
+                Ok(rows
+                    .into_iter()
+                    .filter_map(|r| match r.role.as_str() {
+                        "user" => serde_json::from_str::<String>(&r.content_json)
+                            .ok()
+                            .map(|text| AgentTranscriptItem::Prompt { text }),
+                        _ => serde_json::from_str::<AgentEvent>(&r.content_json)
+                            .ok()
+                            .map(|e| AgentTranscriptItem::Event { event: e.into() }),
+                    })
+                    .collect())
+            })
+            .await
         })
         .await
     }
@@ -402,25 +407,31 @@ impl Core {
         prompt: String,
         context: PromptContextInfo,
     ) -> Result<(), CoreError> {
-        let turn = TurnInput {
-            prompt,
-            context: PromptContext {
-                mailbox: context.mailbox_id,
-                selected_thread_ids: context.selected_thread_ids.into_iter().map(ThreadId).collect(),
-                search_query: context.search_query,
-            },
-        };
-        // A new prompt from the user resets the session's bulk count.
-        self.agents.with_session(&session_id, |s| s.guard.new_user_prompt());
-        if let Ok(db) = self.db() {
-            let (uuid, text) = (session_id.clone(), serde_json::to_string(&turn.prompt).unwrap_or_default());
-            let _ = runtime::run(async move {
-                Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::append(tx, &uuid, "user", &text)).await?)
-            })
-            .await;
-        }
-        let core = self.clone();
-        runtime::run(async move { Ok(core.agent_runtime().manager.send(&SessionId(session_id), turn).await?) }).await
+        // The session's own account, whatever the window shows (§7.7).
+        let account = self.agents.session_account(&session_id).or_else(|| self.effective_account_id());
+        crate::registry::scoped(account, async move {
+            let turn = TurnInput {
+                prompt,
+                context: PromptContext {
+                    mailbox: context.mailbox_id,
+                    selected_thread_ids: context.selected_thread_ids.into_iter().map(ThreadId).collect(),
+                    search_query: context.search_query,
+                },
+            };
+            // A new prompt from the user resets the session's bulk count.
+            self.agents.with_session(&session_id, |s| s.guard.new_user_prompt());
+            if let Ok(db) = self.db() {
+                let (uuid, text) = (session_id.clone(), serde_json::to_string(&turn.prompt).unwrap_or_default());
+                let _ = runtime::run(async move {
+                    Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::append(tx, &uuid, "user", &text)).await?)
+                })
+                .await;
+            }
+            let core = self.clone();
+            runtime::run(async move { Ok(core.agent_runtime().manager.send(&SessionId(session_id), turn).await?) })
+                .await
+        })
+        .await
     }
 
     pub async fn cancel_agent_turn(self: Arc<Self>, session_id: String) -> Result<(), CoreError> {
@@ -432,17 +443,22 @@ impl Core {
 
     /// End a session; its pending tool calls are refused from now on.
     pub async fn close_agent_session(self: Arc<Self>, session_id: String) -> Result<(), CoreError> {
-        self.agents.approvals.reject_session(&session_id);
-        self.agents.unregister(&session_id);
-        if let Ok(db) = self.db() {
-            let (uuid, now) = (session_id.clone(), mail_sync::now_millis());
-            let _ = runtime::run(async move {
-                Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::end_session(tx, &uuid, now)).await?)
-            })
-            .await;
-        }
-        let core = self.clone();
-        runtime::run(async move { Ok(core.agent_runtime().manager.close(&SessionId(session_id)).await?) }).await
+        // The session's own account, whatever the window shows (§7.7).
+        let account = self.agents.session_account(&session_id).or_else(|| self.effective_account_id());
+        crate::registry::scoped(account, async move {
+            self.agents.approvals.reject_session(&session_id);
+            self.agents.unregister(&session_id);
+            if let Ok(db) = self.db() {
+                let (uuid, now) = (session_id.clone(), mail_sync::now_millis());
+                let _ = runtime::run(async move {
+                    Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::end_session(tx, &uuid, now)).await?)
+                })
+                .await;
+            }
+            let core = self.clone();
+            runtime::run(async move { Ok(core.agent_runtime().manager.close(&SessionId(session_id)).await?) }).await
+        })
+        .await
     }
 }
 

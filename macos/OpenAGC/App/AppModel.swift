@@ -152,6 +152,7 @@ final class AppModel {
     func signIn(with client: GoogleClientConfiguration, adding: Bool = false, fullAccess: Bool = false) async {
         guard let core, client.isUsable else { return }
         let previous = openAccountID
+        accountBeforeSignIn = previous
         if adding, let previous { placeByAccount[previous] = (selectedMailboxID, selectedThreadID) }
         signInError = nil
         accountState = .signingIn
@@ -176,6 +177,10 @@ final class AppModel {
             await open(accountID: account.accountID)
         } catch {
             signInSession = nil
+            if error.kind == .cancelled {
+                // cancelSignIn already put the window back.
+                return
+            }
             logger.error("sign-in failed: \(error.message, privacy: .private)")
             signInError = error.message
             // Adding an account and giving up leaves the open one as it was.
@@ -205,10 +210,16 @@ final class AppModel {
         await signIn(with: .effective(), adding: true)
     }
 
+    /// Stop waiting for the browser. Adding an account returns to the one
+    /// that was open; otherwise back to onboarding.
     func cancelSignIn() {
         if let session = signInSession { core?.cancelGmailSignIn(session) }
         signInSession = nil
-        accountState = .noAccount
+        if let previous = accountBeforeSignIn {
+            accountState = .open(accountID: previous)
+        } else {
+            accountState = .noAccount
+        }
     }
 
     func signOut() async {
@@ -413,6 +424,8 @@ final class AppModel {
     /// next account opens; with none left, onboarding.
     func removeAccount(_ accountID: String) async {
         guard let core else { return }
+        // Its agent session ends with it, before its store goes.
+        agentStores[accountID]?.newConversation()
         do {
             try await core.removeAccount(accountID)
         } catch {
@@ -634,6 +647,8 @@ final class AppModel {
     }
 
     @ObservationIgnored private var suppressMailboxChange = false
+    /// The account open when a sign-in began, to return to on cancel.
+    @ObservationIgnored private var accountBeforeSignIn: String?
     @ObservationIgnored private var accountsReload: Task<Void, Never>?
 
     private func scheduleAccountsReload() {

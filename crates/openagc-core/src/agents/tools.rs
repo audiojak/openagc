@@ -604,7 +604,7 @@ async fn update_draft(core: &Arc<Core>, session: &str, arguments: Value) -> Resu
         })
         .flatten()
         .ok_or_else(not_yours)?;
-    if core.agents.approvals.is_frozen(a.draft_id) {
+    if core.agents.approvals.is_frozen(core.effective_account_id().as_deref(), a.draft_id) {
         return Err(Outcome::error("denied", "the user is reviewing this draft; wait for their answer"));
     }
     let mut draft = core

@@ -74,6 +74,11 @@ impl FakeImapServer {
         self.state.lock().unwrap().messages.push(message);
     }
 
+    /// Take a message out of All Mail (moved to Spam or Trash).
+    pub fn remove(&self, uid: u32) {
+        self.state.lock().unwrap().messages.retain(|m| m.uid != uid);
+    }
+
     pub fn refuse_logins(&self) {
         self.state.lock().unwrap().refuse_login = true;
     }

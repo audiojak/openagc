@@ -476,16 +476,26 @@ impl Core {
 impl Core {
     /// Run a local routine now; returns the agent session showing it.
     pub async fn run_routine_now(self: Arc<Self>, id: String) -> Result<String, CoreError> {
-        let routine = self.load_routine(&id).await?;
-        self.start_routine_session(&routine, false).await
+        // Pinned once for the whole call (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let routine = self.load_routine(&id).await?;
+            self.start_routine_session(&routine, false).await
+        })
+        .await
     }
 
     /// Classify the routine's current candidates without changing anything
     /// (a read-only agent session). Returns the session; read the result
     /// with `routine_preview` once its turn completes.
     pub async fn preview_routine(self: Arc<Self>, id: String) -> Result<String, CoreError> {
-        let routine = self.load_routine(&id).await?;
-        self.start_routine_session(&routine, true).await
+        // Pinned once for the whole call (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let routine = self.load_routine(&id).await?;
+            self.start_routine_session(&routine, true).await
+        })
+        .await
     }
 
     /// A finished preview's classification (`None` while it runs).
@@ -523,46 +533,56 @@ impl Core {
     /// so nothing the user changed since is touched. Returns how many
     /// threads were restored.
     pub async fn undo_routine_run(&self, run_id: i64) -> Result<u32, CoreError> {
-        let db = self.db()?;
-        let rid = runtime::run({
-            let db = db.clone();
-            async move { Ok::<_, CoreError>(db.read(move |c| store::run_routine(c, run_id)).await?) }
-        })
-        .await?
-        .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no such run"))?;
-        let routine = self.load_routine(&rid).await?;
-        let (threads, labels) = runtime::run({
-            let db = db.clone();
-            async move {
-                Ok::<_, CoreError>((
-                    db.read(move |c| store::run_threads(c, run_id)).await?,
-                    db.read(mail_store::read::list_labels).await?,
-                ))
-            }
-        })
-        .await?;
-        let mut restored = 0;
-        for (thread, bucket) in threads {
-            let Some(bucket) = bucket.and_then(|b| routine.buckets.iter().find(|x| x.id == b).cloned()) else {
-                continue;
-            };
-            let full = routine.full_label(&bucket);
-            let Some(label) = labels.iter().find(|l| l.name.eq_ignore_ascii_case(&full)) else { continue };
-            // Re-check: only threads that still carry the bucket label.
-            let Some(detail) = self.get_thread(thread.clone()).await? else { continue };
-            if !detail.thread.label_ids.contains(&label.id.0) {
-                continue;
-            }
-            let add =
-                if detail.thread.label_ids.iter().any(|l| l == "INBOX") { vec![] } else { vec!["INBOX".to_owned()] };
-            self.modify_labels(vec![thread], add, vec![label.id.0.clone()]).await?;
-            restored += 1;
-        }
-        let now = mail_sync::now_millis();
-        runtime::run(async move { Ok::<_, CoreError>(db.write(move |tx| store::mark_undone(tx, run_id, now)).await?) })
+        // Pinned once for the whole call (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let db = self.db()?;
+            let rid = runtime::run({
+                let db = db.clone();
+                async move { Ok::<_, CoreError>(db.read(move |c| store::run_routine(c, run_id)).await?) }
+            })
+            .await?
+            .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no such run"))?;
+            let routine = self.load_routine(&rid).await?;
+            let (threads, labels) = runtime::run({
+                let db = db.clone();
+                async move {
+                    Ok::<_, CoreError>((
+                        db.read(move |c| store::run_threads(c, run_id)).await?,
+                        db.read(mail_store::read::list_labels).await?,
+                    ))
+                }
+            })
             .await?;
-        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
-        Ok(restored)
+            let mut restored = 0;
+            for (thread, bucket) in threads {
+                let Some(bucket) = bucket.and_then(|b| routine.buckets.iter().find(|x| x.id == b).cloned()) else {
+                    continue;
+                };
+                let full = routine.full_label(&bucket);
+                let Some(label) = labels.iter().find(|l| l.name.eq_ignore_ascii_case(&full)) else { continue };
+                // Re-check: only threads that still carry the bucket label.
+                let Some(detail) = self.get_thread(thread.clone()).await? else { continue };
+                if !detail.thread.label_ids.contains(&label.id.0) {
+                    continue;
+                }
+                let add = if detail.thread.label_ids.iter().any(|l| l == "INBOX") {
+                    vec![]
+                } else {
+                    vec!["INBOX".to_owned()]
+                };
+                self.modify_labels(vec![thread], add, vec![label.id.0.clone()]).await?;
+                restored += 1;
+            }
+            let now = mail_sync::now_millis();
+            runtime::run(
+                async move { Ok::<_, CoreError>(db.write(move |tx| store::mark_undone(tx, run_id, now)).await?) },
+            )
+            .await?;
+            self.account_events().emit(crate::CoreEvent::RoutinesChanged);
+            Ok(restored)
+        })
+        .await
     }
 
     /// What a schedule means, in words.

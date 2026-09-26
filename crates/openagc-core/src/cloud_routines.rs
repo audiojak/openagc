@@ -51,176 +51,213 @@ impl Core {
     /// Create or update the routine at claude.ai through the user's CLI.
     /// Errors mean: use the paste hand-off.
     pub async fn publish_routine_to_cloud(&self, id: String) -> Result<RoutineInfo, CoreError> {
-        // A cloud routine works through the Gmail connector; an imported
-        // mailbox is on this Mac only (spec §7.8).
-        if self.effective_account_id().is_some_and(|a| self.is_archive(&a)) {
-            return Err(CoreError::new(
-                ErrorKind::InvalidInput,
-                "an imported mailbox lives only on this Mac, so a cloud routine could not reach it; run it locally",
-            ));
-        }
-        let mut routine = self.load_routine(&id).await?;
-        if routine.runner != Runner::ClaudeCloud {
-            return Err(CoreError::new(ErrorKind::InvalidInput, "this routine does not run on Claude cloud"));
-        }
-        let cron =
-            schedule::to_utc_cron(&routine.schedule.rrule).map_err(|e| CoreError::new(ErrorKind::InvalidInput, e))?;
-        let prompt = Self::cloud_prompt(&routine);
-        let client = self.cloud();
-        let cloud_state = routine.cloud.clone();
-        let (name, enabled) = (routine.name.clone(), routine.enabled);
-        let published = runtime::run(async move {
-            match cloud_state.trigger_id {
-                Some(trigger) => {
-                    // Only what the editor owns; the connector and
-                    // environment stay as the user set them at claude.ai.
-                    let partial = serde_json::json!({
-                        "name": name,
-                        "cron_expression": cron,
-                        "enabled": enabled,
-                        "job_config": { "ccr": { "events": [{ "data": {
-                            "uuid": format!("openagc-{}", mail_sync::now_millis()),
-                            "session_id": "", "type": "user", "parent_tool_use_id": null,
-                            "message": { "role": "user", "content": prompt },
-                        } }] } },
-                    });
-                    client.update(&trigger, &partial).await?;
-                    Ok::<_, CoreError>((trigger.clone(), cloud::routine_url(&trigger), cloud_state.environment_id))
-                }
-                None => {
-                    let setup = client.discover().await?;
-                    let body = cloud::create_body(
-                        &name,
-                        &cron,
-                        enabled,
-                        &prompt,
-                        &setup,
-                        &format!("openagc-{}", mail_sync::now_millis()),
-                    )?;
-                    let created = client.create(&body).await?;
-                    Ok((created.trigger_id, created.url, setup.environment_id))
-                }
+        // Pinned once: the window may switch accounts during the slow
+        // CLI and network calls below (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            // A cloud routine works through the Gmail connector; an imported
+            // mailbox is on this Mac only (spec §7.8).
+            if self.effective_account_id().is_some_and(|a| self.is_archive(&a)) {
+                return Err(CoreError::new(
+                    ErrorKind::InvalidInput,
+                    "an imported mailbox lives only on this Mac, so a cloud routine could not reach it; run it locally",
+                ));
             }
+            let mut routine = self.load_routine(&id).await?;
+            if routine.runner != Runner::ClaudeCloud {
+                return Err(CoreError::new(ErrorKind::InvalidInput, "this routine does not run on Claude cloud"));
+            }
+            let cron = schedule::to_utc_cron(&routine.schedule.rrule)
+                .map_err(|e| CoreError::new(ErrorKind::InvalidInput, e))?;
+            let prompt = Self::cloud_prompt(&routine);
+            let client = self.cloud();
+            let cloud_state = routine.cloud.clone();
+            let (name, enabled) = (routine.name.clone(), routine.enabled);
+            let published = runtime::run(async move {
+                match cloud_state.trigger_id {
+                    Some(trigger) => {
+                        // Only what the editor owns; the connector and
+                        // environment stay as the user set them at claude.ai.
+                        let partial = serde_json::json!({
+                            "name": name,
+                            "cron_expression": cron,
+                            "enabled": enabled,
+                            "job_config": { "ccr": { "events": [{ "data": {
+                                "uuid": format!("openagc-{}", mail_sync::now_millis()),
+                                "session_id": "", "type": "user", "parent_tool_use_id": null,
+                                "message": { "role": "user", "content": prompt },
+                            } }] } },
+                        });
+                        client.update(&trigger, &partial).await?;
+                        Ok::<_, CoreError>((trigger.clone(), cloud::routine_url(&trigger), cloud_state.environment_id))
+                    }
+                    None => {
+                        let setup = client.discover().await?;
+                        let body = cloud::create_body(
+                            &name,
+                            &cron,
+                            enabled,
+                            &prompt,
+                            &setup,
+                            &format!("openagc-{}", mail_sync::now_millis()),
+                        )?;
+                        let created = client.create(&body).await?;
+                        Ok((created.trigger_id, created.url, setup.environment_id))
+                    }
+                }
+            })
+            .await?;
+            routine.cloud.trigger_id = Some(published.0);
+            routine.cloud.routine_url = Some(published.1);
+            routine.cloud.environment_id = published.2;
+            routine.cloud.published_fingerprint = Some(prompt_fingerprint(&Self::cloud_prompt(&routine)));
+            routine.cloud.published_at = Some(mail_sync::now_millis());
+            self.store_routine(&routine).await
         })
-        .await?;
-        routine.cloud.trigger_id = Some(published.0);
-        routine.cloud.routine_url = Some(published.1);
-        routine.cloud.environment_id = published.2;
-        routine.cloud.published_fingerprint = Some(prompt_fingerprint(&Self::cloud_prompt(&routine)));
-        routine.cloud.published_at = Some(mail_sync::now_millis());
-        self.store_routine(&routine).await
+        .await
     }
 
     /// Turn a routine on or off (at claude.ai too, for a published one).
     pub async fn set_routine_enabled(&self, id: String, enabled: bool) -> Result<RoutineInfo, CoreError> {
-        let mut routine = self.load_routine(&id).await?;
-        routine.enabled = enabled;
-        if let (Runner::ClaudeCloud, Some(trigger)) = (routine.runner, routine.cloud.trigger_id.clone()) {
-            let client = self.cloud();
-            runtime::run(async move {
-                Ok::<_, CoreError>(client.update(&trigger, &serde_json::json!({ "enabled": enabled })).await?)
-            })
-            .await?;
-        }
-        self.store_routine(&routine).await
+        // Pinned once: the window may switch accounts during the slow
+        // CLI and network calls below (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let mut routine = self.load_routine(&id).await?;
+            routine.enabled = enabled;
+            if let (Runner::ClaudeCloud, Some(trigger)) = (routine.runner, routine.cloud.trigger_id.clone()) {
+                let client = self.cloud();
+                runtime::run(async move {
+                    Ok::<_, CoreError>(client.update(&trigger, &serde_json::json!({ "enabled": enabled })).await?)
+                })
+                .await?;
+            }
+            self.store_routine(&routine).await
+        })
+        .await
     }
 
     /// Fire a published cloud routine now.
     pub async fn run_cloud_routine_now(&self, id: String) -> Result<Option<String>, CoreError> {
-        let routine = self.load_routine(&id).await?;
-        let trigger = routine
-            .cloud
-            .trigger_id
-            .ok_or_else(|| CoreError::new(ErrorKind::InvalidInput, "publish the routine first"))?;
-        let client = self.cloud();
-        let session = runtime::run(async move { Ok::<_, CoreError>(client.run(&trigger).await?) }).await?;
-        if let (Some(session), Ok(db)) = (session.clone(), self.db()) {
-            let (rid, now) = (id.clone(), mail_sync::now_millis());
-            let _ = runtime::run(async move {
-                Ok::<_, CoreError>(
-                    db.write(move |tx| store::upsert_cloud_run(tx, &rid, &session, "running", now, None)).await?,
-                )
-            })
-            .await;
-        }
-        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
-        Ok(session)
+        // Pinned once: the window may switch accounts during the slow
+        // CLI and network calls below (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let routine = self.load_routine(&id).await?;
+            let trigger = routine
+                .cloud
+                .trigger_id
+                .ok_or_else(|| CoreError::new(ErrorKind::InvalidInput, "publish the routine first"))?;
+            let client = self.cloud();
+            let session = runtime::run(async move { Ok::<_, CoreError>(client.run(&trigger).await?) }).await?;
+            if let (Some(session), Ok(db)) = (session.clone(), self.db()) {
+                let (rid, now) = (id.clone(), mail_sync::now_millis());
+                let _ = runtime::run(async move {
+                    Ok::<_, CoreError>(
+                        db.write(move |tx| store::upsert_cloud_run(tx, &rid, &session, "running", now, None)).await?,
+                    )
+                })
+                .await;
+            }
+            self.account_events().emit(crate::CoreEvent::RoutinesChanged);
+            Ok(session)
+        })
+        .await
     }
 
     /// Bring the routine's cloud runs (and the newest reports) into the run
     /// history. Logs are stored as plain text and never given to an agent.
     pub async fn refresh_cloud_runs(&self, id: String) -> Result<(), CoreError> {
-        let routine = self.load_routine(&id).await?;
-        let Some(trigger) = routine.cloud.trigger_id else { return Ok(()) };
-        let client = self.cloud();
-        let db = self.db()?;
-        runtime::run(async move {
-            let runs = client.list_runs(&trigger).await?;
-            // Each log is one CLI call on the user's account: only the few
-            // newest finished runs that have none yet.
-            let mut logs_left = 3;
-            for run in runs.iter().take(20) {
-                let (rid, sid, status) = (id.clone(), run.session_id.clone(), run.status.clone());
-                let started = iso_ms(run.started_at.as_deref()).unwrap_or_else(mail_sync::now_millis);
-                let ended = iso_ms(run.ended_at.as_deref());
-                let row = db.write(move |tx| store::upsert_cloud_run(tx, &rid, &sid, &status, started, ended)).await?;
-                // Inferred runs inside this run's window were this run.
-                if let Some(row) = row {
-                    let (rid, end) = (id.clone(), ended.unwrap_or(started) + 5 * 60 * 1000);
-                    let inferred =
-                        db.read(move |c| store::inferred_runs_between(c, &rid, started - 60_000, end)).await?;
-                    for from in inferred {
-                        db.write(move |tx| store::merge_runs(tx, from, row)).await?;
+        // Pinned once: the window may switch accounts during the slow
+        // CLI and network calls below (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let routine = self.load_routine(&id).await?;
+            let Some(trigger) = routine.cloud.trigger_id else { return Ok(()) };
+            let client = self.cloud();
+            let db = self.db()?;
+            runtime::run(async move {
+                let runs = client.list_runs(&trigger).await?;
+                // Each log is one CLI call on the user's account: only the few
+                // newest finished runs that have none yet.
+                let mut logs_left = 3;
+                for run in runs.iter().take(20) {
+                    let (rid, sid, status) = (id.clone(), run.session_id.clone(), run.status.clone());
+                    let started = iso_ms(run.started_at.as_deref()).unwrap_or_else(mail_sync::now_millis);
+                    let ended = iso_ms(run.ended_at.as_deref());
+                    let row =
+                        db.write(move |tx| store::upsert_cloud_run(tx, &rid, &sid, &status, started, ended)).await?;
+                    // Inferred runs inside this run's window were this run.
+                    if let Some(row) = row {
+                        let (rid, end) = (id.clone(), ended.unwrap_or(started) + 5 * 60 * 1000);
+                        let inferred =
+                            db.read(move |c| store::inferred_runs_between(c, &rid, started - 60_000, end)).await?;
+                        for from in inferred {
+                            db.write(move |tx| store::merge_runs(tx, from, row)).await?;
+                        }
+                    }
+                    let finished = matches!(run.status.as_str(), "completed" | "succeeded" | "failed");
+                    let Some(row) = row else { continue };
+                    if !finished || logs_left == 0 || db.read(move |c| store::run_report(c, row)).await?.is_some() {
+                        continue;
+                    }
+                    logs_left -= 1;
+                    if let Ok(log) = client.run_log(&run.session_id).await {
+                        db.write(move |tx| store::set_report(tx, row, &log)).await?;
                     }
                 }
-                let finished = matches!(run.status.as_str(), "completed" | "succeeded" | "failed");
-                let Some(row) = row else { continue };
-                if !finished || logs_left == 0 || db.read(move |c| store::run_report(c, row)).await?.is_some() {
-                    continue;
-                }
-                logs_left -= 1;
-                if let Ok(log) = client.run_log(&run.session_id).await {
-                    db.write(move |tx| store::set_report(tx, row, &log)).await?;
-                }
-            }
-            Ok::<_, CoreError>(())
+                Ok::<_, CoreError>(())
+            })
+            .await?;
+            self.account_events().emit(crate::CoreEvent::RoutinesChanged);
+            Ok(())
         })
-        .await?;
-        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
-        Ok(())
+        .await
     }
 
     /// The paste hand-off (spec §11.5): prompt, schedule and the page to
     /// create the routine on, for when publishing through the CLI fails or
     /// the runner has no API (ChatGPT).
     pub async fn routine_handoff(&self, id: String) -> Result<RoutineHandoff, CoreError> {
-        let routine = self.load_routine(&id).await?;
-        let prompt = generate_prompt(&routine, PromptTarget::Runner(routine.runner));
-        let schedule_text = schedule::describe(&routine.schedule.rrule);
-        Ok(match routine.runner {
-            Runner::ChatGptCloud => {
-                RoutineHandoff { prompt, cron_utc: None, schedule_text, url: "https://chatgpt.com".into() }
-            }
-            _ => RoutineHandoff {
-                prompt,
-                cron_utc: schedule::to_utc_cron(&routine.schedule.rrule).ok(),
-                schedule_text,
-                url: cloud::ROUTINES_PAGE.into(),
-            },
+        // Pinned once: the window may switch accounts during the slow
+        // CLI and network calls below (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let routine = self.load_routine(&id).await?;
+            let prompt = generate_prompt(&routine, PromptTarget::Runner(routine.runner));
+            let schedule_text = schedule::describe(&routine.schedule.rrule);
+            Ok(match routine.runner {
+                Runner::ChatGptCloud => {
+                    RoutineHandoff { prompt, cron_utc: None, schedule_text, url: "https://chatgpt.com".into() }
+                }
+                _ => RoutineHandoff {
+                    prompt,
+                    cron_utc: schedule::to_utc_cron(&routine.schedule.rrule).ok(),
+                    schedule_text,
+                    url: cloud::ROUTINES_PAGE.into(),
+                },
+            })
         })
+        .await
     }
 
     /// The user created the routine by hand and pasted its URL (or id).
     pub async fn attach_cloud_routine(&self, id: String, url_or_id: String) -> Result<RoutineInfo, CoreError> {
-        let trigger = cloud::trigger_id_from(&url_or_id).ok_or_else(|| {
-            CoreError::new(ErrorKind::InvalidInput, "that does not look like a routine link (…/routines/trig_…)")
-        })?;
-        let mut routine = self.load_routine(&id).await?;
-        routine.cloud.routine_url = Some(cloud::routine_url(&trigger));
-        routine.cloud.trigger_id = Some(trigger);
-        routine.cloud.published_fingerprint = Some(prompt_fingerprint(&Self::cloud_prompt(&routine)));
-        routine.cloud.published_at = Some(mail_sync::now_millis());
-        self.store_routine(&routine).await
+        // Pinned once: the window may switch accounts during the slow
+        // CLI and network calls below (spec §7.7).
+        let account = self.effective_account_id();
+        crate::registry::scoped(account, async move {
+            let trigger = cloud::trigger_id_from(&url_or_id).ok_or_else(|| {
+                CoreError::new(ErrorKind::InvalidInput, "that does not look like a routine link (…/routines/trig_…)")
+            })?;
+            let mut routine = self.load_routine(&id).await?;
+            routine.cloud.routine_url = Some(cloud::routine_url(&trigger));
+            routine.cloud.trigger_id = Some(trigger);
+            routine.cloud.published_fingerprint = Some(prompt_fingerprint(&Self::cloud_prompt(&routine)));
+            routine.cloud.published_at = Some(mail_sync::now_millis());
+            self.store_routine(&routine).await
+        })
+        .await
     }
 }
 

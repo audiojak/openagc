@@ -81,10 +81,11 @@ struct State {
     session: Option<Session>,
     /// X-GM-MSGID → where it is in All Mail.
     map: HashMap<u64, Located>,
-    /// Day number (UTC) and bytes fetched on it.
-    day: i64,
-    bytes_today: u64,
 }
+
+/// Longest wait for a connection, a login, or any single response line.
+/// A half-open connection after sleep must not stall backfill forever.
+const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 type Session = async_imap::Session<ImapStream>;
 
@@ -97,6 +98,10 @@ pub struct ImapBackfill {
     /// Google refused the login (IMAP disabled, or the token lacks the
     /// scope): REST only from here on.
     refused: AtomicBool,
+    /// Day number (UTC) and bytes fetched on it; atomics so status never
+    /// waits on a fetch in progress.
+    day: std::sync::atomic::AtomicI64,
+    bytes_today: std::sync::atomic::AtomicU64,
 }
 
 impl ImapBackfill {
@@ -106,7 +111,16 @@ impl ImapBackfill {
         rest: Arc<dyn MailProvider>,
         labels: LabelNames,
     ) -> Self {
-        Self { config, tokens, rest, labels, state: Mutex::new(State::default()), refused: AtomicBool::new(false) }
+        Self {
+            config,
+            tokens,
+            rest,
+            labels,
+            state: Mutex::new(State::default()),
+            refused: AtomicBool::new(false),
+            day: Default::default(),
+            bytes_today: Default::default(),
+        }
     }
 
     /// Whether IMAP was refused and everything now goes through REST.
@@ -116,10 +130,28 @@ impl ImapBackfill {
 
     /// Bytes fetched over IMAP today (diagnostics).
     pub async fn bytes_today(&self) -> u64 {
-        self.state.lock().await.bytes_today
+        if self.day.load(Ordering::Relaxed) != mail_domain_today() {
+            return 0;
+        }
+        self.bytes_today.load(Ordering::Relaxed)
+    }
+
+    fn count_bytes(&self, bytes: u64) {
+        let today = mail_domain_today();
+        if self.day.swap(today, Ordering::Relaxed) != today {
+            self.bytes_today.store(0, Ordering::Relaxed);
+        }
+        self.bytes_today.fetch_add(bytes, Ordering::Relaxed);
     }
 
     async fn connect(&self) -> ProviderResult<Session> {
+        match tokio::time::timeout(IO_TIMEOUT, self.connect_inner()).await {
+            Ok(result) => result,
+            Err(_) => Err(ProviderError::Network("IMAP connection timed out".into())),
+        }
+    }
+
+    async fn connect_inner(&self) -> ProviderResult<Session> {
         let stream = match &self.config.endpoint {
             ImapEndpoint::Plain(addr) => ImapStream::Plain(TcpStream::connect(addr).await.map_err(net)?),
             ImapEndpoint::Tls { host, port } => {
@@ -199,12 +231,7 @@ impl ImapBackfill {
         match result {
             Ok(()) => {
                 state.session = Some(session);
-                let today = mail_domain_today();
-                if state.day != today {
-                    state.day = today;
-                    state.bytes_today = 0;
-                }
-                state.bytes_today += bytes;
+                self.count_bytes(bytes);
                 Ok(out)
             }
             // A broken session is dropped; the next call reconnects.
@@ -269,6 +296,25 @@ impl BackfillSource for ImapBackfill {
                 return self.rest.fetch_messages(ids, Priority::Background).await;
             }
         };
+        // Anything IMAP did not return (moved to Spam or Trash since the
+        // map loaded, or unparseable) goes over the API too; backfill
+        // drops every requested id from its queue, so none may be skipped.
+        let returned: std::collections::HashSet<&str> = out.iter().map(|m| m.id.as_str()).collect();
+        let mut via_rest = via_rest;
+        let mut stale = Vec::new();
+        for (msgid, _) in &via_imap {
+            let id = MessageId(format!("{msgid:x}"));
+            if !returned.contains(id.as_str()) {
+                stale.push(*msgid);
+                via_rest.push(id);
+            }
+        }
+        if !stale.is_empty() {
+            let mut state = self.state.lock().await;
+            for msgid in stale {
+                state.map.remove(&msgid);
+            }
+        }
         if !via_rest.is_empty() {
             out.extend(self.rest.fetch_messages(&via_rest, Priority::Background).await?);
         }
@@ -330,8 +376,7 @@ impl BackfillSource for ImapBackfill {
 
 impl ImapBackfill {
     async fn over_budget(&self) -> bool {
-        let state = self.state.lock().await;
-        state.day == mail_domain_today() && state.bytes_today >= self.config.daily_budget_bytes
+        self.bytes_today().await >= self.config.daily_budget_bytes
     }
 }
 
@@ -342,9 +387,16 @@ async fn for_each_fetch(
     command: &str,
     mut each: impl FnMut(&[AttributeValue<'_>]),
 ) -> ProviderResult<()> {
-    let tag = session.run_command(command).await.map_err(imap)?;
+    let tag = match tokio::time::timeout(IO_TIMEOUT, session.run_command(command)).await {
+        Ok(result) => result.map_err(imap)?,
+        Err(_) => return Err(ProviderError::Network("IMAP command timed out".into())),
+    };
     loop {
-        let Some(response) = session.read_response().await.map_err(net)? else {
+        let read = match tokio::time::timeout(IO_TIMEOUT, session.read_response()).await {
+            Ok(read) => read.map_err(net)?,
+            Err(_) => return Err(ProviderError::Network("IMAP response timed out".into())),
+        };
+        let Some(response) = read else {
             return Err(ProviderError::Network("IMAP connection closed".into()));
         };
         match response.parsed() {

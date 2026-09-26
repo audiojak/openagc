@@ -115,6 +115,9 @@ fn dir_size(dir: &Path) -> u64 {
 pub(crate) struct OpenAccounts {
     pub stores: HashMap<String, Db>,
     pub current: Option<String>,
+    /// Accounts removed in this run: never reopened (a scheduler tick that
+    /// read the index just before would otherwise recreate the store).
+    pub removed: std::collections::HashSet<String>,
 }
 
 pub(crate) fn accounts_dir(data_dir: &Path) -> PathBuf {
@@ -266,8 +269,14 @@ impl Core {
         if !crate::mail::valid_account_id(account_id) {
             return Err(CoreError::new(ErrorKind::InvalidInput, "account id must be 1-64 of [A-Za-z0-9-]"));
         }
-        if let Some(db) = self.open_accounts.read().unwrap_or_else(|e| e.into_inner()).stores.get(account_id) {
-            return Ok(db.clone());
+        {
+            let open = self.open_accounts.read().unwrap_or_else(|e| e.into_inner());
+            if open.removed.contains(account_id) {
+                return Err(CoreError::new(ErrorKind::NotFound, "that account was removed"));
+            }
+            if let Some(db) = open.stores.get(account_id) {
+                return Ok(db.clone());
+            }
         }
         let path = self.account_db_path(account_id);
         let db = runtime::run(async move {
@@ -279,6 +288,10 @@ impl Core {
         .await?;
         tracing::info!(account = %account_id, "account opened");
         let mut open = self.open_accounts.write().unwrap_or_else(|e| e.into_inner());
+        if open.removed.contains(account_id) {
+            db.close();
+            return Err(CoreError::new(ErrorKind::NotFound, "that account was removed"));
+        }
         // Another caller may have opened it meanwhile; keep the first.
         Ok(open.stores.entry(account_id.to_owned()).or_insert(db).clone())
     }
@@ -385,7 +398,12 @@ impl Core {
         if !crate::mail::valid_account_id(&account_id) || account_id == DEMO_ACCOUNT_ID {
             return Err(CoreError::new(ErrorKind::InvalidInput, "not a removable account"));
         }
+        // Mark it first so nothing reopens it, then stop everything that
+        // uses it, and delete under the index lock.
+        self.open_accounts.write().unwrap_or_else(|e| e.into_inner()).removed.insert(account_id.clone());
         self.stop_sync_for(&account_id);
+        self.cancel_import(account_id.clone());
+        self.forget_imap(&account_id);
         self.close_store(&account_id);
         self.secrets.delete(crate::secrets::keys::refresh_token(&account_id))?;
         self.secrets.delete(crate::account::client_key(&account_id))?;
@@ -681,6 +699,8 @@ mod tests {
         secrets.set(crate::secrets::keys::refresh_token("two"), "token".into()).unwrap();
         block_on(core.remove_account("two".into())).unwrap();
         assert_eq!(core.current_account_id(), None, "the current account was removed");
+        assert!(!accounts_dir(&t.0).join("two").exists());
+        assert!(block_on(core.store_for("two")).is_err(), "a scheduler tick cannot bring it back");
         assert!(!accounts_dir(&t.0).join("two").exists());
         assert_eq!(secrets.get(crate::secrets::keys::refresh_token("two")).unwrap(), None);
         let ids: Vec<String> = block_on(core.list_accounts()).unwrap().into_iter().map(|a| a.id).collect();
