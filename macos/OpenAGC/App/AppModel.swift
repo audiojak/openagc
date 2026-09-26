@@ -28,6 +28,9 @@ final class AppModel {
     private(set) var syncDisplay: SyncDisplay = .idle
     /// Set when Google rejected the stored credentials; shows a banner.
     private(set) var needsReauthentication = false
+    /// Why a sign-in is needed, so Settings can say what happened.
+    enum ReauthenticationReason { case googleRejected, savedSignInUnavailable }
+    private(set) var reauthenticationReason: ReauthenticationReason?
     /// Why the last sign-in attempt failed, for the onboarding screen.
     private(set) var signInError: String?
     private(set) var accountEmail: String? = UserDefaults.standard.string(forKey: "accountEmail")
@@ -123,6 +126,7 @@ final class AppModel {
             UserDefaults.standard.set(account.email, forKey: "accountEmail")
             accountEmail = account.email
             needsReauthentication = false
+            reauthenticationReason = nil
             await open(accountID: account.accountID)
         } catch {
             signInSession = nil
@@ -171,6 +175,7 @@ final class AppModel {
                     observeLifecycle()
                 } else {
                     needsReauthentication = true
+                    reauthenticationReason = .savedSignInUnavailable
                 }
             }
         } catch {
@@ -392,7 +397,10 @@ final class AppModel {
             }
         case let .error(error):
             logger.error("core error: \(error.message, privacy: .private)")
-            if error.kind == .auth { needsReauthentication = true }
+            if error.kind == .auth {
+                needsReauthentication = true
+                reauthenticationReason = .googleRejected
+            }
         case let .syncStatus(state, pending):
             switch state {
             case .idle: syncDisplay = .idle

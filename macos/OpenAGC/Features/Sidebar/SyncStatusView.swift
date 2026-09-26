@@ -17,7 +17,10 @@ struct SyncStatusView: View {
                 Image(systemName: "exclamationmark.triangle")
                 Text("Sync paused")
             case .idle:
-                if let email = model.accountEmail, case .open = model.accountState, model.core?.currentAccountID != AppModel.demoAccountID {
+                if model.needsReauthentication {
+                    Image(systemName: "exclamationmark.triangle")
+                    Text("Not syncing — sign in again")
+                } else if let email = model.accountEmail, case .open = model.accountState, model.core?.currentAccountID != AppModel.demoAccountID {
                     Text(email).lineLimit(1).truncationMode(.middle)
                 } else if case .open = model.accountState {
                     Text("Demo mailbox")

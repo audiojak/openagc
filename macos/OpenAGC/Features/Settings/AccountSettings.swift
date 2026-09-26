@@ -18,7 +18,7 @@ struct AccountSettings: View {
                 case .open:
                     LabeledContent("Account") { Text(model.accountEmail ?? "Connected") }
                     if model.needsReauthentication {
-                        Label("Google asked you to sign in again.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+                        Label(reauthenticationHint, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                     }
                     HStack {
                         Button("Sign In Again…") { Task { await model.signIn(with: .effective()) } }
@@ -60,6 +60,20 @@ struct AccountSettings: View {
             Button("Sign Out", role: .destructive) { Task { await model.signOut() } }
         } message: {
             Text("OpenAGC forgets the sign-in. Mail already downloaded stays on this Mac until you delete it.")
+        }
+    }
+}
+
+extension AccountSettings {
+    /// One line on why syncing stopped. A saved sign-in the Keychain will
+    /// not hand over (typically a rebuilt development app) is not Google's
+    /// doing, and the mail already here is safe.
+    var reauthenticationHint: String {
+        switch model.reauthenticationReason {
+        case .savedSignInUnavailable:
+            "The saved sign-in isn't available to this copy of OpenAGC, so mail isn't syncing. Downloaded mail is kept; sign in again to resume."
+        case .googleRejected, nil:
+            "Google asked you to sign in again."
         }
     }
 }
