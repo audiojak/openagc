@@ -66,3 +66,19 @@ struct AccountSwitchTests {
         #expect(try await core.drafts().contains { $0.subject == "Written on work" })
     }
 }
+
+@MainActor
+struct OrphanedStoreTests {
+    @Test func leftoverStoresAreListedAndDeletable() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let core = try CoreClient(dataDirectory: dir)
+        try await core.addDemoAccount("kept", email: "me@example.com", threads: 5)
+        // A store with no index entry, as an old "Sign In Again" left.
+        try await core.setCurrentAccount("stray")
+        #expect(try await core.orphanedStores().map(\.id) == ["stray"])
+        try await core.removeOrphanedStore("stray")
+        #expect(try await core.orphanedStores().isEmpty)
+        #expect(try await core.accounts().map(\.id) == ["kept"])
+    }
+}

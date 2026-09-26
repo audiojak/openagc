@@ -86,6 +86,30 @@ pub(crate) struct IndexEntry {
     pub imap: Option<bool>,
 }
 
+/// An account directory no listed account owns.
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct OrphanedStore {
+    pub id: String,
+    /// The Gmail address it synced, if it got that far.
+    pub email: Option<String>,
+    pub bytes: u64,
+}
+
+fn dir_size(dir: &Path) -> u64 {
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| match e.metadata() {
+                    Ok(m) if m.is_dir() => dir_size(&e.path()),
+                    Ok(m) => m.len(),
+                    Err(_) => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
 /// Stores that are open, and the current one.
 #[derive(Default)]
 pub(crate) struct OpenAccounts {
@@ -439,6 +463,57 @@ impl Core {
         self.register_account(entry).await
     }
 
+    /// Account directories that no listed account owns (left behind by an
+    /// older "Sign In Again", or a crash mid-removal). The demo is not one.
+    pub async fn orphaned_stores(&self) -> Result<Vec<OrphanedStore>, CoreError> {
+        let data_dir = self.data_path();
+        let _guard = self.index_lock.lock().await;
+        runtime::run(async move {
+            tokio::task::spawn_blocking(move || {
+                let listed: std::collections::HashSet<String> =
+                    load_index(&data_dir).into_iter().map(|e| e.id).collect();
+                let Ok(entries) = std::fs::read_dir(accounts_dir(&data_dir)) else { return Ok(Vec::new()) };
+                let mut out = Vec::new();
+                for entry in entries.flatten() {
+                    let id = entry.file_name().to_string_lossy().into_owned();
+                    let dir = entry.path();
+                    if !dir.is_dir()
+                        || id == DEMO_ACCOUNT_ID
+                        || listed.contains(&id)
+                        || !crate::mail::valid_account_id(&id)
+                    {
+                        continue;
+                    }
+                    let email = Db::open(&dir.join("mail.sqlite")).ok().and_then(|db| {
+                        db.read_blocking(|c| mail_store::read::sync_state(c, "account_email")).ok().flatten()
+                    });
+                    out.push(OrphanedStore { id, email, bytes: dir_size(&dir) });
+                }
+                out.sort_by(|a, b| a.id.cmp(&b.id));
+                Ok(out)
+            })
+            .await
+            .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?
+        })
+        .await
+    }
+
+    /// Delete an orphaned store. Refuses anything a listed account owns.
+    pub async fn remove_orphaned_store(&self, account_id: String) -> Result<(), CoreError> {
+        let orphans = self.orphaned_stores().await?;
+        if !orphans.iter().any(|o| o.id == account_id) {
+            return Err(CoreError::new(ErrorKind::InvalidInput, "that store belongs to an account"));
+        }
+        self.close_store(&account_id);
+        let _ = self.secrets.delete(crate::secrets::keys::refresh_token(&account_id));
+        let _ = self.secrets.delete(crate::account::client_key(&account_id));
+        let dir = accounts_dir(&self.data_path()).join(&account_id);
+        runtime::run(async move {
+            tokio::fs::remove_dir_all(dir).await.map_err(|e| CoreError::new(ErrorKind::Storage, e.to_string()))
+        })
+        .await
+    }
+
     /// Move an account to `position` in the list (the avatar menu order and
     /// the ⌃1–⌃9 shortcuts).
     pub async fn move_account(&self, account_id: String, position: u32) -> Result<(), CoreError> {
@@ -694,5 +769,32 @@ mod tests {
         assert_eq!(block_on(composer.get_draft(id)).unwrap().unwrap().subject, "From alpha");
         block_on(composer.delete_draft(id)).unwrap();
         assert!(block_on(scoped(Some("alpha".into()), core.list_drafts())).unwrap().is_empty());
+    }
+
+    #[test]
+    fn orphaned_stores_are_found_and_only_they_can_be_removed() {
+        use futures::executor::block_on;
+        let t = temp("orphans");
+        gmail_store(&t.0, "listed", Some("me@example.com"));
+        let core = Core::new(
+            crate::CoreConfig { data_dir: t.0.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(NoEvents),
+        )
+        .unwrap();
+        assert_eq!(block_on(core.list_accounts()).unwrap().len(), 1, "the index is built with the listed store");
+        gmail_store(&t.0, "left-behind", Some("me@example.com"));
+        gmail_store(&t.0, DEMO_ACCOUNT_ID, None);
+        let orphans = block_on(core.orphaned_stores()).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].id, "left-behind");
+        assert_eq!(orphans[0].email.as_deref(), Some("me@example.com"));
+        assert!(orphans[0].bytes > 0);
+        assert!(block_on(core.remove_orphaned_store("listed".into())).is_err(), "never a listed account");
+        assert!(block_on(core.remove_orphaned_store(DEMO_ACCOUNT_ID.into())).is_err());
+        block_on(core.remove_orphaned_store("left-behind".into())).unwrap();
+        assert!(!accounts_dir(&t.0).join("left-behind").exists());
+        assert!(accounts_dir(&t.0).join("listed").exists());
+        assert!(block_on(core.orphaned_stores()).unwrap().is_empty());
     }
 }

@@ -128,6 +128,15 @@ final class CoreClient: Sendable {
         }
     }
 
+    /// Account stores no listed account owns (spec §7.7).
+    func orphanedStores() async throws(CoreClientError) -> [OrphanedStore] {
+        try await call { try await core.orphanedStores() }
+    }
+
+    func removeOrphanedStore(_ id: String) async throws(CoreClientError) {
+        try await call { try await core.removeOrphanedStore(accountId: id) }
+    }
+
     func moveAccount(_ accountID: String, to position: Int) async throws(CoreClientError) {
         try await call { try await core.moveAccount(accountId: accountID, position: UInt32(max(0, position))) }
     }
@@ -625,6 +634,7 @@ typealias AccountSummary = OpenAGCCore.AccountSummary
 typealias AccountKind = OpenAGCCore.AccountKind
 typealias ImportStatus = OpenAGCCore.ImportStatus
 typealias BackfillStatus = OpenAGCCore.BackfillStatus
+typealias OrphanedStore = OpenAGCCore.OrphanedStore
 typealias MailboxScan = OpenAGCCore.MailboxScan
 typealias MailboxKind = OpenAGCCore.MailboxKind
 typealias MessageInfo = OpenAGCCore.MessageInfo

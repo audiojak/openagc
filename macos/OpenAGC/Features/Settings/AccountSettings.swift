@@ -6,6 +6,7 @@ import SwiftUI
 struct AccountSettings: View {
     @Environment(AppModel.self) private var model
     @State private var removing: AccountSummary?
+    @State private var orphans: [OrphanedStore] = []
 
     var body: some View {
         Form {
@@ -48,6 +49,23 @@ struct AccountSettings: View {
             }
 
             Section("Data on this Mac") {
+                ForEach(orphans, id: \.id) { orphan in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Leftover mail from \(orphan.email ?? "an old sign-in")")
+                            Text(ByteCountFormatter.string(fromByteCount: Int64(orphan.bytes), countStyle: .file))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Delete", role: .destructive) {
+                            Task {
+                                try? await model.core?.removeOrphanedStore(orphan.id)
+                                orphans = (try? await model.core?.orphanedStores()) ?? []
+                            }
+                        }
+                    }
+                    .help("A copy of downloaded mail that no account in OpenAGC uses any more. Gmail is not affected.")
+                }
                 HStack {
                     Button("Show Mail Data") {
                         if let dir = try? CoreClient.defaultDataDirectory() { NSWorkspace.shared.activateFileViewerSelecting([dir]) }
@@ -57,6 +75,7 @@ struct AccountSettings: View {
             }
         }
         .formStyle(.grouped)
+        .task(id: model.accounts.map(\.id)) { orphans = (try? await model.core?.orphanedStores()) ?? [] }
         .confirmationDialog("Remove \(removing?.email ?? "this account") from OpenAGC?",
                             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
             Button("Remove", role: .destructive) {
