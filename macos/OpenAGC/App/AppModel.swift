@@ -39,7 +39,7 @@ final class AppModel {
     private(set) var reauthenticationReason: ReauthenticationReason?
     /// Why the last sign-in attempt failed, for the onboarding screen.
     private(set) var signInError: String?
-    private(set) var accountEmail: String? = UserDefaults.standard.string(forKey: "accountEmail")
+    private(set) var accountEmail: String?
     var selectedMailboxID: String? = "INBOX" {
         didSet { if selectedMailboxID != oldValue { mailboxChanged() } }
     }
@@ -63,7 +63,15 @@ final class AppModel {
     let mailboxes: MailboxStore
     let threads: ThreadListStore
     let reader: ReaderStore
-    let agent: AgentStore
+    /// One agent panel per account, kept once opened so a conversation on
+    /// one account carries on while the window shows another (spec §7.7).
+    private var agentStores: [String: AgentStore] = [:]
+    private let fallbackAgent: AgentStore
+    var agent: AgentStore { openAccountID.flatMap { agentStores[$0] } ?? fallbackAgent }
+    /// The user's accounts in their order, with Inbox unread counts.
+    private(set) var accounts: [AccountSummary] = []
+    /// Where each account's window was (mailbox, thread), restored on switch.
+    @ObservationIgnored private var placeByAccount: [String: (mailbox: String?, thread: String?)] = [:]
     let routines: RoutinesStore
     let core: CoreClient?
 
@@ -73,17 +81,24 @@ final class AppModel {
     private var lifecycleObservers: [NSObjectProtocol] = []
     private let networkMonitor = NWPathMonitor()
 
-    init(core: CoreClient?) {
+    /// The app's preferences; tests pass a throwaway suite so they never
+    /// touch the real app's (the test host *is* the app).
+    @ObservationIgnored let defaults: UserDefaults
+
+    init(core: CoreClient?, defaults: UserDefaults = .standard) {
         self.core = core
+        self.defaults = defaults
+        accountEmail = defaults.string(forKey: "accountEmail")
         mailboxes = MailboxStore(core: core)
         threads = ThreadListStore(core: core)
         reader = ReaderStore(core: core)
-        agent = AgentStore(core: core)
+        fallbackAgent = AgentStore(core: core)
         routines = RoutinesStore(core: core)
     }
 
     /// Open the remembered account, or the demo when asked for on launch.
-    func start(openDemo: Bool = UserDefaults.standard.bool(forKey: "OpenAGCDemo")) async {
+    func start(openDemo: Bool? = nil) async {
+        let openDemo = openDemo ?? defaults.bool(forKey: "OpenAGCDemo")
         guard let core else {
             accountState = .failed("The core failed to start. See ~/Library/Logs/OpenAGC/core.log.")
             return
@@ -94,11 +109,11 @@ final class AppModel {
         notifier.install()
         if openDemo {
             await openDemoMailbox()
-        } else if let id = UserDefaults.standard.string(forKey: "accountID") {
+        } else if let id = defaults.string(forKey: "accountID") {
             await open(accountID: id)
         } else if let first = try? await core.accounts().first {
             // No remembered choice (a fresh preference file): the first account.
-            UserDefaults.standard.set(first.id, forKey: "accountID")
+            defaults.set(first.id, forKey: "accountID")
             await open(accountID: first.id)
         } else {
             accountState = .noAccount
@@ -132,8 +147,8 @@ final class AppModel {
             NSWorkspace.shared.open(start.authorizationURL)
             let account = try await core.completeGmailSignIn(start.sessionID)
             signInSession = nil
-            UserDefaults.standard.set(account.accountID, forKey: "accountID")
-            UserDefaults.standard.set(account.email, forKey: "accountEmail")
+            defaults.set(account.accountID, forKey: "accountID")
+            defaults.set(account.email, forKey: "accountEmail")
             accountEmail = account.email
             needsReauthentication = false
             reauthenticationReason = nil
@@ -155,21 +170,28 @@ final class AppModel {
     func signOut() async {
         guard let core, case let .open(accountID) = accountState else { return }
         try? await core.signOut(accountID)
-        UserDefaults.standard.removeObject(forKey: "accountID")
+        defaults.removeObject(forKey: "accountID")
         selectedThreadID = nil
         accountState = .noAccount
     }
 
     // MARK: Account
 
-    private func open(accountID: String) async {
+    private func open(accountID: String, startingSync: Bool = true) async {
         guard let core else { return }
         do {
             try await core.openAccount(accountID)
+            if agentStores[accountID] == nil { agentStores[accountID] = AgentStore(core: core) }
             accountState = .open(accountID: accountID)
             await mailboxes.reload()
-            updateBadge()
+            await reloadAccounts()
             await threads.show(mailboxID: selectedMailboxID ?? "INBOX")
+            if let summary = accounts.first(where: { $0.id == accountID }) {
+                accountEmail = summary.email
+                defaults.set(summary.email, forKey: "accountEmail")
+            }
+            needsReauthentication = false
+            reauthenticationReason = nil
             if accountID != Self.demoAccountID {
                 // A Keychain that will not hand over the sign-in (for example
                 // after an unsigned rebuild) means "sign in again", not silence.
@@ -181,10 +203,12 @@ final class AppModel {
                     hasCredentials = false
                 }
                 if hasCredentials {
-                    try core.startSync()
+                    if startingSync {
+                        try core.startSync()
+                        // The other accounts sync behind this one (spec §7.7).
+                        Task { _ = try? await core.startAllSync() }
+                    }
                     observeLifecycle()
-                    // The other accounts sync behind this one (spec §7.7).
-                    Task { _ = try? await core.startAllSync() }
                 } else {
                     needsReauthentication = true
                     reauthenticationReason = .savedSignInUnavailable
@@ -219,7 +243,7 @@ final class AppModel {
 
     /// Push the user's approval choices to the core (they live in defaults).
     func applyAgentPolicy() {
-        let tools = UserDefaults.standard.stringArray(forKey: Self.agentApprovalKey) ?? []
+        let tools = defaults.stringArray(forKey: Self.agentApprovalKey) ?? []
         do {
             try core?.setAgentPolicy(tools)
         } catch {
@@ -243,8 +267,47 @@ final class AppModel {
 
     // MARK: Notifications
 
+    /// The Dock badge: Inbox unread across every account, or the open
+    /// mailbox's when there are no accounts (the demo).
     func updateBadge() {
-        notifier.updateBadge(inboxUnread: mailboxes.mailboxes.first { $0.kind == .inbox }?.unreadCount ?? 0)
+        let current = mailboxes.mailboxes.first { $0.kind == .inbox }?.unreadCount ?? 0
+        let others = accounts.filter { $0.id != openAccountID }.reduce(UInt32(0)) { $0 + $1.inboxUnread }
+        notifier.updateBadge(inboxUnread: current + others)
+    }
+
+    // MARK: Accounts
+
+    func reloadAccounts() async {
+        guard let core else { return }
+        if let fresh = try? await core.accounts(), fresh != accounts { accounts = fresh }
+        updateBadge()
+    }
+
+    /// Show another account (spec §7.7). Its sync is already running in the
+    /// background; the window re-binds to its store, and returns to where
+    /// that account was last left. Open composers keep their own account.
+    func switchAccount(to accountID: String) async {
+        guard accountID != openAccountID, core != nil else { return }
+        if let current = openAccountID {
+            placeByAccount[current] = (selectedMailboxID, selectedThreadID)
+        }
+        defaults.set(accountID, forKey: "accountID")
+        let place = placeByAccount[accountID]
+        selectedThreadIDs = []
+        selectedThreadID = nil
+        searchText = ""
+        selectedMailboxIDSilently(place?.mailbox ?? "INBOX")
+        await open(accountID: accountID, startingSync: false)
+        routinesRevision += 1
+        if let thread = place?.thread, threads.rows.contains(where: { $0.id == thread }) {
+            selectedThreadID = thread
+        }
+    }
+
+    /// Switch to the account at `position` in the list (⌃1–⌃9).
+    func switchAccount(position: Int) async {
+        guard accounts.indices.contains(position) else { return }
+        await switchAccount(to: accounts[position].id)
     }
 
     /// Show a thread from a notification: switch to the Inbox and select it.
@@ -412,7 +475,27 @@ final class AppModel {
         networkMonitor.start(queue: DispatchQueue(label: "ai.actual.openagc.network"))
     }
 
+    /// Set the mailbox without loading it (a switch loads the new account's).
+    private func selectedMailboxIDSilently(_ id: String) {
+        suppressMailboxChange = true
+        selectedMailboxID = id
+        suppressMailboxChange = false
+    }
+
+    @ObservationIgnored private var suppressMailboxChange = false
+    @ObservationIgnored private var accountsReload: Task<Void, Never>?
+
+    private func scheduleAccountsReload() {
+        guard accountsReload == nil else { return }
+        accountsReload = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            await self?.reloadAccounts()
+            self?.accountsReload = nil
+        }
+    }
+
     private func mailboxChanged() {
+        if suppressMailboxChange { return }
         selectedThreadID = nil
         selectedThreadIDs = []
         searchText = ""
@@ -439,8 +522,24 @@ final class AppModel {
     }
 
     private func handle(_ tagged: CoreClientEvent.Tagged) async {
+        // An agent session reports to its own account's panel, shown or not.
+        if case let .agent(sessionID, events) = tagged.event, let account = tagged.accountID,
+           let store = agentStores[account] {
+            await store.apply(sessionID: sessionID, events: events)
+            return
+        }
         guard isForWindow(tagged) else {
-            if case let .newMail(mail) = tagged.event { notifier.announce(mail) }
+            switch tagged.event {
+            case let .newMail(mail):
+                notifier.announce(mail)
+                await reloadAccounts()
+            case .threadsChanged:
+                // Another account's counts moved: refresh the menu and Dock
+                // at most every few seconds rather than on every batch.
+                scheduleAccountsReload()
+            default:
+                break
+            }
             return
         }
         let event = tagged.event

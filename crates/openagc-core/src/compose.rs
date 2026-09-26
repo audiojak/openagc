@@ -221,6 +221,72 @@ impl Core {
     }
 }
 
+/// Compose operations pinned to one account (spec §7.7): a composer window
+/// keeps saving and sending as the account it was opened on, whichever
+/// account the main window shows by then.
+#[derive(uniffi::Object)]
+pub struct AccountComposer {
+    core: std::sync::Arc<Core>,
+    account: String,
+}
+
+impl AccountComposer {
+    async fn scoped<F: std::future::Future>(&self, fut: F) -> F::Output {
+        crate::registry::scoped(Some(self.account.clone()), fut).await
+    }
+}
+
+#[uniffi::export]
+impl AccountComposer {
+    pub fn account_id(&self) -> String {
+        self.account.clone()
+    }
+
+    pub async fn account_address(&self) -> Result<String, CoreError> {
+        self.scoped(self.core.account_address()).await
+    }
+
+    pub async fn reply_draft(&self, message_id: String, reply_all: bool) -> Result<DraftInfo, CoreError> {
+        self.scoped(self.core.reply_draft(message_id, reply_all)).await
+    }
+
+    pub async fn forward_draft(&self, message_id: String) -> Result<DraftInfo, CoreError> {
+        self.scoped(self.core.forward_draft(message_id)).await
+    }
+
+    pub async fn save_draft(&self, draft: DraftInfo) -> Result<i64, CoreError> {
+        self.scoped(self.core.save_draft(draft)).await
+    }
+
+    pub async fn get_draft(&self, id: i64) -> Result<Option<DraftInfo>, CoreError> {
+        self.scoped(self.core.get_draft(id)).await
+    }
+
+    pub async fn delete_draft(&self, id: i64) -> Result<(), CoreError> {
+        self.scoped(self.core.delete_draft(id)).await
+    }
+
+    pub async fn send_draft(&self, id: i64) -> Result<(), CoreError> {
+        self.scoped(self.core.send_draft(id)).await
+    }
+
+    pub fn flush_drafts(&self) {
+        crate::registry::SCOPED_ACCOUNT.sync_scope(self.account.clone(), || self.core.flush_drafts());
+    }
+
+    pub fn suggest_contacts_now(&self, text: String, limit: u32) -> Vec<AddressInfo> {
+        crate::registry::SCOPED_ACCOUNT.sync_scope(self.account.clone(), || self.core.suggest_contacts_now(text, limit))
+    }
+}
+
+#[uniffi::export]
+impl Core {
+    /// Compose operations for `account_id` (see `AccountComposer`).
+    pub fn composer_for(self: std::sync::Arc<Self>, account_id: String) -> std::sync::Arc<AccountComposer> {
+        std::sync::Arc::new(AccountComposer { core: self, account: account_id })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

@@ -62,6 +62,8 @@ pub struct AccountSummary {
     /// Absolute path of the cached avatar image, if any.
     pub avatar_path: Option<String>,
     pub position: u32,
+    /// Unread threads in the Inbox, for the avatar menu and the Dock.
+    pub inbox_unread: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -256,7 +258,27 @@ impl Core {
     /// The user's accounts in their order (the demo mailbox is not one).
     pub async fn list_accounts(&self) -> Result<Vec<AccountSummary>, CoreError> {
         let data_dir = self.data_path();
-        let _guard = self.index_lock.lock().await;
+        let mut accounts = {
+            let _guard = self.index_lock.lock().await;
+            self.list_index(data_dir).await?
+        };
+        for account in &mut accounts {
+            if let Ok(db) = self.store_for(&account.id).await {
+                account.inbox_unread =
+                    runtime::run(async move { Ok(db.read(mail_store::read::list_mailboxes).await?) })
+                        .await
+                        .ok()
+                        .and_then(|boxes| boxes.into_iter().find(|m| mail_store::read::mailbox_label(m) == "INBOX"))
+                        .map(|m| m.unread_count)
+                        .unwrap_or(0);
+            }
+        }
+        Ok(accounts)
+    }
+}
+
+impl Core {
+    async fn list_index(&self, data_dir: PathBuf) -> Result<Vec<AccountSummary>, CoreError> {
         runtime::run(async move {
             let entries = tokio::task::spawn_blocking({
                 let data_dir = data_dir.clone();
@@ -281,13 +303,17 @@ impl Core {
                         display_name: e.display_name,
                         avatar_path,
                         position: i as u32,
+                        inbox_unread: 0,
                     }
                 })
                 .collect())
         })
         .await
     }
+}
 
+#[uniffi::export]
+impl Core {
     /// Show `account_id` in the window: open its store if needed and make
     /// it current. Idempotent.
     pub async fn set_current_account(self: Arc<Self>, account_id: String) -> Result<(), CoreError> {
@@ -333,6 +359,41 @@ impl Core {
             .await
             .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?
             .map_err(|e| CoreError::new(ErrorKind::Storage, e.to_string()))
+        })
+        .await
+    }
+
+    /// Development and test hook: add a listed account holding a synthetic
+    /// mailbox of `threads` threads, with no sign-in (so it never syncs).
+    /// Snapshots and UI tests use it to show several accounts without
+    /// touching Google.
+    pub async fn debug_add_demo_account(
+        self: Arc<Self>,
+        account_id: String,
+        email: String,
+        display_name: Option<String>,
+        threads: u32,
+    ) -> Result<(), CoreError> {
+        let db = self.store_for(&account_id).await?;
+        let seed_email = email.clone();
+        runtime::run(async move {
+            let spec = mail_store::demo::DemoSpec { threads, ..Default::default() };
+            tokio::task::spawn_blocking(move || -> Result<(), CoreError> {
+                mail_store::demo::generate(&db, &spec)?;
+                db.write_blocking(move |tx| mail_store::read::set_sync_state(tx, "account_email", &seed_email))?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?
+        })
+        .await?;
+        self.register_account(IndexEntry {
+            id: account_id,
+            kind: AccountKind::Gmail,
+            email,
+            display_name,
+            avatar_file: None,
+            added_at: mail_sync::now_millis(),
         })
         .await
     }
@@ -530,5 +591,43 @@ mod tests {
         assert!(seen.iter().all(|(a, _)| a.as_deref() != Some("beta")), "nothing was tagged for the window: {seen:?}");
         assert_eq!(block_on(scoped(alpha(), inbox(&core))), scoped_inbox - 1);
         assert_eq!(block_on(inbox(&core)), 0, "beta untouched");
+    }
+
+    #[test]
+    fn a_composer_keeps_writing_to_the_account_it_was_opened_on() {
+        use futures::executor::block_on;
+        let t = temp("composer");
+        let core = Core::new(
+            crate::CoreConfig { data_dir: t.0.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(NoEvents),
+        )
+        .unwrap();
+        block_on(core.clone().set_current_account("alpha".into())).unwrap();
+        let composer = core.clone().composer_for("alpha".into());
+        // The user switches the window to beta while the composer is open.
+        block_on(core.clone().set_current_account("beta".into())).unwrap();
+        let draft = crate::DraftInfo {
+            id: 0,
+            thread_id: None,
+            in_reply_to_message_id: None,
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+            subject: "From alpha".into(),
+            body_html: "<p>hi</p>".into(),
+            quoted_html: String::new(),
+            attachments: vec![],
+            status: crate::DraftStatus::Editing,
+            error: None,
+            updated_at: 0,
+        };
+        let id = block_on(composer.save_draft(draft)).unwrap();
+        assert!(block_on(core.list_drafts()).unwrap().is_empty(), "nothing landed in beta");
+        let in_alpha = block_on(scoped(Some("alpha".into()), core.list_drafts())).unwrap();
+        assert_eq!(in_alpha.iter().map(|d| d.id).collect::<Vec<_>>(), [id]);
+        assert_eq!(block_on(composer.get_draft(id)).unwrap().unwrap().subject, "From alpha");
+        block_on(composer.delete_draft(id)).unwrap();
+        assert!(block_on(scoped(Some("alpha".into()), core.list_drafts())).unwrap().is_empty());
     }
 }

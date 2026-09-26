@@ -29,7 +29,7 @@ pub use agents::{
 };
 pub use attachments::AttachmentFileInfo;
 pub use cloud_routines::RoutineHandoff;
-pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
+pub use compose::{AccountComposer, DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};
 pub use mutations::OutboxStatus;

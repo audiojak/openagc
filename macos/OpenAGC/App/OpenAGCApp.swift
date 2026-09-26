@@ -4,7 +4,7 @@ import os
 @main
 struct OpenAGCApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = AppModel(core: OpenAGCApp.makeCore())
+    @State private var model = AppModel(core: OpenAGCApp.makeCore(), defaults: OpenAGCApp.defaults)
     @State private var updater = Updater()
 
     var body: some Scene {
@@ -49,12 +49,24 @@ struct OpenAGCApp: App {
         }
     }
 
+    /// The app's preferences; a throwaway suite when hosting tests, so the
+    /// remembered account is never read or changed by a test run.
+    private static let defaults: UserDefaults = CoreClient.isRunningTests
+        ? UserDefaults(suiteName: "openagc-test-host-\(UUID().uuidString)") ?? .standard
+        : .standard
+
     private static func makeCore() -> CoreClient? {
         do {
             // Snapshots and automation point the app at a throwaway data
             // directory (`-OpenAGCDataDirectory /tmp/x`) so they can never
             // open, or start syncing, the user's real accounts.
-            if let override = UserDefaults.standard.string(forKey: "OpenAGCDataDirectory"), !override.isEmpty {
+            // Hosting unit tests, the app itself must never open the user's
+            // accounts, read their Keychain items or start a real sync: it
+            // gets a fresh scratch directory like any snapshot run.
+            let scratch = CoreClient.isRunningTests
+                ? FileManager.default.temporaryDirectory.appending(path: "openagc-test-host-\(UUID().uuidString)").path
+                : nil
+            if let override = scratch ?? UserDefaults.standard.string(forKey: "OpenAGCDataDirectory"), !override.isEmpty {
                 let dir = URL(filePath: override, directoryHint: .isDirectory)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 return try CoreClient(dataDirectory: dir, logDirectory: dir.appending(path: "Logs"),

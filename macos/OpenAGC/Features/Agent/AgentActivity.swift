@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// and the activity log (spec §9.3, §10.3, §10.5).
 struct AgentPermissionsSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var approve: Set<String> = Set(UserDefaults.standard.stringArray(forKey: AppModel.agentApprovalKey) ?? [])
+    @State private var approve: Set<String> = []
     @State private var apiKey = ""
     @State private var hasKey = false
     @State private var keyError: String?
@@ -58,7 +58,10 @@ struct AgentPermissionsSettings: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { hasKey = ((try? KeychainSecretStore().get(Self.keychainKey)) ?? nil) != nil }
+        .onAppear {
+            approve = Set(model.defaults.stringArray(forKey: AppModel.agentApprovalKey) ?? [])
+            hasKey = ((try? CoreClient.defaultSecrets().get(Self.keychainKey)) ?? nil) != nil
+        }
         .sheet(isPresented: $showsActivity) { AgentActivityView() }
     }
 
@@ -67,14 +70,14 @@ struct AgentPermissionsSettings: View {
             get: { approve.contains(tool) },
             set: { on in
                 if on { approve.insert(tool) } else { approve.remove(tool) }
-                UserDefaults.standard.set(approve.sorted(), forKey: AppModel.agentApprovalKey)
+                model.defaults.set(approve.sorted(), forKey: AppModel.agentApprovalKey)
                 model.applyAgentPolicy()
             })
     }
 
     private func saveKey() {
         do {
-            try KeychainSecretStore().set(Self.keychainKey, apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
+            try CoreClient.defaultSecrets().set(Self.keychainKey, apiKey.trimmingCharacters(in: .whitespacesAndNewlines))
             apiKey = ""
             hasKey = true
             keyError = nil
@@ -85,7 +88,7 @@ struct AgentPermissionsSettings: View {
 
     private func removeKey() {
         do {
-            try KeychainSecretStore().delete(Self.keychainKey)
+            try CoreClient.defaultSecrets().delete(Self.keychainKey)
             hasKey = false
         } catch {
             keyError = error.description

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import OpenAGC
@@ -48,5 +49,19 @@ struct AccountRegistryFFITests {
         #expect(core.currentAccountID == "demo")
         #expect(try await core.accounts().isEmpty, "the demo mailbox is not an account")
         await #expect(throws: CoreClientError.self) { try await core.removeAccount("demo") }
+    }
+}
+
+/// Tests run inside the app; they must never reach the user's accounts.
+@MainActor
+struct TestIsolationTests {
+    @Test func testsUseTheirOwnKeychainServiceAndNeverTheRealDataDirectory() throws {
+        #expect(CoreClient.isRunningTests)
+        #expect(CoreClient.defaultSecrets().service == "ai.actual.openagc.tests")
+        let real = try CoreClient.defaultDataDirectory().standardizedFileURL.path
+        let hostCore = (NSApp.delegate as? AppDelegate)?.model?.core
+        if let dir = hostCore?.dataDirectory {
+            #expect(!URL(filePath: dir).standardizedFileURL.path.hasPrefix(real), "the test host runs on a scratch directory")
+        }
     }
 }

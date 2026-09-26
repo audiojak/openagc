@@ -14,12 +14,12 @@ final class CoreClient: Sendable {
     let events: AsyncStream<CoreClientEvent.Tagged>
 
     convenience init(dataDirectory: URL, logDirectory: URL? = nil,
-                     secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
+                     secrets: KeychainSecretStore = CoreClient.defaultSecrets()) throws(CoreClientError) {
         try self.init(dataDirectoryPath: dataDirectory.path, logDirectoryPath: logDirectory?.path, secrets: secrets)
     }
 
     init(dataDirectoryPath: String, logDirectoryPath: String? = nil,
-         secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
+         secrets: KeychainSecretStore = CoreClient.defaultSecrets()) throws(CoreClientError) {
         let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.Tagged.self, bufferingPolicy: .unbounded)
         events = stream
         do {
@@ -43,6 +43,12 @@ final class CoreClient: Sendable {
         }
     }
 
+    /// The app's Keychain items, or a separate service under tests so a
+    /// test can never read the user's sign-ins.
+    static func defaultSecrets() -> KeychainSecretStore {
+        KeychainSecretStore(service: isRunningTests ? "ai.actual.openagc.tests" : "ai.actual.openagc")
+    }
+
     static var isRunningTests: Bool {
         let env = ProcessInfo.processInfo.environment
         return env["XCTestConfigurationFilePath"] != nil || env["XCTestBundlePath"] != nil
@@ -50,6 +56,8 @@ final class CoreClient: Sendable {
     }
 
     var version: String { core.version() }
+    /// Where this core keeps its accounts.
+    var dataDirectory: String { core.dataDir() }
 
     func ping(_ message: String) -> String {
         core.ping(message: message)
@@ -76,6 +84,14 @@ final class CoreClient: Sendable {
 
     func removeAccount(_ accountID: String) async throws(CoreClientError) {
         try await call { try await core.removeAccount(accountId: accountID) }
+    }
+
+    /// Development/test hook: a listed account with a synthetic mailbox and
+    /// no sign-in.
+    func addDemoAccount(_ accountID: String, email: String, name: String? = nil, threads: UInt32 = 60) async throws(CoreClientError) {
+        try await call {
+            try await core.debugAddDemoAccount(accountId: accountID, email: email, displayName: name, threads: threads)
+        }
     }
 
     func moveAccount(_ accountID: String, to position: Int) async throws(CoreClientError) {
@@ -451,6 +467,23 @@ final class CoreClient: Sendable {
     }
 
     /// Runs a core call, converting generated errors to `CoreClientError`.
+    /// Compose operations pinned to one account (spec §7.7).
+    nonisolated func composer(for accountID: String) -> AccountComposer {
+        core.composerFor(accountId: accountID)
+    }
+
+    /// Map a core call's errors like `call` does, for handles other than
+    /// `Core` (e.g. `AccountComposer`).
+    static func bridge<T>(_ body: () async throws -> T) async throws(CoreClientError) -> T {
+        do {
+            return try await body()
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
+    }
+
     private func call<T>(_ body: () async throws -> T) async throws(CoreClientError) -> T {
         do {
             return try await body()

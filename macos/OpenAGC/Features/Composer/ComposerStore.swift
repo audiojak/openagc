@@ -55,14 +55,18 @@ final class ComposerStore {
     var showsCcBcc = false
 
     private(set) var isDirty = false
-    private let core: CoreClient?
+    private let core: DraftClient?
+    /// For the recipient field's completions, pinned like everything else.
+    var drafts: DraftClient? { core }
     private let attachmentsDirectory: URL
     private let logger = Logger(subsystem: "ai.actual.openagc", category: "composer")
     private var autosaveTask: Task<Void, Never>?
     private var loading = true
 
-    init(core: CoreClient?, attachmentsDirectory: URL? = nil) {
-        self.core = core
+    /// `account` pins the composer to the account it opened on; `nil`
+    /// follows the window's current account.
+    init(core: CoreClient?, account: String? = nil, attachmentsDirectory: URL? = nil) {
+        self.core = core.map { DraftClient(core: $0, account: account) }
         self.attachmentsDirectory = attachmentsDirectory
             ?? ((try? CoreClient.defaultDataDirectory()) ?? FileManager.default.temporaryDirectory)
                 .appending(path: "DraftAttachments", directoryHint: .isDirectory)

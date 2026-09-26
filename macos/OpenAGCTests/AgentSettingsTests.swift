@@ -23,14 +23,13 @@ struct AgentSettingsTests {
 struct AgentPermissionTests {
     @Test func thePolicyFollowsTheUsersChoices() async throws {
         let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        let model = AppModel(core: try CoreClient(dataDirectory: dir))
-        let saved = UserDefaults.standard.stringArray(forKey: AppModel.agentApprovalKey)
-        defer { UserDefaults.standard.set(saved, forKey: AppModel.agentApprovalKey) }
-        UserDefaults.standard.set(["mail_archive"], forKey: AppModel.agentApprovalKey)
+        let defaults = try #require(UserDefaults(suiteName: "test-\(UUID().uuidString)"))
+        let model = AppModel(core: try CoreClient(dataDirectory: dir), defaults: defaults)
+        defaults.set(["mail_archive"], forKey: AppModel.agentApprovalKey)
         model.applyAgentPolicy()
         #expect(model.core?.agentPolicy == ["mail_archive"])
         #expect(model.core?.configurableAgentTools.contains("mail_send") == false, "sends always ask")
-        UserDefaults.standard.set([String](), forKey: AppModel.agentApprovalKey)
+        defaults.set([String](), forKey: AppModel.agentApprovalKey)
         model.applyAgentPolicy()
         #expect(model.core?.agentPolicy == [])
     }

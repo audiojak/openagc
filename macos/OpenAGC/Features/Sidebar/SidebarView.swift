@@ -66,10 +66,15 @@ struct SidebarView: View {
 final class LabelExpansion {
     private(set) var expanded: Set<String> = []
     private var key: String?
+    @ObservationIgnored private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
 
     func load(account: String?) {
         key = account.map { "sidebar.expandedLabels.\($0)" }
-        expanded = Set(key.flatMap { UserDefaults.standard.stringArray(forKey: $0) } ?? [])
+        expanded = Set(key.flatMap { defaults.stringArray(forKey: $0) } ?? [])
     }
 
     func binding(_ path: String) -> Binding<Bool> {
@@ -78,7 +83,7 @@ final class LabelExpansion {
 
     func set(_ path: String, _ open: Bool) {
         if open { expanded.insert(path) } else { expanded.remove(path) }
-        if let key { UserDefaults.standard.set(expanded.sorted(), forKey: key) }
+        if let key { defaults.set(expanded.sorted(), forKey: key) }
     }
 }
 

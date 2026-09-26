@@ -33,12 +33,8 @@ struct SidebarTreeTests {
     }
 
     @Test func expansionIsRememberedPerAccount() {
-        let a = "test-\(UUID().uuidString)", b = "test-\(UUID().uuidString)"
-        defer {
-            UserDefaults.standard.removeObject(forKey: "sidebar.expandedLabels.\(a)")
-            UserDefaults.standard.removeObject(forKey: "sidebar.expandedLabels.\(b)")
-        }
-        let expansion = LabelExpansion()
+        let a = "a", b = "b"
+        let expansion = LabelExpansion(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
         expansion.load(account: a)
         expansion.set("Customers", true)
         expansion.set("Projects/Launch", true)
