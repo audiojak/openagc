@@ -10,7 +10,8 @@ This file provides instructions and context for AI coding agents working on this
 - Checks before closing any issue: `scripts/gate.sh` (wraps `scripts/check.sh` without hiding its exit status) (fmt, clippy -D warnings, tests, check-deps, deny; exits non-zero) and `scripts/test-macos.sh` for the app. Never pipe the gate into `grep`/`tail` before `&& git commit`: the pipe's status wins and a failed gate commits anyway. Use `if scripts/gate.sh >log 2>&1; then …; fi`.
 - Only `openagc-core` may depend on UniFFI; dependency direction is enforced by `cargo xtask check-deps`.
 - Never touch real Gmail, Google/Apple accounts, or create Claude cloud routines from automation; test against fakes.
-- Overnight work happens on the `overnight` branch; push after each closed issue.
+- Never launch the app against the real account or start sync outside the fakes: the dev-signed build can read the real Gmail token from the Keychain. Snapshots use the demo account and `-OpenAGCFakeAgents YES`. Never delete anything under `~/Library/Application Support/OpenAGC`.
+- Overnight work happens on an `overnight-*` branch (plan in `docs/plans/`); push after each closed issue; never push to `main` overnight.
 - Debug builds are signed with the "OpenAGC Dev" identity when `macos/Local.xcconfig` (from `scripts/dev-signing.sh`, gitignored) exists; ad-hoc rebuilds lose Keychain access to the stored Gmail sign-in.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
