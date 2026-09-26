@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 use mail_domain::{EmailAddress, LabelId, MessageId, Millis, ThreadId, system_labels};
 use mail_store::{Db, IncomingMessage, MailWriter, ThreadChanges, queue, read};
-use provider_api::{Change, ListFilter, MailProvider, PageToken, Priority, ProviderError};
+use provider_api::{
+    BackfillSource, Change, ListFilter, MailProvider, PageToken, Priority, ProviderError, RestBackfill,
+};
 
 use crate::convert::to_incoming;
 use crate::error::{SyncError, SyncResult};
@@ -145,6 +147,8 @@ impl NewMail {
 
 pub struct SyncEngine {
     provider: Arc<dyn MailProvider>,
+    /// Where backfill gets bodies; REST unless a bulk source is set.
+    backfill: std::sync::RwLock<Arc<dyn BackfillSource>>,
     db: Db,
     observer: Arc<dyn SyncObserver>,
     /// Serializes outbox drains so one op is never sent twice.
@@ -179,12 +183,29 @@ const OWN_CHANGE_WINDOW: Millis = 2 * 60 * 60 * 1000;
 impl SyncEngine {
     pub fn new(provider: Arc<dyn MailProvider>, db: Db, observer: Arc<dyn SyncObserver>) -> Self {
         Self {
+            backfill: std::sync::RwLock::new(Arc::new(RestBackfill(provider.clone()))),
             provider,
             db,
             observer,
             drain_lock: tokio::sync::Mutex::new(()),
             own_changes: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// Use another source for backfill bodies (spec §7.4, IMAP amendment).
+    pub fn set_backfill_source(&self, source: Arc<dyn BackfillSource>) {
+        tracing::info!(source = source.name(), "backfill source set");
+        *self.backfill.write().unwrap_or_else(|e| e.into_inner()) = source;
+    }
+
+    /// Go back to fetching bodies over the provider's API.
+    pub fn use_rest_backfill(&self) {
+        self.set_backfill_source(Arc::new(RestBackfill(self.provider.clone())));
+    }
+
+    /// The backfill source's name, for diagnostics.
+    pub fn backfill_source_name(&self) -> &'static str {
+        self.backfill.read().unwrap_or_else(|e| e.into_inner()).name()
     }
 
     /// True until the first bootstrap has listed every phase.
@@ -283,7 +304,8 @@ impl SyncEngine {
             return Ok(0);
         }
         tracing::debug!(count = ids.len(), "backfill batch: fetching");
-        let fetched = self.provider.fetch_messages(&ids, Priority::Background).await?;
+        let source = self.backfill.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let fetched = source.fetch(&ids).await?;
         tracing::debug!(count = fetched.len(), "backfill batch: storing");
         let incoming: Vec<_> = fetched.into_iter().map(to_incoming).collect();
         let processed = ids.len();

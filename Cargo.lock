@@ -1267,6 +1267,7 @@ dependencies = [
 name = "mail-sync"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "base64",
  "getrandom 0.3.4",
  "mail-domain",

@@ -165,6 +165,40 @@ async fn the_sync_window_bounds_the_backfill_and_can_be_widened_or_narrowed() {
     assert_eq!(engine.window().await.unwrap(), SyncWindow::HalfYear);
 }
 
+/// A backfill source that answers from the fake provider's data but
+/// counts its calls, standing in for a bulk transport.
+struct CountingSource(Arc<FakeProvider>, std::sync::atomic::AtomicUsize);
+
+#[async_trait::async_trait]
+impl provider_api::BackfillSource for CountingSource {
+    async fn fetch(&self, ids: &[MessageId]) -> provider_api::ProviderResult<Vec<FetchedMessage>> {
+        self.1.fetch_add(ids.len(), std::sync::atomic::Ordering::SeqCst);
+        use provider_api::MailProvider;
+        self.0.fetch_messages(ids, provider_api::Priority::Background).await
+    }
+    fn name(&self) -> &'static str {
+        "counting"
+    }
+}
+
+#[tokio::test]
+async fn backfill_bodies_come_from_the_configured_source() {
+    let (fake, db, _recorder, engine) = setup("source");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
+    seed_mailbox(&fake);
+    assert_eq!(engine.backfill_source_name(), "rest");
+    let source = Arc::new(CountingSource(fake.clone(), Default::default()));
+    engine.set_backfill_source(source.clone());
+    assert_eq!(engine.backfill_source_name(), "counting");
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    assert_eq!(engine.backfill_all().await.unwrap(), 5);
+    assert_eq!(source.1.load(std::sync::atomic::Ordering::SeqCst), 5, "every body came through the source");
+    engine.use_rest_backfill();
+    assert_eq!(engine.backfill_source_name(), "rest");
+    assert_eq!(db.read(queue::len).await.unwrap(), 0);
+}
+
 #[tokio::test]
 async fn incremental_sync_applies_new_mail_label_changes_and_deletions() {
     let (fake, db, recorder, engine) = setup("incremental");

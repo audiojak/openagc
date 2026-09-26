@@ -121,6 +121,33 @@ pub struct LabelOp {
     pub remove: Vec<LabelId>,
 }
 
+/// Where backfill fetches message bodies from (spec §7.4, IMAP amendment):
+/// the REST API by default, or a bulk transport such as Gmail IMAP. Only
+/// bulk backfill goes through here; history, writes and new-mail fetches
+/// stay on [`MailProvider`].
+#[async_trait]
+pub trait BackfillSource: Send + Sync {
+    /// Full messages for `ids`, in any order; ids it cannot find are
+    /// omitted, as with [`MailProvider::fetch_messages`].
+    async fn fetch(&self, ids: &[MessageId]) -> ProviderResult<Vec<FetchedMessage>>;
+    /// A short name for logs and diagnostics ("rest", "imap").
+    fn name(&self) -> &'static str;
+}
+
+/// Backfill through the provider's own fetch at background priority.
+pub struct RestBackfill(pub std::sync::Arc<dyn MailProvider>);
+
+#[async_trait]
+impl BackfillSource for RestBackfill {
+    async fn fetch(&self, ids: &[MessageId]) -> ProviderResult<Vec<FetchedMessage>> {
+        self.0.fetch_messages(ids, Priority::Background).await
+    }
+
+    fn name(&self) -> &'static str {
+        "rest"
+    }
+}
+
 #[async_trait]
 pub trait MailProvider: Send + Sync {
     async fn profile(&self) -> ProviderResult<Profile>;
