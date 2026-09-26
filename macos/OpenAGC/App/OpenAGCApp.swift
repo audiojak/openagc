@@ -20,6 +20,9 @@ struct OpenAGCApp: App {
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
             }
+            CommandGroup(after: .appSettings) {
+                AccountsCommands(model: model)
+            }
         }
 
         WindowGroup("New Message", id: "compose", for: ComposeRequest.self) { $request in
@@ -179,4 +182,17 @@ struct MailCommands: Commands {
 extension FocusedValues {
     /// True in the main mail window's scene.
     @Entry var isMailWindow: Bool?
+}
+
+/// OpenAGC › Accounts: the avatar menu's items, with ⌃1–⌃9 (spec §7.7).
+struct AccountsCommands: View {
+    let model: AppModel
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Menu("Accounts") {
+            AccountMenuItems(openSettings: { openSettings() })
+                .environment(model)
+        }
+    }
 }

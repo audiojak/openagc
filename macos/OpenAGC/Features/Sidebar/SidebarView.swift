@@ -11,6 +11,10 @@ struct SidebarView: View {
         // A plain footer rather than a safe-area inset: on macOS 26 the
         // inset does not push the list's last section up (it drew over it).
         VStack(spacing: 0) {
+        AccountMenuButton()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
         List(selection: $model.selectedMailboxID) {
             Section {
                 ForEach(model.mailboxes.systemMailboxes, id: \.id) { mailbox in

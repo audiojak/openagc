@@ -56,6 +56,7 @@
 		9CC3AECF8DB746BF967161B7 /* KeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700730FD7CE20073EC4E05F4 /* KeychainTests.swift */; };
 		A183D5AC94021A65ABDCCBDD /* ComposerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05AE95A75189A1675986338 /* ComposerStore.swift */; };
 		A469FDD2983D0CFA9FBD5AB6 /* RecipientField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */; };
+		A63769C5AD66664F34653DEE /* AccountMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECC21C8EFCB7A1F70BD6BF9 /* AccountMenu.swift */; };
 		A64492AC04FB122343BA17D2 /* AttachmentStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 033CF7C15494E30BC67D425A /* AttachmentStrip.swift */; };
 		A67D0A6156AB71A08D7ABBAC /* ThreadReaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 301600435566D43C1065E680 /* ThreadReaderView.swift */; };
 		AB0A75C26EE77D8683A01474 /* SearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5D8587064562266E1C5E1DC /* SearchTests.swift */; };
@@ -122,6 +123,7 @@
 		04F1A33FDE9F24E15210C90A /* AccountSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitchTests.swift; sourceTree = "<group>"; };
 		0853C589261B9BC5E99D0106 /* ComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerTests.swift; sourceTree = "<group>"; };
 		0C8A5AC940824CF40F0B058F /* LabelTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabelTreeTests.swift; sourceTree = "<group>"; };
+		0ECC21C8EFCB7A1F70BD6BF9 /* AccountMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountMenu.swift; sourceTree = "<group>"; };
 		0F2806227B342184B9664E7D /* LinkSafety.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkSafety.swift; sourceTree = "<group>"; };
 		11B84FAD449704789E8707C7 /* SchemeHandlers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemeHandlers.swift; sourceTree = "<group>"; };
 		17B53574C86CCC4F40FC00A1 /* AgentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStore.swift; sourceTree = "<group>"; };
@@ -253,6 +255,7 @@
 			isa = PBXGroup;
 			children = (
 				331D2F57E10A1874F6103AFF /* AccountAvatar.swift */,
+				0ECC21C8EFCB7A1F70BD6BF9 /* AccountMenu.swift */,
 			);
 			path = Accounts;
 			sourceTree = "<group>";
@@ -704,6 +707,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B11BCAE65ABE713E3F20AC7 /* AccountAvatar.swift in Sources */,
+				A63769C5AD66664F34653DEE /* AccountMenu.swift in Sources */,
 				E84BD27D7D2BF39707A7E276 /* AccountSettings.swift in Sources */,
 				5DAD4D28F079583BBC9786C5 /* AgentActivity.swift in Sources */,
 				CF4F91CC076301CA21FE2C86 /* AgentPanel.swift in Sources */,

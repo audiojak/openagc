@@ -136,13 +136,18 @@ final class AppModel {
 
     // MARK: Sign-in
 
-    func signIn(with client: GoogleClientConfiguration) async {
+    /// Sign in to Gmail: again as the open account, or (`adding`) as a new
+    /// one, in which case Google shows its account chooser and a cancelled
+    /// sign-in returns to the account that was open (spec §7.7).
+    func signIn(with client: GoogleClientConfiguration, adding: Bool = false) async {
         guard let core, client.isUsable else { return }
+        let previous = openAccountID
+        if adding, let previous { placeByAccount[previous] = (selectedMailboxID, selectedThreadID) }
         signInError = nil
         accountState = .signingIn
         do {
             let start = try await core.beginGmailSignIn(clientID: client.clientID, clientSecret: client.clientSecret,
-                                                        loginHint: accountEmail)
+                                                        loginHint: adding ? nil : accountEmail)
             signInSession = start.sessionID
             NSWorkspace.shared.open(start.authorizationURL)
             let account = try await core.completeGmailSignIn(start.sessionID)
@@ -152,13 +157,28 @@ final class AppModel {
             accountEmail = account.email
             needsReauthentication = false
             reauthenticationReason = nil
+            if adding {
+                selectedThreadIDs = []
+                selectedThreadID = nil
+                selectedMailboxIDSilently("INBOX")
+            }
             await open(accountID: account.accountID)
         } catch {
             signInSession = nil
             logger.error("sign-in failed: \(error.message, privacy: .private)")
             signInError = error.message
-            accountState = .noAccount
+            // Adding an account and giving up leaves the open one as it was.
+            if let previous {
+                accountState = .open(accountID: previous)
+            } else {
+                accountState = .noAccount
+            }
         }
+    }
+
+    /// Add another Gmail account (the avatar menu's Add Account…).
+    func addAccount() async {
+        await signIn(with: .effective(), adding: true)
     }
 
     func cancelSignIn() {
