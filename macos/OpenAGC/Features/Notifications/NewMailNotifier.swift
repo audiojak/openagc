@@ -18,8 +18,9 @@ final class NewMailNotifier: NSObject {
     var post: (UNNotificationRequest) -> Void
     /// Whether the app is frontmost; replaced in tests.
     var isAppActive: () -> Bool = { NSApp.isActive }
-    /// Opens a thread when a notification is clicked.
-    var openThread: ((String) -> Void)?
+    /// Opens a thread (in an account, if the notification named one) when
+    /// a notification is clicked.
+    var openThread: ((String, String?) -> Void)?
 
     private let defaults: UserDefaults
     private let logger = Logger(subsystem: "ai.actual.openagc", category: "notifications")
@@ -42,15 +43,37 @@ final class NewMailNotifier: NSObject {
 
     // MARK: Notifications
 
-    func announce(_ mail: [CoreClientEvent.NewMail]) {
+    /// Which account the mail is for: its id, and a label shown only when
+    /// there is more than one account (spec §7.7).
+    struct AccountTag: Equatable {
+        let id: String
+        let label: String?
+    }
+
+    func announce(_ mail: [CoreClientEvent.NewMail], account: AccountTag? = nil) {
         guard !mail.isEmpty, defaults.bool(forKey: Self.notifyKey), !isAppActive() else { return }
-        for request in Self.requests(for: mail) {
+        for request in Self.requests(for: mail, account: account) {
             post(request)
         }
     }
 
     /// One notification per message, or one summary for a burst. Pure.
-    static func requests(for mail: [CoreClientEvent.NewMail]) -> [UNNotificationRequest] {
+    static func requests(for mail: [CoreClientEvent.NewMail], account: AccountTag? = nil) -> [UNNotificationRequest] {
+        requests(untagged: mail).map { request in
+            guard let account else { return request }
+            let content = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
+            var info = content.userInfo
+            info["accountID"] = account.id
+            content.userInfo = info
+            if let label = account.label {
+                content.subtitle = content.subtitle.isEmpty ? label : "\(label) · \(content.subtitle)"
+                content.threadIdentifier = "\(account.id):\(content.threadIdentifier)"
+            }
+            return UNNotificationRequest(identifier: "\(account.id):\(request.identifier)", content: content, trigger: nil)
+        }
+    }
+
+    private static func requests(untagged mail: [CoreClientEvent.NewMail]) -> [UNNotificationRequest] {
         if mail.count > summaryThreshold {
             let content = UNMutableNotificationContent()
             content.title = "\(mail.count) new messages"
@@ -104,10 +127,12 @@ final class NewMailNotifier: NSObject {
 
 extension NewMailNotifier: UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        let threadID = response.notification.request.content.userInfo["threadID"] as? String
+        let info = response.notification.request.content.userInfo
+        let threadID = info["threadID"] as? String
+        let accountID = info["accountID"] as? String
         await MainActor.run {
             NSApp.activate()
-            if let threadID, !threadID.isEmpty { openThread?(threadID) }
+            if let threadID, !threadID.isEmpty { openThread?(threadID, accountID) }
         }
     }
 

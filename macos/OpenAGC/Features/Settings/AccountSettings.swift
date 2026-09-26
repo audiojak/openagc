@@ -5,7 +5,7 @@ import SwiftUI
 /// and which Google sign-in client to use (spec §7.3).
 struct AccountSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var confirmingSignOut = false
+    @State private var removing: AccountSummary?
 
     var body: some View {
         Form {
@@ -16,14 +16,17 @@ struct AccountSettings: View {
                     Button("Connect Gmail Instead…") { Task { await model.signIn(with: .effective()) } }
                         .disabled(!GoogleClientConfiguration.effective().isUsable)
                 case .open:
-                    LabeledContent("Account") { Text(model.accountEmail ?? "Connected") }
+                    ForEach(model.accounts, id: \.id) { account in
+                        AccountRow(account: account, onRemove: { removing = account })
+                    }
+                    if model.accounts.isEmpty {
+                        LabeledContent("Account") { Text(model.accountEmail ?? "Connected") }
+                    }
                     if model.needsReauthentication {
                         Label(reauthenticationHint, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                     }
-                    HStack {
-                        Button("Sign In Again…") { Task { await model.signIn(with: .effective()) } }
-                        Button("Sign Out…", role: .destructive) { confirmingSignOut = true }
-                    }
+                    Button("Add Account…") { Task { await model.addAccount() } }
+                        .disabled(!GoogleClientConfiguration.effective().isUsable)
                 case .signingIn:
                     HStack {
                         ProgressView().controlSize(.small)
@@ -43,9 +46,7 @@ struct AccountSettings: View {
                 Text("Your own client avoids Google's unverified-app warning. OpenAGC asks only for permission to read and organize mail (gmail.modify).")
                     .foregroundStyle(.secondary)
             }
-            if case .open(let id) = model.accountState, id != AppModel.demoAccountID {
-                SyncWindowSection()
-            }
+
             Section("Data on this Mac") {
                 HStack {
                     Button("Show Mail Data") {
@@ -56,10 +57,14 @@ struct AccountSettings: View {
             }
         }
         .formStyle(.grouped)
-        .confirmationDialog("Sign out of Gmail?", isPresented: $confirmingSignOut) {
-            Button("Sign Out", role: .destructive) { Task { await model.signOut() } }
+        .confirmationDialog("Remove \(removing?.email ?? "this account") from OpenAGC?",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove", role: .destructive) {
+                if let account = removing { Task { await model.removeAccount(account.id) } }
+                removing = nil
+            }
         } message: {
-            Text("OpenAGC forgets the sign-in. Mail already downloaded stays on this Mac until you delete it.")
+            Text("OpenAGC forgets the sign-in and deletes the mail it downloaded for this account. Gmail itself is not changed.")
         }
     }
 }
@@ -74,6 +79,70 @@ extension AccountSettings {
             "The saved sign-in isn't available to this copy of OpenAGC, so mail isn't syncing. Downloaded mail is kept; sign in again to resume."
         case .googleRejected, nil:
             "Google asked you to sign in again."
+        }
+    }
+}
+
+/// One account in Settings › Accounts (spec §7.7): who it is, whether it
+/// is syncing, how far back it downloads, and Remove….
+struct AccountRow: View {
+    @Environment(AppModel.self) private var model
+    let account: AccountSummary
+    let onRemove: () -> Void
+    @State private var window: SyncWindow?
+    @State private var signedIn: Bool?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                AccountAvatar(account: account, size: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(account.displayName ?? account.email).font(.body.weight(.medium))
+                    if account.displayName != nil { Text(account.email).font(.caption).foregroundStyle(.secondary) }
+                    Text(status).font(.caption).foregroundStyle(signedIn == false ? .orange : .secondary)
+                }
+                Spacer()
+                if account.id != model.openAccountID {
+                    Button("Show") { Task { await model.switchAccount(to: account.id) } }
+                }
+                if signedIn == false {
+                    Button("Sign In…") {
+                        Task {
+                            await model.switchAccount(to: account.id)
+                            await model.signIn(with: .effective())
+                        }
+                    }
+                }
+                Button("Remove…", role: .destructive, action: onRemove)
+            }
+            if account.kind == .gmail {
+                Picker("Download mail from", selection: Binding(
+                    get: { window ?? .halfYear },
+                    set: { newValue in
+                        window = newValue
+                        Task { try? await model.core?.setSyncWindow(newValue, for: account.id) }
+                    }
+                )) {
+                    ForEach(SyncWindowSection.choices, id: \.0) { choice in
+                        Text(choice.1).tag(choice.0)
+                    }
+                }
+                .disabled(window == nil)
+            }
+        }
+        .padding(.vertical, 2)
+        .task(id: account.id) {
+            window = try? await model.core?.syncWindow(for: account.id)
+            signedIn = account.kind == .gmail ? ((try? model.core?.accountHasCredentials(account.id)) ?? false) : nil
+        }
+    }
+
+    private var status: String {
+        switch (account.kind, signedIn) {
+        case (.archive, _): "Imported mailbox · read only"
+        case (_, false?): "Not syncing — sign in again"
+        case (_, true?): account.id == model.openAccountID ? "Showing · syncing" : "Syncing in the background"
+        default: " "
         }
     }
 }

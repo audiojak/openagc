@@ -105,7 +105,10 @@ final class AppModel {
         }
         listenForEvents(from: core)
         applyAgentPolicy()
-        notifier.openThread = { [weak self] in self?.reveal(threadID: $0) }
+        notifier.openThread = { [weak self] thread, account in
+            guard let self else { return }
+            Task { await self.reveal(threadID: thread, in: account) }
+        }
         notifier.install()
         if openDemo {
             await openDemoMailbox()
@@ -324,10 +327,54 @@ final class AppModel {
         }
     }
 
+    /// Tag notifications with their account; the label only matters when
+    /// the user has more than one.
+    func notificationTag(for accountID: String?) -> NewMailNotifier.AccountTag? {
+        guard let accountID else { return nil }
+        let label = accounts.count > 1 ? accounts.first { $0.id == accountID }.map { $0.displayName ?? $0.email } : nil
+        return .init(id: accountID, label: label)
+    }
+
+    /// Remove an account from this Mac (Settings). If it is on screen, the
+    /// next account opens; with none left, onboarding.
+    func removeAccount(_ accountID: String) async {
+        guard let core else { return }
+        do {
+            try await core.removeAccount(accountID)
+        } catch {
+            logger.error("removing an account failed: \(error.message, privacy: .private)")
+            return
+        }
+        agentStores[accountID] = nil
+        placeByAccount[accountID] = nil
+        let wasOpen = openAccountID == accountID
+        await reloadAccounts()
+        guard wasOpen else { return }
+        if let next = accounts.first {
+            accountState = .starting
+            await switchAccount(to: next.id)
+        } else {
+            defaults.removeObject(forKey: "accountID")
+            defaults.removeObject(forKey: "accountEmail")
+            accountEmail = nil
+            selectedThreadID = nil
+            accountState = .noAccount
+        }
+    }
+
     /// Switch to the account at `position` in the list (⌃1–⌃9).
     func switchAccount(position: Int) async {
         guard accounts.indices.contains(position) else { return }
         await switchAccount(to: accounts[position].id)
+    }
+
+    /// Show a thread from a notification: switch to its account if need
+    /// be, then to the Inbox, and select it.
+    func reveal(threadID: String, in accountID: String?) async {
+        if let accountID, accountID != openAccountID, accounts.contains(where: { $0.id == accountID }) {
+            await switchAccount(to: accountID)
+        }
+        reveal(threadID: threadID)
     }
 
     /// Show a thread from a notification: switch to the Inbox and select it.
@@ -551,7 +598,7 @@ final class AppModel {
         guard isForWindow(tagged) else {
             switch tagged.event {
             case let .newMail(mail):
-                notifier.announce(mail)
+                notifier.announce(mail, account: notificationTag(for: tagged.accountID))
                 await reloadAccounts()
             case .threadsChanged:
                 // Another account's counts moved: refresh the menu and Dock
@@ -586,7 +633,7 @@ final class AppModel {
         case let .outboxStatus(_, failed):
             failedChanges = failed
         case let .newMail(mail):
-            notifier.announce(mail)
+            notifier.announce(mail, account: notificationTag(for: tagged.accountID))
         case let .agent(sessionID, events):
             await agent.apply(sessionID: sessionID, events: events)
         case .routinesChanged:

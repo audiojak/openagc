@@ -484,6 +484,18 @@ impl Core {
         }
     }
 
+    /// `sync_window` for a given account (Settings lists every account).
+    pub async fn sync_window_for(&self, account_id: String) -> Result<SyncWindow, CoreError> {
+        self.store_for(&account_id).await?;
+        crate::registry::scoped(Some(account_id), self.sync_window()).await
+    }
+
+    /// `set_sync_window` for a given account.
+    pub async fn set_sync_window_for(&self, account_id: String, window: SyncWindow) -> Result<(), CoreError> {
+        self.store_for(&account_id).await?;
+        crate::registry::scoped(Some(account_id), self.set_sync_window(window)).await
+    }
+
     /// Sync now (foreground, wake from sleep, network regained, ⌘R).
     pub fn sync_now(&self) {
         for service in self.accounts.all() {

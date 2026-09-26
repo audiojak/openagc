@@ -452,6 +452,14 @@ final class CoreClient: Sendable {
         try await call { try await core.syncWindow() }
     }
 
+    func syncWindow(for accountID: String) async throws(CoreClientError) -> SyncWindow {
+        try await call { try await core.syncWindowFor(accountId: accountID) }
+    }
+
+    func setSyncWindow(_ window: SyncWindow, for accountID: String) async throws(CoreClientError) {
+        try await call { try await core.setSyncWindowFor(accountId: accountID, window: window) }
+    }
+
     func setSyncWindow(_ window: SyncWindow) async throws(CoreClientError) {
         try await call { try await core.setSyncWindow(window: window) }
     }
