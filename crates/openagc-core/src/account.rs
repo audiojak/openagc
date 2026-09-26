@@ -5,6 +5,9 @@
 //! [`SecretStore`]). Tokens never cross back into Swift.
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use mail_store::Db;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -62,6 +65,31 @@ impl AccountState {
 
 fn client_key(account_id: &str) -> String {
     format!("oauth.client.{account_id}")
+}
+
+/// The account already holding `email`'s mail, if any: sign-in again must
+/// not start a second store for the same mailbox. Each store records the
+/// address it syncs (`sync_state.account_email`) once bootstrapped.
+fn existing_account_id(data_dir: &Path, email: &str) -> Option<String> {
+    let wanted = email.trim().to_lowercase();
+    let entries = std::fs::read_dir(data_dir.join("accounts")).ok()?;
+    for entry in entries.flatten() {
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if id == "demo" {
+            continue;
+        }
+        let path = entry.path().join("mail.sqlite");
+        if !path.is_file() {
+            continue;
+        }
+        let stored = Db::open(&path)
+            .ok()
+            .and_then(|db| db.read_blocking(|c| mail_store::read::sync_state(c, "account_email")).ok().flatten());
+        if stored.is_some_and(|e| e.trim().to_lowercase() == wanted) {
+            return Some(id);
+        }
+    }
+    None
 }
 
 fn random_id() -> Result<String, CoreError> {
@@ -215,7 +243,16 @@ impl Core {
             let gmail = GmailProvider::new(source)?;
             let profile = gmail.profile().await?;
 
-            let account_id = random_id()?;
+            // Signing in again keeps the account (and its downloaded mail).
+            let data_dir = PathBuf::from(&core.config.data_dir);
+            let email = profile.email.clone();
+            let existing = tokio::task::spawn_blocking(move || existing_account_id(&data_dir, &email))
+                .await
+                .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?;
+            let account_id = match existing {
+                Some(id) => id,
+                None => random_id()?,
+            };
             core.secrets.set(keys::refresh_token(&account_id), refresh)?;
             let stored = StoredClient { client_id: config.client_id.trim().to_owned(), client_secret: config.client_secret };
             core.secrets.set(
@@ -445,6 +482,35 @@ mod tests {
             .collect();
         assert_eq!(announced, vec!["m3"]);
         core.stop_sync();
+    }
+
+    struct TempRoot(std::path::PathBuf);
+    impl TempRoot {
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+    impl Drop for TempRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn signing_in_again_reuses_the_account_that_holds_that_mailbox() {
+        let root = std::env::temp_dir().join(format!("openagc-reuse-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let dir = TempRoot(root);
+        for (id, email) in [("aaaa", "old@example.com"), ("bbbb", "Me@Example.com")] {
+            let path = dir.path().join("accounts").join(id).join("mail.sqlite");
+            let db = Db::open(&path).unwrap();
+            db.write_blocking(move |tx| mail_store::read::set_sync_state(tx, "account_email", email)).unwrap();
+        }
+        std::fs::create_dir_all(dir.path().join("accounts").join("cccc")).unwrap(); // no store yet
+        assert_eq!(existing_account_id(dir.path(), " me@example.com ").as_deref(), Some("bbbb"));
+        assert_eq!(existing_account_id(dir.path(), "old@example.com").as_deref(), Some("aaaa"));
+        assert_eq!(existing_account_id(dir.path(), "new@example.com"), None);
+        assert_eq!(existing_account_id(&dir.path().join("missing"), "me@example.com"), None);
     }
 
     #[test]
