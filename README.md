@@ -36,6 +36,9 @@ Gmail ──HTTPS/OAuth──▶ OpenAGC.app on your Mac
 - **Routines.** Scheduled sorting of automated mail into review labels, run
   locally or as a Claude cloud routine created through your own Claude Code
   login.
+- **Several accounts, and old mail.** Switch Gmail accounts from the avatar
+  at the top of the sidebar; import an `.mbox` (for example from Google
+  Takeout) as a read-only account you can search and hand to an agent.
 
 ## Documentation
 
