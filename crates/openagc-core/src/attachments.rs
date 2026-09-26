@@ -18,9 +18,9 @@ pub struct AttachmentFileInfo {
 
 impl Core {
     fn attachment_cache_dir(&self) -> Result<PathBuf, CoreError> {
-        let guard = self.account.read().unwrap_or_else(|e| e.into_inner());
-        let account = guard.as_ref().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
-        Ok(PathBuf::from(&self.config.data_dir).join("accounts").join(&account.id).join("Attachments"))
+        let id =
+            self.effective_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
+        Ok(PathBuf::from(&self.config.data_dir).join("accounts").join(id).join("Attachments"))
     }
 }
 
@@ -34,7 +34,7 @@ impl Core {
             .map_err(|_| CoreError::new(ErrorKind::InvalidInput, format!("bad attachment id {attachment_id:?}")))?;
         let db = self.db()?;
         let cache = self.attachment_cache_dir()?;
-        let service = self.accounts.sync_service();
+        let service = self.sync_service();
         runtime::run(async move {
             let provider = service.as_ref().map(|s| s.engine().provider());
             let file = mail_sync::attachment_file(&db, provider, &cache, id).await?;
@@ -60,7 +60,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     #[test]

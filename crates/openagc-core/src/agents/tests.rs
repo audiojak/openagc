@@ -12,7 +12,7 @@ use crate::{Core, CoreConfig, CoreEvent, EventListener};
 
 struct Noop;
 impl EventListener for Noop {
-    fn on_event(&self, _: CoreEvent) {}
+    fn on_event(&self, _: Option<String>, _: CoreEvent) {}
 }
 
 fn demo(name: &str) -> Arc<Core> {
@@ -170,7 +170,7 @@ fn tool_calls_arrive_over_the_socket() {
 #[derive(Default)]
 struct Recorder(std::sync::Mutex<Vec<CoreEvent>>);
 impl EventListener for Recorder {
-    fn on_event(&self, event: CoreEvent) {
+    fn on_event(&self, _account: Option<String>, event: CoreEvent) {
         self.0.lock().unwrap().push(event);
     }
 }

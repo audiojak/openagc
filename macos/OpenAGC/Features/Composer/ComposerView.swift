@@ -30,7 +30,7 @@ struct ComposerView: View {
         .frame(minWidth: 520, minHeight: 380)
         .navigationTitle(store?.windowTitle ?? "New Message")
         .task {
-            let store = ComposerStore(core: model.core)
+            let store = ComposerStore(core: model.core, account: model.openAccountID)
             self.store = store
             await store.load(request)
         }
@@ -107,7 +107,7 @@ struct ComposerView: View {
 
     private func header(_ store: ComposerStore) -> some View {
         @Bindable var store = store
-        let suggest: (String) -> [AddressInfo] = { [core = model.core] text in core?.suggestContactsNow(text) ?? [] }
+        let suggest: (String) -> [AddressInfo] = { [drafts = store.drafts] text in drafts?.suggestContactsNow(text) ?? [] }
         return VStack(spacing: 0) {
             row("To:") {
                 RecipientField(addresses: $store.to, suggest: suggest, accessibilityLabel: "To")

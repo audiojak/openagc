@@ -737,15 +737,23 @@ UID-ordered stream, newest last. Concretely:
    search see no difference. `X-GM-LABELS` plus `\Seen`/`\Flagged` map to
    label ids (`UNREAD`, `STARRED`); system labels use the API names.
 3. Listing stays on REST (`messages.list` is 5 units per 500 ids), so the
-   window and priority phases are unchanged. Optionally a headers-first
-   pass (`ENVELOPE` for the whole window) fills `messages` with
-   `body_state='metadata'` so the list is browsable minutes in.
+   window and priority phases are unchanged. A headers-first pass fills
+   `messages` with `body_state='metadata'` rows (1,000 per command) so the
+   list is browsable minutes in; bodies follow, and opening a header-only
+   message moves it to the front of the queue. *(Implemented with
+   `BODY.PEEK[HEADER]` parsed by `mail-mime`, not `ENVELOPE`, so headers
+   decode exactly like full messages. REST sources skip the pass: a
+   header fetch costs the same 20 units as a whole message.)*
 4. Scope: IMAP needs `https://mail.google.com/`, a superset of
    `gmail.modify`. Both are restricted scopes, so verification (§7.3) is
-   unchanged, but the consent screen wording changes; the request is made
-   once and the token serves both paths. If IMAP `AUTHENTICATE` fails (a
-   Workspace admin can disable IMAP), the engine logs it once and stays on
-   REST.
+   unchanged, but the consent screen then asks to "read, compose, send and
+   permanently delete all your email". *(Implementation decision,
+   2026-09-26: opt-in per account, Settings › Accounts › Download faster
+   over IMAP, which signs in again with `mail.google.com` instead of
+   `gmail.modify`; the default stays least-privilege, and a Cloud project
+   must list the scope before it can be granted.)* The granted scopes are
+   recorded per account. If IMAP `AUTHENTICATE` fails (a Workspace admin
+   can disable IMAP), the engine logs it once and stays on REST.
 5. Budget: the source tracks bytes per day and yields to REST at 2,000 MB.
    Incremental fetches (new mail from history) stay on REST: they are few
    and latency matters more than units there.
@@ -786,10 +794,14 @@ agent sessions and Keychain items. New pieces:
   scanning the directories (each store records its `account_email`), then
   kept in step by sign-in and sign-out. The current account id lives in
   `UserDefaults` on the Swift side, not in the index.
-- Identity: sign-in requests `openid` and `userinfo.profile` alongside the
-  existing scopes (both non-sensitive; no verification change) and reads
-  `https://openidconnect.googleapis.com/v1/userinfo` once for `name` and
-  `picture`. The picture is downloaded to `accounts/<id>/avatar.jpg`
+- Identity: sign-in requests `openid` and `profile` alongside the
+  existing scopes (both non-sensitive; no verification change). The token
+  response's ID token carries `name` and `picture`, read without a
+  further call *(implementation note: the ID token comes straight from
+  Google's token endpoint over TLS and is used only for display, so it is
+  not signature-checked)*; `https://openidconnect.googleapis.com/v1/userinfo`
+  refreshes them weekly. Only `https` pictures on `*.googleusercontent.com`
+  are fetched, at most 1 MB. The picture is downloaded to `accounts/<id>/avatar.jpg`
   (refreshed weekly) and shown at 24 pt; without one, an initials disc
   coloured deterministically from the address. Adding an account uses the
   same sign-in flow with `prompt=select_account`, so Google shows the
@@ -855,7 +867,8 @@ draft. It exists to be read, searched, sorted and reasoned over.
   tools work; nothing is fetched on demand because there is nowhere to
   fetch from.
 
-**Import.** *File › Import Mailbox…* accepts an `.mbox` file or a folder
+**Import.** *File › Import Mailbox…* (no shortcut: ⌘⇧I is already *Load
+Remote Images*) accepts an `.mbox` file or a folder
 of them (Takeout splits large exports). A sheet asks for the account name,
 the user's addresses (for `SENT` and reply detection) and shows size and an
 estimate. The import runs on the core runtime: a streaming mbox reader

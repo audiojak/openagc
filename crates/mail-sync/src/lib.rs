@@ -5,6 +5,7 @@ mod compose;
 mod convert;
 mod engine;
 mod error;
+pub mod import;
 mod outbox;
 
 pub use attachments::{AttachmentFile, attachment_file, safe_filename};

@@ -4,7 +4,7 @@ import os
 @main
 struct OpenAGCApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = AppModel(core: OpenAGCApp.makeCore())
+    @State private var model = AppModel(core: OpenAGCApp.makeCore(), defaults: OpenAGCApp.defaults)
     @State private var updater = Updater()
 
     var body: some Scene {
@@ -19,6 +19,9 @@ struct OpenAGCApp: App {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") { updater.checkForUpdates() }
                     .disabled(!updater.canCheckForUpdates)
+            }
+            CommandGroup(after: .appSettings) {
+                AccountsCommands(model: model)
             }
         }
 
@@ -49,8 +52,29 @@ struct OpenAGCApp: App {
         }
     }
 
+    /// The app's preferences; a throwaway suite when hosting tests, so the
+    /// remembered account is never read or changed by a test run.
+    private static let defaults: UserDefaults = CoreClient.isRunningTests
+        ? UserDefaults(suiteName: "openagc-test-host-\(UUID().uuidString)") ?? .standard
+        : .standard
+
     private static func makeCore() -> CoreClient? {
         do {
+            // Snapshots and automation point the app at a throwaway data
+            // directory (`-OpenAGCDataDirectory /tmp/x`) so they can never
+            // open, or start syncing, the user's real accounts.
+            // Hosting unit tests, the app itself must never open the user's
+            // accounts, read their Keychain items or start a real sync: it
+            // gets a fresh scratch directory like any snapshot run.
+            let scratch = CoreClient.isRunningTests
+                ? FileManager.default.temporaryDirectory.appending(path: "openagc-test-host-\(UUID().uuidString)").path
+                : nil
+            if let override = scratch ?? UserDefaults.standard.string(forKey: "OpenAGCDataDirectory"), !override.isEmpty {
+                let dir = URL(filePath: override, directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                return try CoreClient(dataDirectory: dir, logDirectory: dir.appending(path: "Logs"),
+                                      secrets: KeychainSecretStore(service: "ai.actual.openagc.scratch"))
+            }
             return try CoreClient(dataDirectory: CoreClient.defaultDataDirectory(),
                                   logDirectory: CoreClient.defaultLogDirectory())
         } catch {
@@ -79,6 +103,14 @@ struct MailCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Message") { model.compose(.new(to: nil)) }
                 .keyboardShortcut("n")
+                .disabled(model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
+        }
+        CommandGroup(after: .newItem) {
+            Divider()
+            // No shortcut: ⌘⇧I is Load Remote Images (spec §7.8 note).
+            Button("Import Mailbox…") { Task { await model.beginImport() } }
+                .disabled(model.runningImport != nil)
         }
         CommandGroup(after: .textEditing) {
             Button("Search Mail") { model.focusSearch() }
@@ -109,13 +141,16 @@ struct MailCommands: Commands {
         CommandMenu("Message") {
             Button("Reply") { model.reply(all: false) }
                 .keyboardShortcut("r")
-                .disabled(noReplyTarget)
+                .disabled(noReplyTarget || model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
             Button("Reply All") { model.reply(all: true) }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(noReplyTarget)
+                .disabled(noReplyTarget || model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
             Button("Forward") { model.forward() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-                .disabled(noReplyTarget)
+                .disabled(noReplyTarget || model.isArchive)
+                .help(model.isArchive ? AppModel.cannotSendReason : "")
             Divider()
             Button("Archive") { model.archiveSelection() }
                 .keyboardShortcut("a", modifiers: [.command, .control])
@@ -158,4 +193,17 @@ struct MailCommands: Commands {
 extension FocusedValues {
     /// True in the main mail window's scene.
     @Entry var isMailWindow: Bool?
+}
+
+/// OpenAGC › Accounts: the avatar menu's items, with ⌃1–⌃9 (spec §7.7).
+struct AccountsCommands: View {
+    let model: AppModel
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Menu("Accounts") {
+            AccountMenuItems(openSettings: { openSettings() })
+                .environment(model)
+        }
+    }
 }

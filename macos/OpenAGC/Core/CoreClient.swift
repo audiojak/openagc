@@ -10,16 +10,17 @@ final class CoreClient: Sendable {
 
     /// Events from the core, already coalesced in Rust (spec §4.3). One
     /// consumer; stores fan out on the main actor.
-    let events: AsyncStream<CoreClientEvent>
+    /// Core events with the account each is about (`nil`: app-wide).
+    let events: AsyncStream<CoreClientEvent.Tagged>
 
     convenience init(dataDirectory: URL, logDirectory: URL? = nil,
-                     secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
+                     secrets: KeychainSecretStore = CoreClient.defaultSecrets()) throws(CoreClientError) {
         try self.init(dataDirectoryPath: dataDirectory.path, logDirectoryPath: logDirectory?.path, secrets: secrets)
     }
 
     init(dataDirectoryPath: String, logDirectoryPath: String? = nil,
-         secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
-        let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.self, bufferingPolicy: .unbounded)
+         secrets: KeychainSecretStore = CoreClient.defaultSecrets()) throws(CoreClientError) {
+        let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.Tagged.self, bufferingPolicy: .unbounded)
         events = stream
         do {
             core = try Core(config: CoreConfig(dataDir: dataDirectoryPath, logDir: logDirectoryPath),
@@ -42,6 +43,12 @@ final class CoreClient: Sendable {
         }
     }
 
+    /// The app's Keychain items, or a separate service under tests so a
+    /// test can never read the user's sign-ins.
+    static func defaultSecrets() -> KeychainSecretStore {
+        KeychainSecretStore(service: isRunningTests ? "ai.actual.openagc.tests" : "ai.actual.openagc")
+    }
+
     static var isRunningTests: Bool {
         let env = ProcessInfo.processInfo.environment
         return env["XCTestConfigurationFilePath"] != nil || env["XCTestBundlePath"] != nil
@@ -49,6 +56,8 @@ final class CoreClient: Sendable {
     }
 
     var version: String { core.version() }
+    /// Where this core keeps its accounts.
+    var dataDirectory: String { core.dataDir() }
 
     func ping(_ message: String) -> String {
         core.ping(message: message)
@@ -64,6 +73,80 @@ final class CoreClient: Sendable {
         try await call { try await core.openAccount(accountId: accountID) }
     }
 
+    /// The user's accounts in their order (spec §7.7).
+    func accounts() async throws(CoreClientError) -> [AccountSummary] {
+        try await call { try await core.listAccounts() }
+    }
+
+    func setCurrentAccount(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.setCurrentAccount(accountId: accountID) }
+    }
+
+    func removeAccount(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.removeAccount(accountId: accountID) }
+    }
+
+    // MARK: Archive accounts (spec §7.8)
+
+    func scanMailbox(_ path: String) async throws(CoreClientError) -> MailboxScan {
+        try await call { try await core.scanMailbox(path: path) }
+    }
+
+    /// Start importing; returns the archive account's id. Progress arrives
+    /// as `importProgress` events tagged with it.
+    func startImport(path: String, name: String, myAddresses: [String], into accountID: String? = nil) async throws(CoreClientError) -> String {
+        try await call { try await core.startImport(path: path, name: name, myAddresses: myAddresses, accountId: accountID) }
+    }
+
+    func reimportArchive(_ accountID: String) async throws(CoreClientError) -> String {
+        try await call { try await core.reimportArchive(accountId: accountID) }
+    }
+
+    func cancelImport(_ accountID: String) { core.cancelImport(accountId: accountID) }
+
+    /// Ask Gmail for `query` and download missing matches; returns how many
+    /// arrived (0 for accounts without a server).
+    func searchServer(_ query: String, limit: UInt32) async throws(CoreClientError) -> UInt32 {
+        try await call { try await core.searchServer(query: query, limit: limit) }
+    }
+
+    /// Download these messages' bodies next (opened with headers only).
+    func prioritizeMessages(_ ids: [String]) async {
+        try? await call { try await core.prioritizeMessages(messageIds: ids) }
+    }
+
+    /// How an account's backfill fetches bodies ("rest", "imap", …).
+    func backfillStatus(_ accountID: String) async -> BackfillStatus {
+        await core.backfillStatus(accountId: accountID)
+    }
+
+    func disableIMAP(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.disableImap(accountId: accountID) }
+    }
+
+    func isArchive(_ accountID: String) -> Bool { core.accountIsArchive(accountId: accountID) }
+
+    /// Development/test hook: a listed account with a synthetic mailbox and
+    /// no sign-in.
+    func addDemoAccount(_ accountID: String, email: String, name: String? = nil, threads: UInt32 = 60) async throws(CoreClientError) {
+        try await call {
+            try await core.debugAddDemoAccount(accountId: accountID, email: email, displayName: name, threads: threads)
+        }
+    }
+
+    /// Account stores no listed account owns (spec §7.7).
+    func orphanedStores() async throws(CoreClientError) -> [OrphanedStore] {
+        try await call { try await core.orphanedStores() }
+    }
+
+    func removeOrphanedStore(_ id: String) async throws(CoreClientError) {
+        try await call { try await core.removeOrphanedStore(accountId: id) }
+    }
+
+    func moveAccount(_ accountID: String, to position: Int) async throws(CoreClientError) {
+        try await call { try await core.moveAccount(accountId: accountID, position: UInt32(max(0, position))) }
+    }
+
     var currentAccountID: String? { core.currentAccountId() }
 
     func mailboxes() async throws(CoreClientError) -> [MailboxInfo] {
@@ -72,6 +155,11 @@ final class CoreClient: Sendable {
 
     func labels() async throws(CoreClientError) -> [LabelInfo] {
         try await call { try await core.listLabels() }
+    }
+
+    /// Create a label; a `/` path creates missing parents.
+    func createLabel(_ path: String, color: String? = nil) async throws(CoreClientError) -> LabelInfo {
+        try await call { try await core.createLabel(name: path, color: color) }
     }
 
     func threads(in mailboxID: String, after cursor: String? = nil, limit: UInt32 = 100) async throws(CoreClientError) -> ThreadPage {
@@ -357,10 +445,13 @@ final class CoreClient: Sendable {
     }
 
     /// Start Gmail sign-in; open the returned URL in the user's browser.
-    func beginGmailSignIn(clientID: String, clientSecret: String?, loginHint: String? = nil) async throws(CoreClientError) -> SignInStart {
+    /// `fullAccess` also asks Google for full mail access, which faster
+    /// download over IMAP needs (spec §7.4).
+    func beginGmailSignIn(clientID: String, clientSecret: String?, loginHint: String? = nil,
+                          fullAccess: Bool = false) async throws(CoreClientError) -> SignInStart {
         let start = try await call {
             try await core.beginGmailSignIn(client: OAuthClientConfig(clientId: clientID, clientSecret: clientSecret),
-                                            loginHint: loginHint)
+                                            loginHint: loginHint, fullAccess: fullAccess)
         }
         guard let url = URL(string: start.authorizationUrl) else {
             throw CoreClientError(kind: .internalError, message: "invalid authorization URL")
@@ -398,6 +489,12 @@ final class CoreClient: Sendable {
         }
     }
 
+    /// Start every signed-in account's sync in the background; returns the
+    /// accounts whose sign-in could not be read (spec §7.7).
+    func startAllSync() async throws(CoreClientError) -> [String] {
+        try await call { try await core.startAllSync() }
+    }
+
     func stopSync() { core.stopSync() }
     func setAppActive(_ active: Bool) { core.setAppActive(active: active) }
     func syncNow() { core.syncNow() }
@@ -405,6 +502,14 @@ final class CoreClient: Sendable {
     /// How far back mail is downloaded (spec §7.4).
     func syncWindow() async throws(CoreClientError) -> SyncWindow {
         try await call { try await core.syncWindow() }
+    }
+
+    func syncWindow(for accountID: String) async throws(CoreClientError) -> SyncWindow {
+        try await call { try await core.syncWindowFor(accountId: accountID) }
+    }
+
+    func setSyncWindow(_ window: SyncWindow, for accountID: String) async throws(CoreClientError) {
+        try await call { try await core.setSyncWindowFor(accountId: accountID, window: window) }
     }
 
     func setSyncWindow(_ window: SyncWindow) async throws(CoreClientError) {
@@ -422,6 +527,23 @@ final class CoreClient: Sendable {
     }
 
     /// Runs a core call, converting generated errors to `CoreClientError`.
+    /// Compose operations pinned to one account (spec §7.7).
+    nonisolated func composer(for accountID: String) -> AccountComposer {
+        core.composerFor(accountId: accountID)
+    }
+
+    /// Map a core call's errors like `call` does, for handles other than
+    /// `Core` (e.g. `AccountComposer`).
+    static func bridge<T>(_ body: () async throws -> T) async throws(CoreClientError) -> T {
+        do {
+            return try await body()
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
+    }
+
     private func call<T>(_ body: () async throws -> T) async throws(CoreClientError) -> T {
         do {
             return try await body()
@@ -514,6 +636,12 @@ typealias DraftStatus = OpenAGCCore.DraftStatus
 typealias LabelInfo = OpenAGCCore.LabelInfo
 typealias MailboxInfo = OpenAGCCore.MailboxInfo
 typealias SyncWindow = OpenAGCCore.SyncWindow
+typealias AccountSummary = OpenAGCCore.AccountSummary
+typealias AccountKind = OpenAGCCore.AccountKind
+typealias ImportStatus = OpenAGCCore.ImportStatus
+typealias BackfillStatus = OpenAGCCore.BackfillStatus
+typealias OrphanedStore = OpenAGCCore.OrphanedStore
+typealias MailboxScan = OpenAGCCore.MailboxScan
 typealias MailboxKind = OpenAGCCore.MailboxKind
 typealias MessageInfo = OpenAGCCore.MessageInfo
 typealias RenderedBody = OpenAGCCore.RenderedBody
@@ -533,6 +661,12 @@ struct ThreadChangeHint: Sendable, Equatable {
 }
 
 enum CoreClientEvent: Sendable, Equatable {
+    /// An event and the account it is about (spec §7.7).
+    struct Tagged: Sendable, Equatable {
+        let accountID: String?
+        let event: CoreClientEvent
+    }
+
     enum SyncState: Sendable, Equatable { case idle, bootstrapping, syncing, offline, error }
 
     /// A message that just arrived, unread in the Inbox.
@@ -550,6 +684,7 @@ enum CoreClientEvent: Sendable, Equatable {
     case newMail([NewMail])
     case agent(sessionID: String, events: [AgentEventInfo])
     case routinesChanged
+    case importProgress(ImportStatus)
     case error(CoreClientError)
 }
 
@@ -586,13 +721,13 @@ final class PDFTextExtractor: TextExtractor, Sendable {
 
 /// Receives events on a Rust runtime thread and hands them to the stream.
 private final class EventBridge: EventListener, Sendable {
-    private let continuation: AsyncStream<CoreClientEvent>.Continuation
+    private let continuation: AsyncStream<CoreClientEvent.Tagged>.Continuation
 
-    init(_ continuation: AsyncStream<CoreClientEvent>.Continuation) {
+    init(_ continuation: AsyncStream<CoreClientEvent.Tagged>.Continuation) {
         self.continuation = continuation
     }
 
-    func onEvent(event: CoreEvent) {
+    func onEvent(accountId: String?, event: CoreEvent) {
         // Rust warn/error records are logged here rather than delivered to
         // stores; Swift owns unified-logging privacy (spec §17). Rust has
         // already kept secrets and mail content out, and scrubbed addresses
@@ -607,7 +742,7 @@ private final class EventBridge: EventListener, Sendable {
             return
         }
         if let mapped = CoreClientEvent(event) {
-            continuation.yield(mapped)
+            continuation.yield(.init(accountID: accountId, event: mapped))
         }
     }
 }
@@ -636,6 +771,8 @@ private extension CoreClientEvent {
                         senderName: $0.from.map { $0.name ?? $0.email } ?? "Unknown sender",
                         subject: $0.subject, snippet: $0.snippet)
             })
+        case let .importProgress(status):
+            self = .importProgress(status)
         case .log:
             return nil
         }

@@ -19,6 +19,13 @@ struct MainWindow: View {
             }
         }
         .focusedSceneValue(\.isMailWindow, true)
+        .sheet(item: Binding(get: { model.importDraft }, set: { model.importDraft = $0 })) { draft in
+            ImportMailboxSheet(draft: draft)
+        }
+        .sheet(item: Binding(get: { model.runningImport.map(RunningImport.init) }, set: { if $0 == nil { model.runningImport = nil } })) { running in
+            ImportProgressSheet(accountID: running.id)
+                .interactiveDismissDisabled()
+        }
         .task { if model.accountState == .starting { await model.start() } }
         .onAppear {
             model.openComposer = { openWindow(id: "compose", value: $0) }
@@ -72,6 +79,15 @@ struct MainWindow: View {
                         .foregroundStyle(.secondary)
                         .padding(8)
                 }
+                if model.threads.isSearchingServer {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Also searching Gmail for older mail…")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                }
                 if model.threads.rows.isEmpty {
                     if model.threads.searchQuery != nil {
                         ContentUnavailableView.search(text: model.searchText)
@@ -111,4 +127,8 @@ private struct ReauthenticationBanner: View {
         .padding(.vertical, 8)
         .background(.yellow.opacity(0.15))
     }
+}
+
+private struct RunningImport: Identifiable {
+    let id: String
 }

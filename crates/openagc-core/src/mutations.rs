@@ -32,9 +32,9 @@ fn threads(ids: Vec<String>) -> Result<Vec<ThreadId>, CoreError> {
 
 impl Core {
     async fn mutate(&self, change: LocalChange) -> Result<(), CoreError> {
-        let service = self.accounts.sync_service();
+        let service = self.sync_service();
         let db = self.db()?;
-        let events = self.events.clone();
+        let events = self.account_events();
         runtime::run(async move {
             match service {
                 Some(service) => {
@@ -92,10 +92,58 @@ impl Core {
     }
 
     /// Create a user label, or return the one with that name (spec §10.2,
-    /// §11). `color` is a background like `#fb4c2f`; the text color is
-    /// chosen for contrast. Needs Gmail to be reachable: the label id comes
-    /// from the server.
+    /// §11). A `/` path creates any missing parents first, so the label
+    /// tree never has holes OpenAGC made (spec §14.3). `color` is a
+    /// background like `#fb4c2f` for the label itself; parents get none.
+    /// Needs Gmail to be reachable: label ids come from the server.
     pub async fn create_label(&self, name: String, color: Option<String>) -> Result<LabelInfo, CoreError> {
+        let name = name.trim().trim_matches('/').to_owned();
+        let segments: Vec<&str> = name.split('/').collect();
+        for depth in 1..segments.len() {
+            self.create_single_label(segments[..depth].join("/"), None).await?;
+        }
+        self.create_single_label(name, color).await
+    }
+
+    pub async fn trash(&self, thread_ids: Vec<String>) -> Result<(), CoreError> {
+        self.mutate(LocalChange::Trash { thread_ids: threads(thread_ids)? }).await
+    }
+
+    pub async fn outbox_status(&self) -> Result<OutboxStatus, CoreError> {
+        let db = self.db()?;
+        runtime::run(async move {
+            let c = db.read(mail_store::outbox::counts).await?;
+            Ok(OutboxStatus { pending: c.pending, failed: c.failed })
+        })
+        .await
+    }
+
+    /// Forget changes that could not be applied (they were already undone).
+    pub async fn clear_failed_changes(&self) -> Result<(), CoreError> {
+        let db = self.db()?;
+        let events = self.account_events();
+        runtime::run(async move {
+            db.write(|tx| mail_store::outbox::clear_failed(tx).map(|_| ())).await?;
+            let c = db.read(mail_store::outbox::counts).await?;
+            events.emit(crate::CoreEvent::OutboxStatus { pending: c.pending, failed: c.failed });
+            Ok(())
+        })
+        .await
+    }
+}
+
+/// Local label ids must differ even when created in the same millisecond
+/// (a path creates its parents back to back).
+fn next_local_label() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+impl Core {
+    /// One label, no parents: returns the existing label with that name
+    /// (case-insensitive) or creates it. The text color is chosen for
+    /// contrast with `color`.
+    async fn create_single_label(&self, name: String, color: Option<String>) -> Result<LabelInfo, CoreError> {
         let name = name.trim().trim_matches('/').to_owned();
         if name.is_empty() || name.len() > 225 || name.split('/').any(|part| part.trim().is_empty()) {
             return Err(CoreError::new(ErrorKind::InvalidInput, "a label needs a name (nest with /)"));
@@ -108,8 +156,8 @@ impl Core {
             return Err(CoreError::new(ErrorKind::InvalidInput, format!("{name} is a system label")));
         }
         let db = self.db()?;
-        let service = self.accounts.sync_service();
-        let events = self.events.clone();
+        let service = self.sync_service();
+        let events = self.account_events();
         runtime::run(async move {
             let wanted = name.clone();
             let labels = db.read(mail_store::read::list_labels).await?;
@@ -134,7 +182,7 @@ impl Core {
                 }
                 // The demo mailbox has no server: a local id.
                 None => mail_domain::Label {
-                    id: LabelId(format!("Label_local_{}", mail_sync::now_millis())),
+                    id: LabelId(format!("Label_local_{}_{}", mail_sync::now_millis(), next_local_label())),
                     name,
                     kind: mail_domain::LabelKind::User,
                     color: color.map(|(background, text)| mail_domain::LabelColor { background, text }),
@@ -157,32 +205,6 @@ impl Core {
         })
         .await
     }
-
-    pub async fn trash(&self, thread_ids: Vec<String>) -> Result<(), CoreError> {
-        self.mutate(LocalChange::Trash { thread_ids: threads(thread_ids)? }).await
-    }
-
-    pub async fn outbox_status(&self) -> Result<OutboxStatus, CoreError> {
-        let db = self.db()?;
-        runtime::run(async move {
-            let c = db.read(mail_store::outbox::counts).await?;
-            Ok(OutboxStatus { pending: c.pending, failed: c.failed })
-        })
-        .await
-    }
-
-    /// Forget changes that could not be applied (they were already undone).
-    pub async fn clear_failed_changes(&self) -> Result<(), CoreError> {
-        let db = self.db()?;
-        let events = self.events.clone();
-        runtime::run(async move {
-            db.write(|tx| mail_store::outbox::clear_failed(tx).map(|_| ())).await?;
-            let c = db.read(mail_store::outbox::counts).await?;
-            events.emit(crate::CoreEvent::OutboxStatus { pending: c.pending, failed: c.failed });
-            Ok(())
-        })
-        .await
-    }
 }
 
 #[cfg(test)]
@@ -199,7 +221,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     fn core(name: &str) -> Arc<Core> {
@@ -274,13 +296,20 @@ mod tests {
         }
         assert_eq!(block_on(core.outbox_status()).unwrap().pending, 0);
 
-        // Labels are created on the server, then stored.
+        // Labels are created on the server, then stored; a path creates its
+        // missing parent first, without the child's color.
         let label = block_on(core.create_label("Sorted/Later".into(), Some("#ffad47".into()))).unwrap();
-        assert_eq!(label.id, "Label_1");
+        assert_eq!(label.id, "Label_2");
         assert_eq!(label.text_color.as_deref(), Some("#000000"), "dark text on a light color");
-        assert!(block_on(core.list_labels()).unwrap().iter().any(|l| l.id == "Label_1"));
+        let labels = block_on(core.list_labels()).unwrap();
+        let parent = labels.iter().find(|l| l.name == "Sorted").expect("parent created");
+        assert_eq!(parent.id, "Label_1");
+        assert_eq!(parent.background_color, None);
+        assert!(labels.iter().any(|l| l.id == "Label_2" && l.name == "Sorted/Later"));
         let same = block_on(core.create_label("SORTED/LATER".into(), None)).unwrap();
-        assert_eq!(same.id, "Label_1");
+        assert_eq!(same.id, "Label_2");
+        let deeper = block_on(core.create_label("Sorted/Later/Soon".into(), None)).unwrap();
+        assert_eq!(deeper.id, "Label_3", "existing parents are reused");
         core.stop_sync();
     }
 }

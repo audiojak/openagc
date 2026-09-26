@@ -101,6 +101,16 @@ const USER_LABELS: &[(&str, &str, &str)] = &[
     ("Label_4", "Customers", "#4a86e8"),
     ("Label_5", "Newsletters", "#ffad47"),
 ];
+/// Nested labels (Gmail's `/` paths), so the sidebar tree has something to
+/// show: children of a label, and a prefix with no label of its own. Kept
+/// apart from `USER_LABELS` so the generator's random choices, and with them
+/// every existing demo count, stay the same.
+const NESTED_LABELS: &[(&str, &str, &str)] = &[
+    ("Label_6", "Customers/Acme", "#4a86e8"),
+    ("Label_7", "Customers/Globex", "#4a86e8"),
+    ("Label_8", "Projects/Launch", "#16a766"),
+    ("Label_9", "Projects/Launch/Press", "#16a766"),
+];
 
 struct Rng(u64);
 
@@ -125,6 +135,7 @@ impl Rng {
 pub fn generate(db: &Db, spec: &DemoSpec) -> StoreResult<DemoStats> {
     let labels: Vec<Label> = USER_LABELS
         .iter()
+        .chain(NESTED_LABELS)
         .map(|(id, name, color)| Label {
             id: LabelId::new(*id),
             name: (*name).to_owned(),
@@ -163,6 +174,8 @@ pub fn generate(db: &Db, spec: &DemoSpec) -> StoreResult<DemoStats> {
         let unread = in_inbox && rng.chance(40);
         let starred = rng.chance(4);
         let user_label = rng.chance(30).then(|| rng.pick(USER_LABELS).0);
+        // Every seventh thread also gets a nested label, without touching rng.
+        let nested_label = (t % 7 == 3).then(|| NESTED_LABELS[(t / 7) as usize % NESTED_LABELS.len()].0);
         let message_count = if automated { 1 } else { 1 + rng.below(5) as u32 };
 
         for i in 0..message_count {
@@ -182,6 +195,9 @@ pub fn generate(db: &Db, spec: &DemoSpec) -> StoreResult<DemoStats> {
                 labels.push(LabelId::new("STARRED"));
             }
             if let Some(l) = user_label {
+                labels.push(LabelId::new(l));
+            }
+            if let Some(l) = nested_label {
                 labels.push(LabelId::new(l));
             }
             let text = (0..2 + rng.below(4)).map(|_| *rng.pick(SENTENCES)).collect::<Vec<_>>().join(" ");

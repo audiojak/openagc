@@ -2,6 +2,7 @@
 # Run scripts/check.sh, print its tail, and exit with ITS status (a pipe to
 # tail would hide failures). Use: scripts/gate.sh && git commit ...
 set -uo pipefail
+"$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/clean-test-scratch.sh"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG="$ROOT/build/check.log"
 mkdir -p "$ROOT/build"

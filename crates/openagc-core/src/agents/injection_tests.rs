@@ -22,7 +22,7 @@ use crate::{Core, CoreConfig, CoreEvent, EventListener};
 
 struct Noop;
 impl EventListener for Noop {
-    fn on_event(&self, _: CoreEvent) {}
+    fn on_event(&self, _: Option<String>, _: CoreEvent) {}
 }
 
 const ATTACKS: &[(&str, &str)] = &[

@@ -23,8 +23,12 @@ five minutes, and your mail still goes only from Google to your Mac.
    **Internal** if you use Google Workspace and only need your own domain.
 4. For External apps in **Testing** status, add your Gmail address under
    **Test users**.
-5. Under **Data access**, add the scope
-   `https://www.googleapis.com/auth/gmail.modify`.
+5. Under **Data access**, add the scopes
+   `https://www.googleapis.com/auth/gmail.modify`, `openid` and
+   `.../auth/userinfo.profile`. The last two are non-sensitive; they give
+   OpenAGC your name and picture for the account switcher. If you want
+   *Download faster over IMAP* (Settings › Accounts), also add
+   `https://mail.google.com/`: IMAP only works with full mail access.
 
 ## 3. Create the client
 
@@ -56,7 +60,8 @@ Google allows automatically; there is nothing to configure.
   the warning screen but ends the weekly expiry).
 - **Why `gmail.modify`?** It lets OpenAGC read mail and change labels
   (archive, read/unread) and send. It cannot permanently delete mail.
-  OpenAGC requests no other scopes.
+  Besides it, OpenAGC asks only for `openid profile` (your name and
+  picture).
 - **The client secret is not really secret.** Google treats desktop clients
   as unable to keep secrets; security comes from PKCE and the loopback
   redirect, not the secret. OpenAGC still keeps it out of logs.

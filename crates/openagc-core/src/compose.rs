@@ -124,6 +124,7 @@ impl Core {
     }
 
     pub async fn reply_draft(&self, message_id: String, reply_all: bool) -> Result<DraftInfo, CoreError> {
+        self.refuse_if_archive()?;
         let me = vec![self.own_address().await?];
         let db = self.db()?;
         runtime::run(
@@ -133,12 +134,14 @@ impl Core {
     }
 
     pub async fn forward_draft(&self, message_id: String) -> Result<DraftInfo, CoreError> {
+        self.refuse_if_archive()?;
         let db = self.db()?;
         runtime::run(async move { Ok(mail_sync::forward_draft(&db, &MessageId(message_id)).await?.into()) }).await
     }
 
     /// Save (autosave) a draft; returns its id.
     pub async fn save_draft(&self, draft: DraftInfo) -> Result<i64, CoreError> {
+        self.refuse_if_archive()?;
         let db = self.db()?;
         runtime::run(async move {
             let record: DraftRecord = draft.into();
@@ -163,7 +166,7 @@ impl Core {
         let db = self.db()?;
         let now = mail_sync::now_millis();
         runtime::run(async move { Ok(db.write(move |tx| drafts::discard(tx, id, now)).await?) }).await?;
-        if let Some(service) = self.accounts.sync_service() {
+        if let Some(service) = self.sync_service() {
             service.outbox_changed();
         }
         Ok(())
@@ -172,7 +175,7 @@ impl Core {
     /// A composer closed: mirror its edits to the server now rather than
     /// at the next 30 s tick. Does nothing without a connected account.
     pub fn flush_drafts(&self) {
-        if let Some(service) = self.accounts.sync_service() {
+        if let Some(service) = self.sync_service() {
             service.flush_drafts();
         }
     }
@@ -180,10 +183,11 @@ impl Core {
     /// Send a saved draft. With Gmail connected it goes through the outbox
     /// (retried if offline); the demo mailbox "sends" locally.
     pub async fn send_draft(&self, id: i64) -> Result<(), CoreError> {
+        self.refuse_if_archive()?;
         let from = EmailAddress::new(None, &self.own_address().await?);
         let db = self.db()?;
-        let service = self.accounts.sync_service();
-        let events = self.events.clone();
+        let service = self.sync_service();
+        let events = self.account_events();
         runtime::run(async move {
             let changes = mail_sync::send_draft(&db, id, from, service.is_some()).await.map_err(|e| match e {
                 mail_sync::SyncError::Store(mail_store::StoreError::Invalid(m)) => {
@@ -221,6 +225,72 @@ impl Core {
     }
 }
 
+/// Compose operations pinned to one account (spec §7.7): a composer window
+/// keeps saving and sending as the account it was opened on, whichever
+/// account the main window shows by then.
+#[derive(uniffi::Object)]
+pub struct AccountComposer {
+    core: std::sync::Arc<Core>,
+    account: String,
+}
+
+impl AccountComposer {
+    async fn scoped<F: std::future::Future>(&self, fut: F) -> F::Output {
+        crate::registry::scoped(Some(self.account.clone()), fut).await
+    }
+}
+
+#[uniffi::export]
+impl AccountComposer {
+    pub fn account_id(&self) -> String {
+        self.account.clone()
+    }
+
+    pub async fn account_address(&self) -> Result<String, CoreError> {
+        self.scoped(self.core.account_address()).await
+    }
+
+    pub async fn reply_draft(&self, message_id: String, reply_all: bool) -> Result<DraftInfo, CoreError> {
+        self.scoped(self.core.reply_draft(message_id, reply_all)).await
+    }
+
+    pub async fn forward_draft(&self, message_id: String) -> Result<DraftInfo, CoreError> {
+        self.scoped(self.core.forward_draft(message_id)).await
+    }
+
+    pub async fn save_draft(&self, draft: DraftInfo) -> Result<i64, CoreError> {
+        self.scoped(self.core.save_draft(draft)).await
+    }
+
+    pub async fn get_draft(&self, id: i64) -> Result<Option<DraftInfo>, CoreError> {
+        self.scoped(self.core.get_draft(id)).await
+    }
+
+    pub async fn delete_draft(&self, id: i64) -> Result<(), CoreError> {
+        self.scoped(self.core.delete_draft(id)).await
+    }
+
+    pub async fn send_draft(&self, id: i64) -> Result<(), CoreError> {
+        self.scoped(self.core.send_draft(id)).await
+    }
+
+    pub fn flush_drafts(&self) {
+        crate::registry::SCOPED_ACCOUNT.sync_scope(self.account.clone(), || self.core.flush_drafts());
+    }
+
+    pub fn suggest_contacts_now(&self, text: String, limit: u32) -> Vec<AddressInfo> {
+        crate::registry::SCOPED_ACCOUNT.sync_scope(self.account.clone(), || self.core.suggest_contacts_now(text, limit))
+    }
+}
+
+#[uniffi::export]
+impl Core {
+    /// Compose operations for `account_id` (see `AccountComposer`).
+    pub fn composer_for(self: std::sync::Arc<Self>, account_id: String) -> std::sync::Arc<AccountComposer> {
+        std::sync::Arc::new(AccountComposer { core: self, account: account_id })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -231,7 +301,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     #[test]

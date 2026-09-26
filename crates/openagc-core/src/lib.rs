@@ -7,6 +7,7 @@ uniffi::setup_scaffolding!();
 
 mod account;
 mod agents;
+mod archive;
 mod attachments;
 mod cloud_routines;
 mod compose;
@@ -16,22 +17,25 @@ pub mod ffi;
 mod logging;
 mod mail;
 mod mutations;
+mod registry;
 mod routines;
 mod runtime;
 pub mod secrets;
 mod sync;
 
-pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
+pub use account::{BackfillStatus, ConnectedAccount, OAuthClientConfig, SignInStart};
 pub use agents::{
     AgentActionInfo, AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem,
     PromptContextInfo, TextExtractor,
 };
+pub use archive::{ImportStatus, MailboxScan};
 pub use attachments::AttachmentFileInfo;
 pub use cloud_routines::RoutineHandoff;
-pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
+pub use compose::{AccountComposer, DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};
 pub use mutations::OutboxStatus;
+pub use registry::{AccountKind, AccountSummary, OrphanedStore};
 pub use routines::{RoutineInfo, RoutinePreviewRow, RoutineRunInfo};
 pub use secrets::SecretStore;
 
@@ -52,7 +56,10 @@ pub struct Core {
     config: CoreConfig,
     events: EventBus,
     secrets: Arc<dyn SecretStore>,
-    account: RwLock<Option<mail::Account>>,
+    open_accounts: RwLock<registry::OpenAccounts>,
+    /// Serializes changes to `accounts/index.json`.
+    index_lock: tokio::sync::Mutex<()>,
+    imports: archive::Imports,
     accounts: account::AccountState,
     agents: agents::AgentHub,
 }
@@ -75,7 +82,9 @@ impl Core {
             config,
             events,
             secrets,
-            account: RwLock::new(None),
+            open_accounts: RwLock::new(registry::OpenAccounts::default()),
+            index_lock: tokio::sync::Mutex::new(()),
+            imports: Default::default(),
             accounts: Default::default(),
             agents: Default::default(),
         }))
@@ -110,7 +119,7 @@ impl Core {
     /// inserted `thread_ids`, one event per id, to exercise coalescing.
     pub fn debug_emit_threads_changed(&self, mailbox_id: String, thread_ids: Vec<String>) {
         for id in thread_ids {
-            self.events.emit(CoreEvent::ThreadsChanged {
+            self.account_events().emit(CoreEvent::ThreadsChanged {
                 mailbox_id: mailbox_id.clone(),
                 hint: ChangeHint { inserted: vec![id], ..ChangeHint::default() },
             });
@@ -128,7 +137,7 @@ mod tests {
 
     struct NoopListener;
     impl EventListener for NoopListener {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     fn core() -> Arc<Core> {

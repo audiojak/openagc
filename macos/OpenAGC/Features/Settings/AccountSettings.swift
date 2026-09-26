@@ -5,7 +5,8 @@ import SwiftUI
 /// and which Google sign-in client to use (spec §7.3).
 struct AccountSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var confirmingSignOut = false
+    @State private var removing: AccountSummary?
+    @State private var orphans: [OrphanedStore] = []
 
     var body: some View {
         Form {
@@ -16,14 +17,17 @@ struct AccountSettings: View {
                     Button("Connect Gmail Instead…") { Task { await model.signIn(with: .effective()) } }
                         .disabled(!GoogleClientConfiguration.effective().isUsable)
                 case .open:
-                    LabeledContent("Account") { Text(model.accountEmail ?? "Connected") }
+                    ForEach(model.accounts, id: \.id) { account in
+                        AccountRow(account: account, onRemove: { removing = account })
+                    }
+                    if model.accounts.isEmpty {
+                        LabeledContent("Account") { Text(model.accountEmail ?? "Connected") }
+                    }
                     if model.needsReauthentication {
                         Label(reauthenticationHint, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                     }
-                    HStack {
-                        Button("Sign In Again…") { Task { await model.signIn(with: .effective()) } }
-                        Button("Sign Out…", role: .destructive) { confirmingSignOut = true }
-                    }
+                    Button("Add Account…") { Task { await model.addAccount() } }
+                        .disabled(!GoogleClientConfiguration.effective().isUsable)
                 case .signingIn:
                     HStack {
                         ProgressView().controlSize(.small)
@@ -43,10 +47,25 @@ struct AccountSettings: View {
                 Text("Your own client avoids Google's unverified-app warning. OpenAGC asks only for permission to read and organize mail (gmail.modify).")
                     .foregroundStyle(.secondary)
             }
-            if case .open(let id) = model.accountState, id != AppModel.demoAccountID {
-                SyncWindowSection()
-            }
+
             Section("Data on this Mac") {
+                ForEach(orphans, id: \.id) { orphan in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Leftover mail from \(orphan.email ?? "an old sign-in")")
+                            Text(ByteCountFormatter.string(fromByteCount: Int64(orphan.bytes), countStyle: .file))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Delete", role: .destructive) {
+                            Task {
+                                try? await model.core?.removeOrphanedStore(orphan.id)
+                                orphans = (try? await model.core?.orphanedStores()) ?? []
+                            }
+                        }
+                    }
+                    .help("A copy of downloaded mail that no account in OpenAGC uses any more. Gmail is not affected.")
+                }
                 HStack {
                     Button("Show Mail Data") {
                         if let dir = try? CoreClient.defaultDataDirectory() { NSWorkspace.shared.activateFileViewerSelecting([dir]) }
@@ -56,10 +75,15 @@ struct AccountSettings: View {
             }
         }
         .formStyle(.grouped)
-        .confirmationDialog("Sign out of Gmail?", isPresented: $confirmingSignOut) {
-            Button("Sign Out", role: .destructive) { Task { await model.signOut() } }
+        .task(id: model.accounts.map(\.id)) { orphans = (try? await model.core?.orphanedStores()) ?? [] }
+        .confirmationDialog("Remove \(removing?.email ?? "this account") from OpenAGC?",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove", role: .destructive) {
+                if let account = removing { Task { await model.removeAccount(account.id) } }
+                removing = nil
+            }
         } message: {
-            Text("OpenAGC forgets the sign-in. Mail already downloaded stays on this Mac until you delete it.")
+            Text("OpenAGC forgets the sign-in and deletes the mail it downloaded for this account. Gmail itself is not changed.")
         }
     }
 }
@@ -74,6 +98,99 @@ extension AccountSettings {
             "The saved sign-in isn't available to this copy of OpenAGC, so mail isn't syncing. Downloaded mail is kept; sign in again to resume."
         case .googleRejected, nil:
             "Google asked you to sign in again."
+        }
+    }
+}
+
+/// One account in Settings › Accounts (spec §7.7): who it is, whether it
+/// is syncing, how far back it downloads, and Remove….
+struct AccountRow: View {
+    @Environment(AppModel.self) private var model
+    let account: AccountSummary
+    let onRemove: () -> Void
+    @State private var window: SyncWindow?
+    @State private var signedIn: Bool?
+    @State private var backfill: BackfillStatus?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                AccountAvatar(account: account, size: 32)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(account.displayName ?? account.email).font(.body.weight(.medium))
+                    if account.displayName != nil { Text(account.email).font(.caption).foregroundStyle(.secondary) }
+                    Text(status).font(.caption).foregroundStyle(signedIn == false ? .orange : .secondary)
+                }
+                Spacer()
+                if account.id != model.openAccountID {
+                    Button("Show") { Task { await model.switchAccount(to: account.id) } }
+                }
+                if account.kind == .archive {
+                    Button("Re-import…") { Task { _ = try? await model.core?.reimportArchive(account.id) } }
+                        .disabled(model.imports[account.id].map { !$0.done } ?? false)
+                }
+                if signedIn == false {
+                    Button("Sign In…") {
+                        Task {
+                            await model.switchAccount(to: account.id)
+                            await model.signIn(with: .effective())
+                        }
+                    }
+                }
+                Button("Remove…", role: .destructive, action: onRemove)
+            }
+            if account.kind == .gmail {
+                Picker("Download mail from", selection: Binding(
+                    get: { window ?? .halfYear },
+                    set: { newValue in
+                        window = newValue
+                        Task { try? await model.core?.setSyncWindow(newValue, for: account.id) }
+                    }
+                )) {
+                    ForEach(SyncWindowSection.choices, id: \.0) { choice in
+                        Text(choice.1).tag(choice.0)
+                    }
+                }
+                .disabled(window == nil)
+                Toggle(isOn: Binding(get: { account.imapEnabled },
+                                     set: { on in Task { await model.setFasterDownload(on, for: account.id) } })) {
+                    Text("Download faster over IMAP")
+                    Text("Asks Google for full mail access, which IMAP needs. OpenAGC still never deletes mail permanently.")
+                }
+                .disabled(signedIn != true)
+            }
+        }
+        .padding(.vertical, 2)
+        .task(id: account.id) {
+            window = try? await model.core?.syncWindow(for: account.id)
+            signedIn = account.kind == .gmail ? ((try? model.core?.accountHasCredentials(account.id)) ?? false) : nil
+            backfill = await model.core?.backfillStatus(account.id)
+        }
+    }
+
+    /// Which transport backfill is using, when it is not the default.
+    private var transportNote: String {
+        switch backfill?.transport {
+        case "imap":
+            let today = ByteCountFormatter.string(fromByteCount: Int64(backfill?.imapBytesToday ?? 0), countStyle: .file)
+            return " · over IMAP (\(today) today)"
+        case "imap-refused": return " · IMAP refused by Google, using the API"
+        default: return ""
+        }
+    }
+
+    private var status: String {
+        switch (account.kind, signedIn) {
+        case (.archive, _):
+            if let status = model.imports[account.id], !status.done {
+                "Importing… \(status.imported.formatted()) messages"
+            } else {
+                "Imported mailbox · cannot send"
+            }
+        case (_, false?): "Not syncing — sign in again"
+        case (_, true?):
+            (account.id == model.openAccountID ? "Showing · syncing" : "Syncing in the background") + transportNote
+        default: " "
         }
     }
 }

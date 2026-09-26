@@ -23,7 +23,10 @@ pub const MAX_HINT_IDS: usize = 200;
 
 #[uniffi::export(with_foreign)]
 pub trait EventListener: Send + Sync {
-    fn on_event(&self, event: CoreEvent);
+    /// `account_id` is the account the event is about, or `None` for
+    /// app-wide events (logs). Swift drops events for accounts the window
+    /// is not showing, except the ones it surfaces app-wide (spec §7.7).
+    fn on_event(&self, account_id: Option<String>, event: CoreEvent);
 }
 
 /// What changed in a mailbox's thread list, so views can patch rows in
@@ -143,6 +146,10 @@ pub enum CoreEvent {
         session_id: String,
         events: Vec<crate::agents::AgentEventInfo>,
     },
+    /// A mailbox import moved on or finished (spec §7.8).
+    ImportProgress {
+        status: crate::ImportStatus,
+    },
     /// Warn/error log records from Rust, logged by Swift with `os.Logger`
     /// so unified-logging privacy stays under Swift's control (spec §17).
     Log {
@@ -153,9 +160,11 @@ pub enum CoreEvent {
 }
 
 /// Cheap, cloneable handle for emitting events from anywhere in the core.
+/// A bus may be tagged with an account; its events carry that id.
 #[derive(Clone)]
 pub struct EventBus {
-    tx: mpsc::UnboundedSender<CoreEvent>,
+    tx: mpsc::UnboundedSender<(Option<String>, CoreEvent)>,
+    account: Option<String>,
 }
 
 impl EventBus {
@@ -164,17 +173,24 @@ impl EventBus {
     pub fn start(listener: Arc<dyn EventListener>, handle: &Handle) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         handle.spawn(dispatch(rx, listener));
-        Self { tx }
+        Self { tx, account: None }
+    }
+
+    /// The same bus, tagging what it emits with `account`.
+    pub fn for_account(&self, account: Option<String>) -> Self {
+        Self { tx: self.tx.clone(), account }
     }
 
     /// Never blocks; events emitted after shutdown are dropped.
     pub fn emit(&self, event: CoreEvent) {
-        let _ = self.tx.send(event);
+        let _ = self.tx.send((self.account.clone(), event));
     }
 }
 
-async fn dispatch(mut rx: mpsc::UnboundedReceiver<CoreEvent>, listener: Arc<dyn EventListener>) {
-    let mut pending: BTreeMap<String, ChangeHint> = BTreeMap::new();
+type MailboxKey = (Option<String>, String);
+
+async fn dispatch(mut rx: mpsc::UnboundedReceiver<(Option<String>, CoreEvent)>, listener: Arc<dyn EventListener>) {
+    let mut pending: BTreeMap<MailboxKey, ChangeHint> = BTreeMap::new();
     let mut deadline: Option<Instant> = None;
 
     loop {
@@ -190,27 +206,28 @@ async fn dispatch(mut rx: mpsc::UnboundedReceiver<CoreEvent>, listener: Arc<dyn 
             },
             None => rx.recv().await,
         };
-        let Some(event) = event else {
+        let Some((account, event)) = event else {
             flush(&mut pending, listener.as_ref());
             return;
         };
         match event {
             CoreEvent::ThreadsChanged { mailbox_id, hint } => {
-                let merged = match pending.remove(&mailbox_id) {
+                let key = (account, mailbox_id);
+                let merged = match pending.remove(&key) {
                     Some(prev) => prev.merge(hint),
                     None => hint,
                 };
-                pending.insert(mailbox_id, merged);
+                pending.insert(key, merged);
                 deadline.get_or_insert_with(|| Instant::now() + COALESCE_WINDOW);
             }
-            other => listener.on_event(other),
+            other => listener.on_event(account, other),
         }
     }
 }
 
-fn flush(pending: &mut BTreeMap<String, ChangeHint>, listener: &dyn EventListener) {
-    for (mailbox_id, hint) in std::mem::take(pending) {
-        listener.on_event(CoreEvent::ThreadsChanged { mailbox_id, hint });
+fn flush(pending: &mut BTreeMap<MailboxKey, ChangeHint>, listener: &dyn EventListener) {
+    for ((account, mailbox_id), hint) in std::mem::take(pending) {
+        listener.on_event(account, CoreEvent::ThreadsChanged { mailbox_id, hint });
     }
 }
 
@@ -223,7 +240,7 @@ mod tests {
     struct Recorder(Mutex<Vec<CoreEvent>>);
 
     impl EventListener for Recorder {
-        fn on_event(&self, event: CoreEvent) {
+        fn on_event(&self, _account: Option<String>, event: CoreEvent) {
             self.0.lock().unwrap().push(event);
         }
     }

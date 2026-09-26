@@ -55,6 +55,13 @@ pub(crate) async fn call(core: &Arc<Core>, session: &str, tool: Tool, arguments:
     if read_only && tool.risk() != permissions::Risk::ReadOnly {
         return Outcome::error("denied", "this is a preview: nothing may be changed");
     }
+    // An archive has no server to send through (spec §7.8): a clear, final
+    // answer so the agent stops instead of retrying.
+    if matches!(tool, Tool::CreateDraft | Tool::UpdateDraft | Tool::Send | Tool::Forward)
+        && core.refuse_if_archive().is_err()
+    {
+        return Outcome::error("cannot_send", crate::archive::CANNOT_SEND);
+    }
     let refusal = match checked {
         None => return Outcome::error("unknown_session", "this agent session has ended"),
         Some(Err(reason)) => Some(reason.to_string()),
@@ -597,7 +604,7 @@ async fn update_draft(core: &Arc<Core>, session: &str, arguments: Value) -> Resu
         })
         .flatten()
         .ok_or_else(not_yours)?;
-    if core.agents.approvals.is_frozen(a.draft_id) {
+    if core.agents.approvals.is_frozen(core.effective_account_id().as_deref(), a.draft_id) {
         return Err(Outcome::error("denied", "the user is reviewing this draft; wait for their answer"));
     }
     let mut draft = core

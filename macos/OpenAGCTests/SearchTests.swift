@@ -60,3 +60,14 @@ struct SearchTests {
         #expect(model.threads.mailboxID == "@archive")
     }
 }
+
+@MainActor
+struct ServerSearchTests {
+    @Test func accountsWithoutAServerNeverAskGmail() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let core = try CoreClient(dataDirectory: dir)
+        try await core.setCurrentAccount("demo")
+        #expect(try await core.searchServer("anything", limit: 10) == 0, "no sync service: nothing to ask")
+    }
+}

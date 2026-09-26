@@ -21,7 +21,7 @@ struct AgentFFITests {
         var completed = false
         let deadline = ContinuousClock.now + .seconds(5)
         for await event in core.events {
-            guard case let .agent(sessionID, events) = event, sessionID == session else { continue }
+            guard case let .agent(sessionID, events) = event.event, sessionID == session else { continue }
             for e in events {
                 if case let .textDelta(delta) = e { text += delta }
                 if case .turnCompleted = e { completed = true }

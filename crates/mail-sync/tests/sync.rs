@@ -165,6 +165,92 @@ async fn the_sync_window_bounds_the_backfill_and_can_be_widened_or_narrowed() {
     assert_eq!(engine.window().await.unwrap(), SyncWindow::HalfYear);
 }
 
+/// A backfill source that answers from the fake provider's data but
+/// counts its calls, standing in for a bulk transport.
+struct CountingSource(Arc<FakeProvider>, std::sync::atomic::AtomicUsize);
+
+#[async_trait::async_trait]
+impl provider_api::BackfillSource for CountingSource {
+    async fn fetch(&self, ids: &[MessageId]) -> provider_api::ProviderResult<Vec<FetchedMessage>> {
+        self.1.fetch_add(ids.len(), std::sync::atomic::Ordering::SeqCst);
+        use provider_api::MailProvider;
+        self.0.fetch_messages(ids, provider_api::Priority::Background).await
+    }
+    async fn fetch_headers(&self, ids: &[MessageId]) -> provider_api::ProviderResult<Option<Vec<FetchedMessage>>> {
+        use provider_api::MailProvider;
+        let mut all = self.0.fetch_messages(ids, provider_api::Priority::Background).await?;
+        for m in &mut all {
+            m.body = None;
+        }
+        Ok(Some(all))
+    }
+    fn name(&self) -> &'static str {
+        "counting"
+    }
+}
+
+#[tokio::test]
+async fn a_headers_pass_fills_the_list_before_bodies_and_leaves_them_queued() {
+    let (fake, db, _recorder, engine) = setup("headers");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
+    seed_mailbox(&fake);
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    assert_eq!(engine.headers_pass(100).await.unwrap(), 0, "REST: headers cost as much as bodies, so no pass");
+
+    engine.set_backfill_source(Arc::new(CountingSource(fake.clone(), Default::default())));
+    assert_eq!(engine.headers_pass(3).await.unwrap(), 3);
+    assert_eq!(engine.headers_pass(100).await.unwrap(), 2);
+    assert_eq!(engine.headers_pass(100).await.unwrap(), 0, "every queued message has a row");
+    let inbox = db.read(|c| read::list_threads(c, "INBOX", None, 10)).await.unwrap();
+    assert_eq!(inbox.rows.len(), 2, "browsable already");
+    assert!(db.read(|c| read::get_body(c, &MessageId::new("inbox-unread"))).await.unwrap().is_none(), "no body yet");
+    assert_eq!(db.read(queue::len).await.unwrap(), 5, "still queued for bodies");
+
+    // Opening one moves it to the front.
+    engine.prioritize(vec![MessageId::new("ancient")]).await.unwrap();
+    assert_eq!(db.read(|c| queue::peek(c, 1)).await.unwrap(), vec![MessageId::new("ancient")]);
+    assert_eq!(engine.backfill_all().await.unwrap(), 5);
+    assert!(db.read(|c| read::get_body(c, &MessageId::new("inbox-unread"))).await.unwrap().is_some());
+    assert_consistent(&db);
+}
+
+#[tokio::test]
+async fn backfill_bodies_come_from_the_configured_source() {
+    let (fake, db, _recorder, engine) = setup("source");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
+    seed_mailbox(&fake);
+    assert_eq!(engine.backfill_source_name(), "rest");
+    let source = Arc::new(CountingSource(fake.clone(), Default::default()));
+    engine.set_backfill_source(source.clone());
+    assert_eq!(engine.backfill_source_name(), "counting");
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    assert_eq!(engine.backfill_all().await.unwrap(), 5);
+    assert_eq!(source.1.load(std::sync::atomic::Ordering::SeqCst), 5, "every body came through the source");
+    engine.use_rest_backfill();
+    assert_eq!(engine.backfill_source_name(), "rest");
+    assert_eq!(db.read(queue::len).await.unwrap(), 0);
+}
+
+#[tokio::test]
+async fn server_search_downloads_matches_outside_the_window() {
+    let (fake, db, _recorder, engine) = setup("server-search");
+    seed_mailbox(&fake);
+    // Six months: "ancient" (900 days) stays on the server.
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    engine.backfill_all().await.unwrap();
+    assert!(db.read(|c| read::get_thread(c, &ThreadId::new("t5"))).await.unwrap().is_none());
+
+    assert_eq!(engine.search_server("t5", 10).await.unwrap(), 1, "the subject matches");
+    let (summary, _) = db.read(|c| read::get_thread(c, &ThreadId::new("t5"))).await.unwrap().unwrap();
+    assert_eq!(summary.subject, "Subject t5");
+    assert_eq!(engine.search_server("t5", 10).await.unwrap(), 0, "already here");
+    assert_eq!(engine.search_server("nothing-like-this", 10).await.unwrap(), 0);
+    assert_consistent(&db);
+}
+
 #[tokio::test]
 async fn incremental_sync_applies_new_mail_label_changes_and_deletions() {
     let (fake, db, recorder, engine) = setup("incremental");

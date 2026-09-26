@@ -64,6 +64,18 @@ pub fn peek(conn: &Connection, limit: usize) -> StoreResult<Vec<MessageId>> {
     Ok(ids)
 }
 
+/// Queued ids with no message row at all (not even headers), most urgent
+/// first: what a headers-first pass should fill.
+pub fn without_rows(conn: &Connection, limit: usize) -> StoreResult<Vec<MessageId>> {
+    let mut stmt = conn.prepare_cached(
+        "SELECT q.gmail_id FROM backfill_queue q
+         WHERE NOT EXISTS (SELECT 1 FROM messages m WHERE m.gmail_id = q.gmail_id)
+         ORDER BY q.priority, q.seq LIMIT ?1",
+    )?;
+    let ids = stmt.query_map([limit as i64], |r| Ok(MessageId(r.get(0)?)))?.collect::<Result<_, _>>()?;
+    Ok(ids)
+}
+
 pub fn remove(tx: &Transaction<'_>, ids: &[MessageId]) -> StoreResult<()> {
     let mut stmt = tx.prepare_cached("DELETE FROM backfill_queue WHERE gmail_id = ?1")?;
     for id in ids {

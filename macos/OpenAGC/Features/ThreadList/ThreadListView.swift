@@ -89,10 +89,17 @@ struct ThreadListView: NSViewRepresentable {
             rows.count
         }
 
+        /// Rows drag out as thread ids, so a sidebar label can take them.
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard rows.indices.contains(row) else { return nil }
+            return ThreadDrag.payload(for: rows[row].id) as NSString
+        }
+
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             let view = tableView.makeView(withIdentifier: ThreadRowView.identifier, owner: nil) as? ThreadRowView
                 ?? ThreadRowView()
-            view.configure(with: rows[row])
+            view.configure(with: rows[row], chips: ThreadRowView.chips(for: rows[row], labels: model.chipLabels,
+                                                                     excluding: model.threads.mailboxID))
             view.setAccessibilityCustomActions(accessibilityActions(for: rows[row]))
             model.threads.rowWillAppear(at: row)
             return view
@@ -115,8 +122,7 @@ struct ThreadListView: NSViewRepresentable {
                 act("Move to Trash") { $0.trashSelection() },
                 act(row.unreadCount > 0 ? "Mark as Read" : "Mark as Unread") { $0.toggleReadSelection() },
                 act(row.isStarred ? "Unstar" : "Star") { $0.toggleStarSelection() },
-                act("Reply") { $0.reply(all: false) },
-            ]
+            ] + (model.isArchive ? [] : [act("Reply") { $0.reply(all: false) }])
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
@@ -161,6 +167,18 @@ struct ThreadListView: NSViewRepresentable {
 
 /// The thread table, with Mail-style single-key shortcuts and a context
 /// menu (spec §14.3). Keys act on the selection.
+/// Thread ids on the drag pasteboard, as prefixed strings so a stray text
+/// drag can never be mistaken for a thread.
+enum ThreadDrag {
+    static let prefix = "openagc-thread:"
+
+    static func payload(for threadID: String) -> String { prefix + threadID }
+
+    static func threadIDs(in strings: [String]) -> [String] {
+        strings.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil }
+    }
+}
+
 final class ThreadTableView: NSTableView {
     weak var model: AppModel?
 
@@ -222,30 +240,62 @@ final class ThreadTableView: NSTableView {
         return menu
     }
 
+    /// The label tree as nested menus: a parent label opens a submenu whose
+    /// first item is the parent itself (spec §14.3).
     private func labelMenu() -> NSMenu {
         let menu = NSMenu()
         guard let model else { return menu }
         let targets = Set(model.actionTargets)
-        let rows = model.threads.rows.filter { targets.contains($0.id) }
-        for label in model.mailboxes.labels {
-            guard let id = label.labelId else { continue }
-            let applied = !rows.isEmpty && rows.allSatisfy { $0.labelIds.contains(id) }
-            let item = ActionItem(label.name) { model.setLabel(id, applied: !applied) }
-            item.state = applied ? .on : .off
-            menu.addItem(item)
+        let picker = LabelPickerModel(labels: model.mailboxes.labels,
+                                      targets: model.threads.rows.filter { targets.contains($0.id) }, filter: "")
+        let states = Dictionary(uniqueKeysWithValues: picker.rows.map { ($0.node.path, $0.state) })
+        func add(_ nodes: [LabelNode], to menu: NSMenu) {
+            for node in nodes {
+                let state = states[node.path] ?? .off
+                let own: NSMenuItem? = node.mailbox?.labelId.map { id in
+                    let item = ActionItem(node.children.isEmpty ? node.name : "\(node.name) (this label)") {
+                        model.setLabel(id, applied: state != .on)
+                    }
+                    item.state = state
+                    item.toolTip = node.path
+                    return item
+                }
+                if node.children.isEmpty {
+                    if let own { menu.addItem(own) }
+                    continue
+                }
+                let parent = NSMenuItem(title: node.name, action: nil, keyEquivalent: "")
+                let sub = NSMenu()
+                if let own {
+                    sub.addItem(own)
+                    sub.addItem(.separator())
+                }
+                add(node.children, to: sub)
+                parent.submenu = sub
+                menu.addItem(parent)
+            }
         }
+        add(LabelTree.build(model.mailboxes.labels), to: menu)
         if menu.items.isEmpty {
             let empty = NSMenuItem(title: "No Labels", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         }
+        menu.addItem(.separator())
+        menu.addItem(ActionItem("New Label…") { [weak self] in self?.showLabelPicker() })
         return menu
     }
 
     private func showLabelMenu() {
+        showLabelPicker()
+    }
+
+    /// The `l` popover: the label tree with a filter and "Create …".
+    private func showLabelPicker() {
+        guard let model else { return }
         let row = selectedRow >= 0 ? selectedRow : 0
-        let rect = rect(ofRow: row)
-        labelMenu().popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.maxY), in: self)
+        let rect = numberOfRows > 0 ? rect(ofRow: row) : visibleRect
+        LabelPickerPopover.show(relativeTo: rect, of: self, model: model)
     }
 }
 

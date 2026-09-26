@@ -3,7 +3,7 @@
 
 mod approvals;
 mod sessions;
-mod tools;
+pub(crate) mod tools;
 
 pub use approvals::AgentActionInfo;
 
@@ -59,6 +59,9 @@ pub(crate) struct AgentHub {
     /// Where cloud routine calls look for `claude`; tests point it at a
     /// fake. `None` means the user's real CLI.
     pub(crate) cloud_locator: Mutex<Option<agent_api::process::Locator>>,
+    /// The account each session was started on. Its tool calls, transcript
+    /// and events stay on that account whatever the window shows (§7.7).
+    session_accounts: Mutex<HashMap<String, String>>,
 }
 
 /// The real agent adapters (spec §9.3, §9.4).
@@ -71,6 +74,17 @@ impl AgentHub {
         let state =
             ToolSession { guard: SessionGuard::new(scope), draft_quotes: HashMap::new(), read_only: false, sink };
         self.sessions.lock().unwrap_or_else(|e| e.into_inner()).insert(session.to_owned(), state);
+    }
+
+    /// Bind a session to the account it acts on.
+    pub(crate) fn bind_account(&self, session: &str, account: String) {
+        self.session_accounts.lock().unwrap_or_else(|e| e.into_inner()).insert(session.to_owned(), account);
+    }
+
+    /// The account a session acts on; `None` for sessions never bound
+    /// (tests), which follow the window's current account.
+    pub(crate) fn session_account(&self, session: &str) -> Option<String> {
+        self.session_accounts.lock().unwrap_or_else(|e| e.into_inner()).get(session).cloned()
     }
 
     pub(crate) fn unregister(&self, session: &str) {
@@ -99,7 +113,10 @@ impl ToolHandler for ToolRouter {
 
     async fn call(&self, session: &str, tool: Tool, arguments: serde_json::Value) -> Outcome {
         match self.core.upgrade() {
-            Some(core) => tools::call(&core, session, tool, arguments).await,
+            Some(core) => {
+                let account = core.agents.session_account(session);
+                crate::registry::scoped(account, tools::call(&core, session, tool, arguments)).await
+            }
             None => Outcome::error("app_unavailable", "OpenAGC is shutting down"),
         }
     }

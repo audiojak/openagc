@@ -174,16 +174,21 @@ async fn forward(mut rx: mpsc::UnboundedReceiver<(SessionId, AgentEvent)>, event
                 AgentEvent::TurnFailed { .. } => Some(false),
                 _ => None,
             });
+            let account = core.upgrade().and_then(|c| c.agents.session_account(sid.as_str()));
             if let Some(core) = core.upgrade() {
-                core.persist_agent_events(&sid, &list).await;
+                crate::registry::scoped(account.clone(), core.persist_agent_events(&sid, &list)).await;
                 // Routine runs finish when their turn does (off this task, so
                 // the event stream keeps flowing while the run is recorded).
                 if let Some(succeeded) = ended {
                     let session = sid.0.clone();
-                    tokio::spawn(async move { core.routine_turn_ended(&session, succeeded).await });
+                    let account = account.clone();
+                    tokio::spawn(crate::registry::scoped(account, async move {
+                        core.routine_turn_ended(&session, succeeded).await
+                    }));
                 }
             }
             events
+                .for_account(account)
                 .emit(CoreEvent::AgentEvents { session_id: sid.0, events: list.into_iter().map(Into::into).collect() });
         }
     }
@@ -373,20 +378,25 @@ impl Core {
 
     /// A stored conversation's prompts and events, for showing it again.
     pub async fn agent_transcript(&self, session_id: String) -> Result<Vec<AgentTranscriptItem>, CoreError> {
-        let db = self.db()?;
-        runtime::run(async move {
-            let rows = db.read(move |c| mail_store::agents::transcript(c, &session_id)).await?;
-            Ok(rows
-                .into_iter()
-                .filter_map(|r| match r.role.as_str() {
-                    "user" => serde_json::from_str::<String>(&r.content_json)
-                        .ok()
-                        .map(|text| AgentTranscriptItem::Prompt { text }),
-                    _ => serde_json::from_str::<AgentEvent>(&r.content_json)
-                        .ok()
-                        .map(|e| AgentTranscriptItem::Event { event: e.into() }),
-                })
-                .collect())
+        // The session's own account, whatever the window shows (§7.7).
+        let account = self.agents.session_account(&session_id).or_else(|| self.effective_account_id());
+        crate::registry::scoped(account, async move {
+            let db = self.db()?;
+            runtime::run(async move {
+                let rows = db.read(move |c| mail_store::agents::transcript(c, &session_id)).await?;
+                Ok(rows
+                    .into_iter()
+                    .filter_map(|r| match r.role.as_str() {
+                        "user" => serde_json::from_str::<String>(&r.content_json)
+                            .ok()
+                            .map(|text| AgentTranscriptItem::Prompt { text }),
+                        _ => serde_json::from_str::<AgentEvent>(&r.content_json)
+                            .ok()
+                            .map(|e| AgentTranscriptItem::Event { event: e.into() }),
+                    })
+                    .collect())
+            })
+            .await
         })
         .await
     }
@@ -397,25 +407,31 @@ impl Core {
         prompt: String,
         context: PromptContextInfo,
     ) -> Result<(), CoreError> {
-        let turn = TurnInput {
-            prompt,
-            context: PromptContext {
-                mailbox: context.mailbox_id,
-                selected_thread_ids: context.selected_thread_ids.into_iter().map(ThreadId).collect(),
-                search_query: context.search_query,
-            },
-        };
-        // A new prompt from the user resets the session's bulk count.
-        self.agents.with_session(&session_id, |s| s.guard.new_user_prompt());
-        if let Ok(db) = self.db() {
-            let (uuid, text) = (session_id.clone(), serde_json::to_string(&turn.prompt).unwrap_or_default());
-            let _ = runtime::run(async move {
-                Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::append(tx, &uuid, "user", &text)).await?)
-            })
-            .await;
-        }
-        let core = self.clone();
-        runtime::run(async move { Ok(core.agent_runtime().manager.send(&SessionId(session_id), turn).await?) }).await
+        // The session's own account, whatever the window shows (§7.7).
+        let account = self.agents.session_account(&session_id).or_else(|| self.effective_account_id());
+        crate::registry::scoped(account, async move {
+            let turn = TurnInput {
+                prompt,
+                context: PromptContext {
+                    mailbox: context.mailbox_id,
+                    selected_thread_ids: context.selected_thread_ids.into_iter().map(ThreadId).collect(),
+                    search_query: context.search_query,
+                },
+            };
+            // A new prompt from the user resets the session's bulk count.
+            self.agents.with_session(&session_id, |s| s.guard.new_user_prompt());
+            if let Ok(db) = self.db() {
+                let (uuid, text) = (session_id.clone(), serde_json::to_string(&turn.prompt).unwrap_or_default());
+                let _ = runtime::run(async move {
+                    Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::append(tx, &uuid, "user", &text)).await?)
+                })
+                .await;
+            }
+            let core = self.clone();
+            runtime::run(async move { Ok(core.agent_runtime().manager.send(&SessionId(session_id), turn).await?) })
+                .await
+        })
+        .await
     }
 
     pub async fn cancel_agent_turn(self: Arc<Self>, session_id: String) -> Result<(), CoreError> {
@@ -427,17 +443,22 @@ impl Core {
 
     /// End a session; its pending tool calls are refused from now on.
     pub async fn close_agent_session(self: Arc<Self>, session_id: String) -> Result<(), CoreError> {
-        self.agents.approvals.reject_session(&session_id);
-        self.agents.unregister(&session_id);
-        if let Ok(db) = self.db() {
-            let (uuid, now) = (session_id.clone(), mail_sync::now_millis());
-            let _ = runtime::run(async move {
-                Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::end_session(tx, &uuid, now)).await?)
-            })
-            .await;
-        }
-        let core = self.clone();
-        runtime::run(async move { Ok(core.agent_runtime().manager.close(&SessionId(session_id)).await?) }).await
+        // The session's own account, whatever the window shows (§7.7).
+        let account = self.agents.session_account(&session_id).or_else(|| self.effective_account_id());
+        crate::registry::scoped(account, async move {
+            self.agents.approvals.reject_session(&session_id);
+            self.agents.unregister(&session_id);
+            if let Ok(db) = self.db() {
+                let (uuid, now) = (session_id.clone(), mail_sync::now_millis());
+                let _ = runtime::run(async move {
+                    Ok::<_, CoreError>(db.write(move |tx| mail_store::agents::end_session(tx, &uuid, now)).await?)
+                })
+                .await;
+            }
+            let core = self.clone();
+            runtime::run(async move { Ok(core.agent_runtime().manager.close(&SessionId(session_id)).await?) }).await
+        })
+        .await
     }
 }
 
@@ -450,6 +471,7 @@ impl Core {
         resume: Option<String>,
     ) -> Result<String, CoreError> {
         let db = self.db()?; // an account must be open: the tools read it
+        let account = self.effective_account_id();
         let socket_path = self.mcp_socket_path()?;
         let resources = self.agents.resources.read().unwrap_or_else(|e| e.into_inner()).clone();
         let rt = self.agent_runtime();
@@ -460,6 +482,9 @@ impl Core {
             None => Scope::Mailbox,
         };
         // Registered before the CLI starts, so its first tool call finds it.
+        if let Some(account) = account {
+            self.agents.bind_account(id.as_str(), account);
+        }
         self.agents.register(id.as_str(), scope, Some(EventSink::new(id.clone(), rt.tx.clone())));
         let (uuid, name, now) = (id.0.clone(), provider.as_str().to_owned(), mail_sync::now_millis());
         runtime::run(async move {
@@ -470,7 +495,7 @@ impl Core {
         let cfg = SessionConfig {
             session_id: id.clone(),
             mcp: McpEndpoint { shim_path: resources.shim_path, socket_path },
-            system_prompt_file: resources.system_prompt_path,
+            system_prompt_file: self.system_prompt_for_session(&resources.system_prompt_path, &working_dir),
             working_dir,
             model: None,
             max_turns: SessionConfig::DEFAULT_MAX_TURNS,

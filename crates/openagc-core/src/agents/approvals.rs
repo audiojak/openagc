@@ -20,21 +20,36 @@ pub(crate) const APPROVAL_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 pub(crate) struct Pending {
     session: String,
+    /// The account whose store holds the action and the draft: draft and
+    /// action ids are only unique within one store (spec §7.7).
+    account: Option<String>,
     decide: oneshot::Sender<bool>,
     /// A draft the agent may not change while the user looks at it.
     frozen_draft: Option<i64>,
 }
 
+/// Waiting approvals, keyed by a process-wide ticket rather than the
+/// per-store action row id, so two accounts' proposals never collide.
 #[derive(Default)]
 pub(crate) struct Approvals {
     pending: Mutex<HashMap<i64, Pending>>,
+    next_ticket: std::sync::atomic::AtomicI64,
     /// Tests shorten this.
     pub(crate) timeout: Mutex<Option<Duration>>,
 }
 
 impl Approvals {
-    pub(crate) fn is_frozen(&self, draft_id: i64) -> bool {
-        self.pending.lock().unwrap_or_else(|e| e.into_inner()).values().any(|p| p.frozen_draft == Some(draft_id))
+    /// Whether `draft_id` in `account`'s store is frozen by a pending send.
+    pub(crate) fn is_frozen(&self, account: Option<&str>, draft_id: i64) -> bool {
+        self.pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .any(|p| p.frozen_draft == Some(draft_id) && p.account.as_deref() == account)
+    }
+
+    fn ticket(&self) -> i64 {
+        self.next_ticket.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
     }
 
     fn timeout(&self) -> Duration {
@@ -133,19 +148,27 @@ impl Core {
             return Err(Outcome::error("failed", "could not record the proposal"));
         };
         let (tx, rx) = oneshot::channel();
+        // The card is answered by ticket; the row id stays for the record.
+        let ticket = self.agents.approvals.ticket();
+        let account = self.effective_account_id();
         self.agents
             .approvals
             .pending
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(action_id, Pending { session: session.to_owned(), decide: tx, frozen_draft: draft_id });
+            .insert(ticket, Pending { session: session.to_owned(), account, decide: tx, frozen_draft: draft_id });
         self.agents.with_session(session, |s| {
             if let Some(sink) = &s.sink {
-                sink.emit(AgentEvent::ActionProposed { action_id, tool: tool.name().to_owned(), summary, draft_id });
+                sink.emit(AgentEvent::ActionProposed {
+                    action_id: ticket,
+                    tool: tool.name().to_owned(),
+                    summary,
+                    draft_id,
+                });
             }
         });
         let decision = tokio::time::timeout(self.agents.approvals.timeout(), rx).await;
-        self.agents.approvals.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&action_id);
+        self.agents.approvals.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&ticket);
         let (approved, state, outcome) = match decision {
             Ok(Ok(true)) => (true, "approved", None),
             Ok(Ok(false)) | Ok(Err(_)) => {
@@ -159,7 +182,7 @@ impl Core {
         };
         self.agents.with_session(session, |s| {
             if let Some(sink) = &s.sink {
-                sink.emit(AgentEvent::ActionResolved { action_id, approved });
+                sink.emit(AgentEvent::ActionResolved { action_id: ticket, approved });
             }
         });
         self.finish_action(Some(action_id), state, None).await;
@@ -172,7 +195,8 @@ impl Core {
 
 #[uniffi::export]
 impl Core {
-    /// The user's answer to a proposed action (spec §10.4).
+    /// The user's answer to a proposed action (spec §10.4). `action_id`
+    /// is the ticket from `ActionProposed`.
     pub fn resolve_agent_action(&self, action_id: i64, approve: bool) -> Result<(), CoreError> {
         let pending = self.agents.approvals.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&action_id);
         match pending {
@@ -219,4 +243,23 @@ pub struct AgentActionInfo {
     pub result_summary: Option<String>,
     pub created_at: i64,
     pub resolved_at: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tickets_are_unique_and_frozen_drafts_belong_to_their_account() {
+        let approvals = Approvals::default();
+        let (a, b) = (approvals.ticket(), approvals.ticket());
+        assert_ne!(a, b, "two accounts' first actions (both row 1) get different tickets");
+        let (tx, _rx) = oneshot::channel();
+        approvals.pending.lock().unwrap().insert(
+            a,
+            Pending { session: "s".into(), account: Some("alpha".into()), decide: tx, frozen_draft: Some(1) },
+        );
+        assert!(approvals.is_frozen(Some("alpha"), 1));
+        assert!(!approvals.is_frozen(Some("beta"), 1), "draft 1 in another store is a different draft");
+    }
 }

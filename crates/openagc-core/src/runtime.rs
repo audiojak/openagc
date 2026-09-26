@@ -34,7 +34,9 @@ where
     F: Future<Output = Result<T, CoreError>> + Send + 'static,
     T: Send + 'static,
 {
-    match runtime().spawn(fut).await {
+    // Work scoped to an account stays scoped on the runtime (registry).
+    let account = crate::registry::scoped_account();
+    match runtime().spawn(crate::registry::scoped(account, fut)).await {
         Ok(result) => result,
         Err(e) if e.is_cancelled() => Err(CoreError::new(ErrorKind::Cancelled, "task was cancelled")),
         Err(e) => Err(CoreError::new(ErrorKind::Internal, format!("task panicked: {e}"))),

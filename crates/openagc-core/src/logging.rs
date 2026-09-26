@@ -289,7 +289,7 @@ mod tests {
     #[derive(Default)]
     struct Recorder(Mutex<Vec<CoreEvent>>);
     impl crate::EventListener for Recorder {
-        fn on_event(&self, event: CoreEvent) {
+        fn on_event(&self, _account: Option<String>, event: CoreEvent) {
             self.0.lock().unwrap().push(event);
         }
     }

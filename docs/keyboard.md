@@ -26,6 +26,7 @@ this list under **Help › Keyboard Shortcuts** (⇧⌘/). It is generated from
 |---|---|
 | `⌘F` | Search mail |
 | `⌘1 – ⌘6` | Inbox, Starred, Sent, Drafts, Archive, Trash |
+| `⌃1 – ⌃9` | Switch to account 1–9 (OpenAGC › Accounts) |
 
 ## In the thread list
 
@@ -36,7 +37,7 @@ this list under **Help › Keyboard Shortcuts** (⇧⌘/). It is generated from
 | `#  or  ⌫` | Move to Trash |
 | `u` | Mark as read or unread |
 | `s` | Star or unstar |
-| `l` | Label… |
+| `l` | Label… (filter, or type a new `a/b` path to create it) |
 | `r` | Reply |
 | `a` | Reply all |
 | `f` | Forward |

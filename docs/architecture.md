@@ -62,6 +62,35 @@ in [SPECIFICATION.md](SPECIFICATION.md); this page is the map.
   whole thread as one document in a locked-down `WKWebView` (no JavaScript,
   CSP, remote images blocked, links checked).
 
+## Accounts
+
+- **Several accounts, one window** (spec §7.7): `accounts/index.json` lists
+  the user's accounts; each has its own store, Keychain items, routines and
+  agent sessions. The core keeps every opened store and a *current* one
+  (what the window shows); every account syncs in the background.
+- **Scoped work**: work done for one account runs under a task-local
+  *scoped account* (`registry::SCOPED_ACCOUNT`) that every store, sync and
+  event lookup honours: agent tool calls and transcripts (bound to the
+  account the session started on), background routine runs, composer
+  windows (`AccountComposer`), per-account settings. `runtime::run` carries
+  the scope onto the core runtime. Events carry their account id and the
+  window ignores other accounts' except new-mail notifications.
+- **Archive accounts** (spec §7.8): mailboxes imported from mbox files
+  (`mail-mime::mbox`, `mail-sync::import`). No provider, sync or sign-in;
+  the core refuses drafting and sending there, and agents are told so.
+
+## Backfill transports
+
+Listing, history, writes and new mail always use the Gmail REST API.
+Backfill bodies go through a `BackfillSource`: REST by default, or
+`provider-gmail::imap::ImapBackfill` when the user turned on *Download
+faster over IMAP* (full mail access). IMAP maps API ids to UIDs with one
+`X-GM-MSGID` fetch, fills header-only rows first so the list is browsable,
+then fetches bodies in batches; anything it should not serve (spam and
+trash, messages over 2 MB, past the daily budget, a refused login) falls
+back to REST. Tests use an in-process fake IMAP server
+(`provider-gmail::imap_fake`).
+
 ## How agents work
 
 A prompt starts (or resumes) an agent session with the user's own Claude Code

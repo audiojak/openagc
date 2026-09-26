@@ -36,6 +36,7 @@ chrono.workspace = true
 reqwest.workspace = true
 
 [dev-dependencies]
+provider-gmail = { workspace = true, features = ["fake-imap"] }
 futures = "0.3"
 tokio = { workspace = true, features = ["test-util"] }
 

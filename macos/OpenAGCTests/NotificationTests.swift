@@ -65,6 +65,53 @@ struct NotificationTests {
         #expect(model.selectedThreadID == row.id)
     }
 
+    @Test func withSeveralAccountsNotificationsNameTheirAccount() {
+        let (notifier, posted, _) = notifier()
+        notifier.announce(mail(1), account: .init(id: "work", label: "Work Me"))
+        notifier.announce(mail(4), account: .init(id: "home", label: nil))
+        let requests = posted()
+        #expect(requests[0].identifier == "work:m1")
+        #expect(requests[0].content.subtitle == "Work Me · Subject 1")
+        #expect(requests[0].content.userInfo["accountID"] as? String == "work")
+        #expect(requests[0].content.userInfo["threadID"] as? String == "t1")
+        #expect(requests[1].content.title == "4 new messages")
+        #expect(requests[1].content.subtitle.isEmpty, "one account: no label")
+        #expect(requests[1].content.userInfo["accountID"] as? String == "home")
+    }
+
+    @Test func clickingANotificationForAnotherAccountSwitchesToIt() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let core = try CoreClient(dataDirectory: dir)
+        try await core.addDemoAccount("work", email: "work@example.com", threads: 20)
+        try await core.addDemoAccount("home", email: "home@example.com", threads: 20)
+        let model = AppModel(core: core, defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        await model.start(openDemo: false)
+        #expect(model.openAccountID == "work")
+        #expect(model.notificationTag(for: "home") == .init(id: "home", label: "home@example.com"))
+        let homeThread = try #require(try await core.threads(in: "INBOX", limit: 50).rows.first).id
+        await model.reveal(threadID: homeThread, in: "home")
+        #expect(model.openAccountID == "home")
+        #expect(model.selectedThreadID == homeThread)
+    }
+
+    @Test func removingTheShownAccountOpensTheNextThenOnboarding() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let core = try CoreClient(dataDirectory: dir)
+        try await core.addDemoAccount("work", email: "work@example.com", threads: 10)
+        try await core.addDemoAccount("home", email: "home@example.com", threads: 10)
+        let model = AppModel(core: core, defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        await model.start(openDemo: false)
+        try await core.setSyncWindow(.year, for: "home")
+        #expect(try await core.syncWindow(for: "home") == .year)
+        #expect(try await core.syncWindow(for: "work") == .halfYear, "per account")
+        await model.removeAccount("work")
+        #expect(model.openAccountID == "home")
+        #expect(model.accounts.map(\.id) == ["home"])
+        await model.removeAccount("home")
+        #expect(model.accountState == .noAccount)
+        #expect(model.defaults.string(forKey: "accountID") == nil)
+    }
+
     @Test func dockBadgeFollowsInboxUnreadAndTheSetting() {
         let (notifier, _, defaults) = notifier()
         notifier.updateBadge(inboxUnread: 12)
