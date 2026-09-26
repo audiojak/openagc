@@ -104,6 +104,11 @@ final class CoreClient: Sendable {
 
     func cancelImport(_ accountID: String) { core.cancelImport(accountId: accountID) }
 
+    /// How an account's backfill fetches bodies ("rest", "imap", …).
+    func backfillStatus(_ accountID: String) async -> BackfillStatus {
+        await core.backfillStatus(accountId: accountID)
+    }
+
     func disableIMAP(_ accountID: String) async throws(CoreClientError) {
         try await call { try await core.disableImap(accountId: accountID) }
     }
@@ -614,6 +619,7 @@ typealias SyncWindow = OpenAGCCore.SyncWindow
 typealias AccountSummary = OpenAGCCore.AccountSummary
 typealias AccountKind = OpenAGCCore.AccountKind
 typealias ImportStatus = OpenAGCCore.ImportStatus
+typealias BackfillStatus = OpenAGCCore.BackfillStatus
 typealias MailboxScan = OpenAGCCore.MailboxScan
 typealias MailboxKind = OpenAGCCore.MailboxKind
 typealias MessageInfo = OpenAGCCore.MessageInfo

@@ -91,6 +91,7 @@ struct AccountRow: View {
     let onRemove: () -> Void
     @State private var window: SyncWindow?
     @State private var signedIn: Bool?
+    @State private var backfill: BackfillStatus?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -144,6 +145,18 @@ struct AccountRow: View {
         .task(id: account.id) {
             window = try? await model.core?.syncWindow(for: account.id)
             signedIn = account.kind == .gmail ? ((try? model.core?.accountHasCredentials(account.id)) ?? false) : nil
+            backfill = await model.core?.backfillStatus(account.id)
+        }
+    }
+
+    /// Which transport backfill is using, when it is not the default.
+    private var transportNote: String {
+        switch backfill?.transport {
+        case "imap":
+            let today = ByteCountFormatter.string(fromByteCount: Int64(backfill?.imapBytesToday ?? 0), countStyle: .file)
+            return " · over IMAP (\(today) today)"
+        case "imap-refused": return " · IMAP refused by Google, using the API"
+        default: return ""
         }
     }
 
@@ -156,7 +169,8 @@ struct AccountRow: View {
                 "Imported mailbox · cannot send"
             }
         case (_, false?): "Not syncing — sign in again"
-        case (_, true?): account.id == model.openAccountID ? "Showing · syncing" : "Syncing in the background"
+        case (_, true?):
+            (account.id == model.openAccountID ? "Showing · syncing" : "Syncing in the background") + transportNote
         default: " "
         }
     }

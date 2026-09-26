@@ -23,7 +23,7 @@ mod runtime;
 pub mod secrets;
 mod sync;
 
-pub use account::{ConnectedAccount, OAuthClientConfig, SignInStart};
+pub use account::{BackfillStatus, ConnectedAccount, OAuthClientConfig, SignInStart};
 pub use agents::{
     AgentActionInfo, AgentEventInfo, AgentProviderInfo, AgentSessionInfo, AgentStatusInfo, AgentTranscriptItem,
     PromptContextInfo, TextExtractor,

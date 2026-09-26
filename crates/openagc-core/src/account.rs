@@ -51,9 +51,45 @@ struct StoredClient {
     client_secret: Option<String>,
 }
 
+/// An account's backfill transport (spec §7.4 IMAP amendment).
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct BackfillStatus {
+    /// "rest", "imap", "imap-refused", or "none" when not syncing.
+    pub transport: String,
+    pub imap_bytes_today: u64,
+}
+
+/// IMAP backfill with the label-name map refreshed from the store before
+/// each batch, so labels created since sync started resolve.
+struct LabelRefreshingImap {
+    inner: Arc<provider_gmail::imap::ImapBackfill>,
+    labels: provider_gmail::imap::LabelNames,
+    db: mail_store::Db,
+}
+
+#[async_trait::async_trait]
+impl provider_api::BackfillSource for LabelRefreshingImap {
+    async fn fetch(
+        &self,
+        ids: &[mail_domain::MessageId],
+    ) -> provider_api::ProviderResult<Vec<provider_api::FetchedMessage>> {
+        if let Ok(labels) = self.db.read(mail_store::read::list_labels).await {
+            let names = labels.into_iter().map(|l| (l.name, l.id)).collect();
+            *self.labels.write().unwrap_or_else(|e| e.into_inner()) = names;
+        }
+        self.inner.fetch(ids).await
+    }
+
+    fn name(&self) -> &'static str {
+        self.inner.name()
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct AccountState {
     pending: Mutex<HashMap<String, (PendingAuthorization, OAuthClientConfig)>>,
+    /// IMAP backfill sources by account, for status.
+    imap: Mutex<HashMap<String, Arc<provider_gmail::imap::ImapBackfill>>>,
     /// One sync service per account; every signed-in account syncs in the
     /// background, whichever the window shows (spec §7.7).
     sync: Mutex<HashMap<String, Arc<SyncService>>>,
@@ -105,6 +141,37 @@ impl Core {
     /// Whether an account's sync is running.
     pub(crate) fn is_syncing(&self, account_id: &str) -> bool {
         self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).contains_key(account_id)
+    }
+
+    /// If the account granted full mail access, an IMAP source for its
+    /// backfill bodies (spec §7.4 IMAP amendment).
+    fn imap_if_granted(
+        &self,
+        account_id: &str,
+        rest: Arc<dyn MailProvider>,
+    ) -> Option<Arc<dyn provider_api::BackfillSource>> {
+        let entry = crate::registry::load_index(&self.data_path()).into_iter().find(|e| e.id == account_id)?;
+        if entry.imap != Some(true) {
+            return None;
+        }
+        let tokens = self.token_source(account_id).ok()?;
+        self.imap_source(account_id, provider_gmail::imap::ImapConfig::gmail(&entry.email), tokens, rest)
+    }
+
+    /// An IMAP backfill source for an account whose store is open (tests
+    /// point it at the fake server).
+    pub(crate) fn imap_source(
+        &self,
+        account_id: &str,
+        config: provider_gmail::imap::ImapConfig,
+        tokens: Arc<dyn provider_api::TokenSource>,
+        rest: Arc<dyn MailProvider>,
+    ) -> Option<Arc<dyn provider_api::BackfillSource>> {
+        let db = self.open_accounts.read().unwrap_or_else(|e| e.into_inner()).stores.get(account_id).cloned()?;
+        let labels: provider_gmail::imap::LabelNames = Default::default();
+        let imap = Arc::new(provider_gmail::imap::ImapBackfill::new(config, tokens, rest, labels.clone()));
+        self.accounts.imap.lock().unwrap_or_else(|e| e.into_inner()).insert(account_id.to_owned(), imap.clone());
+        Some(Arc::new(LabelRefreshingImap { inner: imap, labels, db }))
     }
 
     /// Stop one account's sync (removal, sign-in again).
@@ -213,13 +280,27 @@ impl From<mail_sync::SyncError> for CoreError {
 impl Core {
     /// Start sync for the open account with an explicit provider (tests use
     /// the in-memory fake; the app uses Gmail via `start_sync`).
+    #[cfg(test)]
     pub(crate) fn start_sync_with(self: &Arc<Self>, provider: Arc<dyn MailProvider>) -> Result<(), CoreError> {
+        self.start_sync_with_backfill(provider, None)
+    }
+
+    /// Start sync with an optional bulk backfill source, set before the
+    /// service starts so no batch goes the other way first.
+    pub(crate) fn start_sync_with_backfill(
+        self: &Arc<Self>,
+        provider: Arc<dyn MailProvider>,
+        backfill: Option<Arc<dyn provider_api::BackfillSource>>,
+    ) -> Result<(), CoreError> {
         let db = self.db()?;
         // Everything this account's sync reports is tagged with it, so a
         // background account never updates the window's (spec §7.7).
         let events = self.account_events();
         let observer = Arc::new(EventObserver { events: events.clone() });
         let engine = Arc::new(SyncEngine::new(provider, db, observer));
+        if let Some(source) = backfill {
+            engine.set_backfill_source(source);
+        }
         let weak = Arc::downgrade(self);
         let scoped_for_attribution = self.effective_account_id();
         let attribute: crate::sync::ExternalChanges = Arc::new(move |changes| {
@@ -403,7 +484,20 @@ impl Core {
             self.current_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
         // Restarts a running sync: after signing in again the token changed.
         let provider = self.gmail_provider(&account_id)?;
-        self.start_sync_with(provider)
+        let imap = self.imap_if_granted(&account_id, provider.clone());
+        self.start_sync_with_backfill(provider, imap)
+    }
+
+    /// How an account's backfill is fetching bodies (Settings shows it).
+    pub async fn backfill_status(&self, account_id: String) -> BackfillStatus {
+        let service = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).get(&account_id).cloned();
+        let imap = self.accounts.imap.lock().unwrap_or_else(|e| e.into_inner()).get(&account_id).cloned();
+        let transport = service.map(|s| s.engine().backfill_source_name().to_owned()).unwrap_or_else(|| "none".into());
+        let imap_bytes_today = match imap {
+            Some(imap) => runtime::run(async move { Ok(imap.bytes_today().await) }).await.unwrap_or(0),
+            None => 0,
+        };
+        BackfillStatus { transport, imap_bytes_today }
     }
 
     /// Start syncing every Gmail account that has a stored sign-in, in the
@@ -431,8 +525,9 @@ impl Core {
                     }
                 };
                 core.store_for(&entry.id).await?;
-                let started =
-                    crate::registry::SCOPED_ACCOUNT.sync_scope(entry.id.clone(), || core.start_sync_with(provider));
+                let imap = core.imap_if_granted(&entry.id, provider.clone());
+                let started = crate::registry::SCOPED_ACCOUNT
+                    .sync_scope(entry.id.clone(), || core.start_sync_with_backfill(provider, imap));
                 if let Err(e) = started {
                     tracing::warn!(account = %entry.id, error = %e, "could not start sync");
                 }
@@ -642,6 +737,69 @@ mod tests {
         );
         core.stop_sync();
         assert!(!core.is_syncing("work") && !core.is_syncing("home"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn with_imap_granted_backfill_bodies_come_over_imap_and_the_rest_stays_on_the_api() {
+        use provider_gmail::imap::{ImapConfig, ImapEndpoint};
+        use provider_gmail::imap_fake::{FakeImapMessage, FakeImapServer};
+
+        let dir = std::env::temp_dir().join(format!("openagc-core-imap-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let tagged = Arc::new(Tagged::default());
+        let core = Core::new(
+            CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            tagged.clone(),
+        )
+        .unwrap();
+        block_on(core.clone().set_current_account("acct".into())).unwrap();
+        crate::runtime::runtime().block_on(async {
+            let server = FakeImapServer::start("tok").await;
+            // The API lists two messages; IMAP holds their bodies. The ids
+            // match the way Gmail's do: hex in the API, decimal over IMAP.
+            let rest = Arc::new(FakeProvider::new("me@example.com", 1_790_000_000_000, 50));
+            for (n, msgid) in [(1u32, 0x1a0000000000001u64), (2, 0x1a0000000000002)] {
+                let mut m = message(&format!("{msgid:x}"), &["INBOX"]);
+                m.subject = "listed only".into();
+                m.body = None;
+                rest.seed(m);
+                let raw = format!(
+                    "From: Sender <s@example.com>\r\nTo: me@example.com\r\nSubject: IMAP {n}\r\nMessage-ID: <imap{n}@example.com>\r\nDate: Mon, 01 Sep 2025 10:00:00 +0000\r\n\r\nBody {n} over IMAP\r\n"
+                );
+                server.add(FakeImapMessage {
+                    uid: n,
+                    msgid,
+                    thrid: msgid,
+                    labels: vec!["\\Inbox".into()],
+                    flags: vec![],
+                    raw: raw.into_bytes(),
+                });
+            }
+            let config = ImapConfig { endpoint: ImapEndpoint::Plain(server.addr), ..ImapConfig::gmail("me@example.com") };
+            let imap = core.imap_source("acct", config, Arc::new(provider_api::token::StaticToken("tok".into())), rest.clone());
+            assert!(imap.is_some());
+            core.start_sync_with_backfill(rest.clone(), imap).unwrap();
+            for _ in 0..200 {
+                let rows = core.list_threads("INBOX".into(), None, 10).await.map(|p| p.rows).unwrap_or_default();
+                if rows.len() == 2 && rows.iter().all(|r| r.subject.starts_with("IMAP")) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+            let rows = core.list_threads("INBOX".into(), None, 10).await.unwrap().rows;
+            let mut subjects: Vec<String> = rows.iter().map(|r| r.subject.clone()).collect();
+            subjects.sort();
+            assert_eq!(subjects, ["IMAP 1", "IMAP 2"], "bodies came over IMAP");
+            assert_eq!(server.body_fetches(), 2);
+            assert_eq!(rest.fetch_calls.load(std::sync::atomic::Ordering::SeqCst), 0, "no REST body fetches");
+            let status = core.backfill_status("acct".into()).await;
+            assert_eq!(status.transport, "imap");
+            assert!(status.imap_bytes_today > 0);
+            assert_eq!(core.backfill_status("other".into()).await.transport, "none");
+        });
+        core.stop_sync();
         let _ = std::fs::remove_dir_all(&dir);
     }
 
