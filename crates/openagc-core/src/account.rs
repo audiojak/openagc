@@ -69,7 +69,33 @@ impl AccountState {
     }
 }
 
+/// The avatar's file name inside the account directory.
+pub(crate) const AVATAR_FILE: &str = "avatar.jpg";
+
 impl Core {
+    /// Download the account picture into the account directory. Returns the
+    /// file name on success; failures are logged and ignored.
+    pub(crate) async fn save_avatar(&self, http: &reqwest::Client, account_id: &str, url: &str) -> Option<String> {
+        let dir = crate::registry::accounts_dir(&self.data_path()).join(account_id);
+        match oauth::download_picture(http, &oauth::sized_picture_url(url, 96)).await {
+            Ok(bytes) => {
+                let written =
+                    tokio::fs::create_dir_all(&dir).await.and(tokio::fs::write(dir.join(AVATAR_FILE), bytes).await);
+                match written {
+                    Ok(()) => Some(AVATAR_FILE.to_owned()),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "could not save the account picture");
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "could not download the account picture");
+                None
+            }
+        }
+    }
+
     /// The sync service of the account this work acts on (scoped or current).
     pub(crate) fn sync_service(&self) -> Option<Arc<SyncService>> {
         let id = self.effective_account_id()?;
@@ -210,6 +236,11 @@ impl Core {
     }
 
     fn gmail_provider(&self, account_id: &str) -> Result<Arc<dyn MailProvider>, CoreError> {
+        Ok(Arc::new(GmailProvider::new(self.token_source(account_id)?)?))
+    }
+
+    /// The account's Google token source, from its stored sign-in.
+    fn token_source(&self, account_id: &str) -> Result<Arc<GoogleTokenSource>, CoreError> {
         let refresh = secrets::get_redacted(self.secrets.as_ref(), &keys::refresh_token(account_id))?
             .ok_or_else(|| CoreError::new(ErrorKind::Auth, "this account needs to sign in again"))?;
         let client_json = self
@@ -220,8 +251,43 @@ impl Core {
             serde_json::from_str(&client_json).map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?;
         let client =
             OAuthClient { client_id: stored.client_id, client_secret: stored.client_secret.map(Redacted::new) };
-        let tokens = GoogleTokenSource::new(client, refresh);
-        Ok(Arc::new(GmailProvider::new(tokens)?))
+        Ok(GoogleTokenSource::new(client, refresh))
+    }
+
+    /// Refresh an account's name and picture if the picture is over a week
+    /// old or missing (spec §7.7). Best effort: failures are logged.
+    async fn refresh_identity(&self, entry: &crate::registry::IndexEntry) {
+        const WEEK: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 3600);
+        let avatar = crate::registry::accounts_dir(&self.data_path()).join(&entry.id).join(AVATAR_FILE);
+        let fresh = tokio::fs::metadata(&avatar)
+            .await
+            .and_then(|m| m.modified())
+            .is_ok_and(|t| t.elapsed().is_ok_and(|age| age < WEEK));
+        if fresh {
+            return;
+        }
+        let Ok(source) = self.token_source(&entry.id) else { return };
+        let Ok(http) = reqwest_client() else { return };
+        let identity = match provider_api::TokenSource::access_token(source.as_ref()).await {
+            Ok(token) => oauth::fetch_userinfo(&http, oauth::USERINFO_URL, &token).await,
+            Err(e) => Err(e),
+        };
+        let identity = match identity {
+            Ok(identity) => identity,
+            Err(e) => {
+                // Accounts from before the profile scope: fine, initials stay.
+                tracing::info!(account = %entry.id, error = %e, "account picture not refreshed");
+                return;
+            }
+        };
+        let avatar_file = match &identity.picture {
+            Some(url) => self.save_avatar(&http, &entry.id, url).await,
+            None => None,
+        };
+        let mut updated = entry.clone();
+        updated.display_name = identity.name.or(updated.display_name);
+        updated.avatar_file = avatar_file.or(updated.avatar_file);
+        let _ = self.register_account(updated).await;
     }
 }
 
@@ -274,6 +340,7 @@ impl Core {
                     "Google did not return a refresh token; remove OpenAGC's access in your Google account and try again",
                 )
             })?;
+            let identity = tokens.id_token.as_deref().and_then(oauth::identity_from_id_token).unwrap_or_default();
             let source = GoogleTokenSource::new(client, Redacted::new(refresh.clone()));
             source.prime(tokens.access_token, tokens.expires_in).await;
             let gmail = GmailProvider::new(source)?;
@@ -295,12 +362,17 @@ impl Core {
                 client_key(&account_id),
                 serde_json::to_string(&stored).map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?,
             )?;
+            // The avatar is a nicety: a failed download leaves initials.
+            let avatar_file = match &identity.picture {
+                Some(url) => core.save_avatar(&http, &account_id, url).await,
+                None => None,
+            };
             core.register_account(crate::registry::IndexEntry {
                 id: account_id.clone(),
                 kind: crate::registry::AccountKind::Gmail,
                 email: profile.email.clone(),
-                display_name: None,
-                avatar_file: None,
+                display_name: identity.name.clone(),
+                avatar_file,
                 added_at: mail_sync::now_millis(),
             })
             .await?;
@@ -353,6 +425,8 @@ impl Core {
                 if let Err(e) = started {
                     tracing::warn!(account = %entry.id, error = %e, "could not start sync");
                 }
+                let refresher = core.clone();
+                tokio::spawn(async move { refresher.refresh_identity(&entry).await });
             }
             Ok(needs_sign_in)
         })

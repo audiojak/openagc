@@ -2,8 +2,10 @@
 //! loopback redirect on 127.0.0.1, code exchange and refresh. The browser
 //! is opened by the app; nothing here embeds a web view.
 //!
-//! Scope is `gmail.modify` only: Gmail's profile call returns the account's
-//! address, so no identity scope is needed.
+//! Scopes: `gmail.modify` for mail, plus `openid profile` so the token
+//! response carries an ID token with the account's name and picture for
+//! the account switcher (spec §7.7). Both identity scopes are
+//! non-sensitive. Gmail's profile call still supplies the address.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,7 +24,7 @@ use tokio::time::Instant;
 
 pub const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-pub const SCOPE: &str = "https://www.googleapis.com/auth/gmail.modify";
+pub const SCOPE: &str = "https://www.googleapis.com/auth/gmail.modify openid profile";
 
 /// Refresh this long before the access token actually expires.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
@@ -43,6 +45,73 @@ pub struct TokenResponse {
     pub expires_in: Option<u64>,
     #[serde(default)]
     pub refresh_token: Option<String>,
+    /// Present when `openid` was granted.
+    #[serde(default)]
+    pub id_token: Option<String>,
+}
+
+/// Who signed in, from the ID token (spec §7.7).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct Identity {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub picture: Option<String>,
+}
+
+/// Read the claims of an ID token. Not verified: it came straight from
+/// Google's token endpoint over TLS, which Google documents as sufficient
+/// for a token the client requested itself; it is used only for display.
+pub fn identity_from_id_token(id_token: &str) -> Option<Identity> {
+    let payload = id_token.split('.').nth(1)?;
+    let bytes = URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok()?;
+    let mut identity: Identity = serde_json::from_slice(&bytes).ok()?;
+    identity.name = identity.name.filter(|n| !n.trim().is_empty());
+    // Only Google's own image hosts, over HTTPS.
+    identity.picture = identity.picture.filter(|p| {
+        url::Url::parse(p).is_ok_and(|u| {
+            u.scheme() == "https"
+                && u.host_str().is_some_and(|h| h == "googleusercontent.com" || h.ends_with(".googleusercontent.com"))
+        })
+    });
+    Some(identity)
+}
+
+pub const USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
+
+/// The signed-in user's name and picture, for refreshing the avatar.
+pub async fn fetch_userinfo(http: &reqwest::Client, url: &str, token: &AccessToken) -> ProviderResult<Identity> {
+    let response =
+        http.get(url).bearer_auth(token.expose()).send().await.map_err(|e| ProviderError::Network(e.to_string()))?;
+    match response.status().as_u16() {
+        200 => {}
+        401 => return Err(ProviderError::Unauthorized),
+        403 => return Err(ProviderError::Forbidden("the profile scope was not granted".into())),
+        s => return Err(ProviderError::Invalid(format!("userinfo: HTTP {s}"))),
+    }
+    let claims: serde_json::Value = response.json().await.map_err(|e| ProviderError::Decode(e.to_string()))?;
+    // Same filtering as the ID token: reuse it on a synthetic token.
+    let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap_or_default());
+    Ok(identity_from_id_token(&format!("x.{payload}.x")).unwrap_or_default())
+}
+
+/// Picture URLs take a size suffix (`=s96-c`); ask for a small square.
+pub fn sized_picture_url(url: &str, pixels: u32) -> String {
+    let base = url.split('=').next().unwrap_or(url);
+    format!("{base}=s{pixels}-c")
+}
+
+/// Download an avatar image, at most 1 MB.
+pub async fn download_picture(http: &reqwest::Client, url: &str) -> ProviderResult<Vec<u8>> {
+    let response = http.get(url).send().await.map_err(|e| ProviderError::Network(e.to_string()))?;
+    if !response.status().is_success() {
+        return Err(ProviderError::Invalid(format!("picture: HTTP {}", response.status().as_u16())));
+    }
+    let bytes = response.bytes().await.map_err(|e| ProviderError::Network(e.to_string()))?;
+    if bytes.len() > 1_000_000 {
+        return Err(ProviderError::Invalid("picture too large".into()));
+    }
+    Ok(bytes.to_vec())
 }
 
 /// A started authorization: open `url` in the browser, then await the code.
@@ -97,8 +166,10 @@ pub async fn begin_with(
             .append_pair("code_challenge_method", "S256")
             .append_pair("state", &state)
             .append_pair("access_type", "offline")
-            // Always return a refresh token, even on re-authorization.
-            .append_pair("prompt", "consent");
+            // Always return a refresh token, even on re-authorization; and
+            // when adding an account (no hint), let the user pick which one
+            // instead of silently reusing the browser's session.
+            .append_pair("prompt", if login_hint.is_some() { "consent" } else { "consent select_account" });
         if let Some(hint) = login_hint {
             q.append_pair("login_hint", hint);
         }
@@ -332,7 +403,86 @@ mod tests {
         assert_eq!(q["redirect_uri"], pending.redirect_uri);
         assert!(pending.redirect_uri.starts_with("http://127.0.0.1:"));
         assert_eq!(q["login_hint"], "me@example.com");
+        assert_eq!(q["prompt"], "consent", "signing in again: the hinted account");
         assert!(q["state"].len() >= 32);
+        assert!(q["scope"].split(' ').any(|s| s == "openid") && q["scope"].split(' ').any(|s| s == "profile"));
+
+        let adding = begin(&client(), None).await.unwrap();
+        let q: std::collections::HashMap<String, String> =
+            url::Url::parse(&adding.url).unwrap().query_pairs().into_owned().collect();
+        assert_eq!(q["prompt"], "consent select_account", "adding: Google shows its account chooser");
+        assert!(!q.contains_key("login_hint"));
+    }
+
+    fn id_token(claims: serde_json::Value) -> String {
+        format!("eyJhbGciOiJSUzI1NiJ9.{}.sig", URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap()))
+    }
+
+    #[test]
+    fn the_id_token_gives_a_name_and_only_a_google_hosted_picture() {
+        let who = identity_from_id_token(&id_token(serde_json::json!({
+            "sub": "1", "name": "Ada Lovelace", "picture": "https://lh3.googleusercontent.com/a/abc=s96-c"
+        })))
+        .unwrap();
+        assert_eq!(who.name.as_deref(), Some("Ada Lovelace"));
+        assert_eq!(who.picture.as_deref(), Some("https://lh3.googleusercontent.com/a/abc=s96-c"));
+        assert_eq!(
+            sized_picture_url(who.picture.as_deref().unwrap(), 128),
+            "https://lh3.googleusercontent.com/a/abc=s128-c"
+        );
+
+        let hostile = identity_from_id_token(&id_token(serde_json::json!({
+            "name": " ", "picture": "http://evil.example/p.png"
+        })))
+        .unwrap();
+        assert_eq!(hostile, Identity::default(), "blank names and foreign or plain-http pictures are dropped");
+        let lookalike = identity_from_id_token(&id_token(
+            serde_json::json!({"picture": "https://googleusercontent.com.evil.example/x"}),
+        ))
+        .unwrap();
+        assert_eq!(lookalike.picture, None);
+        assert_eq!(identity_from_id_token("not-a-jwt"), None);
+    }
+
+    #[tokio::test]
+    async fn userinfo_gives_the_name_and_picture() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/userinfo"))
+            .and(wiremock::matchers::header("authorization", "Bearer at"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "sub": "1", "name": "Ada", "picture": "https://lh3.googleusercontent.com/a/x"
+            })))
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::new();
+        let who = fetch_userinfo(&http, &format!("{}/userinfo", server.uri()), &Redacted::new("at".to_owned()))
+            .await
+            .unwrap();
+        assert_eq!(who.name.as_deref(), Some("Ada"));
+        assert_eq!(who.picture.as_deref(), Some("https://lh3.googleusercontent.com/a/x"));
+        let denied =
+            fetch_userinfo(&http, &format!("{}/userinfo", server.uri()), &Redacted::new("other".to_owned())).await;
+        assert!(denied.is_err());
+    }
+
+    #[tokio::test]
+    async fn pictures_download_with_a_size_limit() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/small"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0xff, 0xd8, 0xff]))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/huge"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0u8; 1_200_000]))
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::new();
+        assert_eq!(download_picture(&http, &format!("{}/small", server.uri())).await.unwrap(), vec![0xff, 0xd8, 0xff]);
+        assert!(download_picture(&http, &format!("{}/huge", server.uri())).await.is_err());
+        assert!(download_picture(&http, &format!("{}/missing", server.uri())).await.is_err());
     }
 
     async fn hit(redirect_uri: &str, path_and_query: &str) -> String {

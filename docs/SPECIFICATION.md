@@ -786,10 +786,14 @@ agent sessions and Keychain items. New pieces:
   scanning the directories (each store records its `account_email`), then
   kept in step by sign-in and sign-out. The current account id lives in
   `UserDefaults` on the Swift side, not in the index.
-- Identity: sign-in requests `openid` and `userinfo.profile` alongside the
-  existing scopes (both non-sensitive; no verification change) and reads
-  `https://openidconnect.googleapis.com/v1/userinfo` once for `name` and
-  `picture`. The picture is downloaded to `accounts/<id>/avatar.jpg`
+- Identity: sign-in requests `openid` and `profile` alongside the
+  existing scopes (both non-sensitive; no verification change). The token
+  response's ID token carries `name` and `picture`, read without a
+  further call *(implementation note: the ID token comes straight from
+  Google's token endpoint over TLS and is used only for display, so it is
+  not signature-checked)*; `https://openidconnect.googleapis.com/v1/userinfo`
+  refreshes them weekly. Only `https` pictures on `*.googleusercontent.com`
+  are fetched, at most 1 MB. The picture is downloaded to `accounts/<id>/avatar.jpg`
   (refreshed weekly) and shown at 24 pt; without one, an initials disc
   coloured deterministically from the address. Adding an account uses the
   same sign-in flow with `prompt=select_account`, so Google shows the
