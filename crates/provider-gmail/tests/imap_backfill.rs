@@ -147,3 +147,20 @@ async fn the_daily_budget_hands_over_to_the_api() {
     assert_eq!(again[0].subject, "from REST");
     assert_eq!(server.body_fetches(), 1, "over budget: no more IMAP today");
 }
+
+#[tokio::test]
+async fn headers_come_without_bodies_for_a_browsable_list() {
+    let (server, _rest, source) = setup("good-token").await;
+    let headers = source.fetch_headers(&[hex(MSG_A), hex(MSG_B), hex(0x99)]).await.unwrap().expect("IMAP can");
+    assert_eq!(headers.len(), 2, "only what All Mail has");
+    assert!(headers.iter().all(|m| m.body.is_none()));
+    let a = headers.iter().find(|m| m.id == hex(MSG_A)).unwrap();
+    assert_eq!(a.subject, "Subject 1");
+    assert_eq!(a.thread_id, ThreadId(format!("{THREAD:x}")));
+    assert!(a.label_ids.iter().any(|l| l.as_str() == "INBOX"));
+    assert_eq!(server.header_fetches(), 2);
+    assert_eq!(server.body_fetches(), 0);
+
+    let (_s2, _r2, refused) = setup("wrong-token").await;
+    assert!(refused.fetch_headers(&[hex(MSG_A)]).await.unwrap().is_none(), "no cheap headers without IMAP");
+}

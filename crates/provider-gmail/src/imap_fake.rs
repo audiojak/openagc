@@ -34,6 +34,7 @@ struct State {
     /// Counters for assertions.
     logins: usize,
     body_fetches: usize,
+    header_fetches: usize,
     /// Refuse every AUTHENTICATE (an admin disabled IMAP).
     refuse_login: bool,
 }
@@ -84,6 +85,11 @@ impl FakeImapServer {
     /// Messages whose body was fetched.
     pub fn body_fetches(&self) -> usize {
         self.state.lock().unwrap().body_fetches
+    }
+
+    /// Messages whose headers alone were fetched.
+    pub fn header_fetches(&self) -> usize {
+        self.state.lock().unwrap().header_fetches
     }
 }
 
@@ -163,8 +169,12 @@ async fn serve(stream: TcpStream, state: Arc<Mutex<State>>) -> std::io::Result<(
                     s.messages.iter().filter(|m| in_set(set, m.uid, max)).cloned().collect()
                 };
                 let with_body = items.contains("BODY.PEEK[]") || items.contains("BODY[]");
+                let with_header = items.contains("BODY.PEEK[HEADER]");
                 if with_body {
                     state.lock().unwrap().body_fetches += messages.len();
+                }
+                if with_header {
+                    state.lock().unwrap().header_fetches += messages.len();
                 }
                 for (seq, m) in messages.iter().enumerate() {
                     let mut parts = vec![format!("UID {}", m.uid)];
@@ -196,6 +206,10 @@ async fn serve(stream: TcpStream, state: Arc<Mutex<State>>) -> std::io::Result<(
                     if with_body {
                         write.write_all(format!(" BODY[] {{{}}}\r\n", m.raw.len()).as_bytes()).await?;
                         write.write_all(&m.raw).await?;
+                    } else if with_header {
+                        let end = m.raw.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4).unwrap_or(m.raw.len());
+                        write.write_all(format!(" BODY[HEADER] {{{end}}}\r\n").as_bytes()).await?;
+                        write.write_all(&m.raw[..end]).await?;
                     }
                     write.write_all(b")\r\n").await?;
                 }

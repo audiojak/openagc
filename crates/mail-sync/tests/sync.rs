@@ -176,9 +176,43 @@ impl provider_api::BackfillSource for CountingSource {
         use provider_api::MailProvider;
         self.0.fetch_messages(ids, provider_api::Priority::Background).await
     }
+    async fn fetch_headers(&self, ids: &[MessageId]) -> provider_api::ProviderResult<Option<Vec<FetchedMessage>>> {
+        use provider_api::MailProvider;
+        let mut all = self.0.fetch_messages(ids, provider_api::Priority::Background).await?;
+        for m in &mut all {
+            m.body = None;
+        }
+        Ok(Some(all))
+    }
     fn name(&self) -> &'static str {
         "counting"
     }
+}
+
+#[tokio::test]
+async fn a_headers_pass_fills_the_list_before_bodies_and_leaves_them_queued() {
+    let (fake, db, _recorder, engine) = setup("headers");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
+    seed_mailbox(&fake);
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    assert_eq!(engine.headers_pass(100).await.unwrap(), 0, "REST: headers cost as much as bodies, so no pass");
+
+    engine.set_backfill_source(Arc::new(CountingSource(fake.clone(), Default::default())));
+    assert_eq!(engine.headers_pass(3).await.unwrap(), 3);
+    assert_eq!(engine.headers_pass(100).await.unwrap(), 2);
+    assert_eq!(engine.headers_pass(100).await.unwrap(), 0, "every queued message has a row");
+    let inbox = db.read(|c| read::list_threads(c, "INBOX", None, 10)).await.unwrap();
+    assert_eq!(inbox.rows.len(), 2, "browsable already");
+    assert!(db.read(|c| read::get_body(c, &MessageId::new("inbox-unread"))).await.unwrap().is_none(), "no body yet");
+    assert_eq!(db.read(queue::len).await.unwrap(), 5, "still queued for bodies");
+
+    // Opening one moves it to the front.
+    engine.prioritize(vec![MessageId::new("ancient")]).await.unwrap();
+    assert_eq!(db.read(|c| queue::peek(c, 1)).await.unwrap(), vec![MessageId::new("ancient")]);
+    assert_eq!(engine.backfill_all().await.unwrap(), 5);
+    assert!(db.read(|c| read::get_body(c, &MessageId::new("inbox-unread"))).await.unwrap().is_some());
+    assert_consistent(&db);
 }
 
 #[tokio::test]

@@ -326,6 +326,41 @@ impl SyncEngine {
         Ok(processed)
     }
 
+    /// Headers-first (spec §7.4 IMAP amendment): store header-only rows for
+    /// up to `max` queued messages that have no row yet, so the list is
+    /// browsable before their bodies arrive. They stay queued for bodies.
+    /// Returns how many were stored; 0 when the source cannot do it cheaply
+    /// or nothing is left.
+    pub async fn headers_pass(&self, max: usize) -> SyncResult<usize> {
+        let ids = self.db.read(move |c| queue::without_rows(c, max)).await?;
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let source = self.backfill.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let Some(headers) = source.fetch_headers(&ids).await? else { return Ok(0) };
+        let incoming: Vec<_> = headers.into_iter().map(to_incoming).collect();
+        let stored = incoming.len();
+        let changes = self
+            .db
+            .write(move |tx| {
+                let mut w = MailWriter::new(tx);
+                for m in &incoming {
+                    w.upsert_message(m)?;
+                }
+                w.finish()
+            })
+            .await?;
+        self.publish(&changes);
+        Ok(stored)
+    }
+
+    /// Fetch these messages next (the user opened one whose body is not
+    /// here yet).
+    pub async fn prioritize(&self, ids: Vec<MessageId>) -> SyncResult<()> {
+        self.db.write(move |tx| queue::enqueue_urgent(tx, &ids)).await?;
+        Ok(())
+    }
+
     /// Drain the queue completely (tests and small mailboxes).
     pub async fn backfill_all(&self) -> SyncResult<usize> {
         let mut total = 0;

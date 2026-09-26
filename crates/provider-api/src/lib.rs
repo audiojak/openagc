@@ -130,6 +130,13 @@ pub trait BackfillSource: Send + Sync {
     /// Full messages for `ids`, in any order; ids it cannot find are
     /// omitted, as with [`MailProvider::fetch_messages`].
     async fn fetch(&self, ids: &[MessageId]) -> ProviderResult<Vec<FetchedMessage>>;
+    /// Headers only (no bodies) for `ids`, if this source can get them far
+    /// more cheaply than bodies; `None` when it cannot (REST charges the
+    /// same for headers as for a whole message). Used to make the list
+    /// browsable before bodies arrive.
+    async fn fetch_headers(&self, _ids: &[MessageId]) -> ProviderResult<Option<Vec<FetchedMessage>>> {
+        Ok(None)
+    }
     /// A short name for logs and diagnostics ("rest", "imap").
     fn name(&self) -> &'static str;
 }

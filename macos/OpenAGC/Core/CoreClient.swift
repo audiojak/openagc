@@ -104,6 +104,11 @@ final class CoreClient: Sendable {
 
     func cancelImport(_ accountID: String) { core.cancelImport(accountId: accountID) }
 
+    /// Download these messages' bodies next (opened with headers only).
+    func prioritizeMessages(_ ids: [String]) async {
+        try? await call { try await core.prioritizeMessages(messageIds: ids) }
+    }
+
     /// How an account's backfill fetches bodies ("rest", "imap", …).
     func backfillStatus(_ accountID: String) async -> BackfillStatus {
         await core.backfillStatus(accountId: accountID)

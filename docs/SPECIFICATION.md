@@ -737,9 +737,13 @@ UID-ordered stream, newest last. Concretely:
    search see no difference. `X-GM-LABELS` plus `\Seen`/`\Flagged` map to
    label ids (`UNREAD`, `STARRED`); system labels use the API names.
 3. Listing stays on REST (`messages.list` is 5 units per 500 ids), so the
-   window and priority phases are unchanged. Optionally a headers-first
-   pass (`ENVELOPE` for the whole window) fills `messages` with
-   `body_state='metadata'` so the list is browsable minutes in.
+   window and priority phases are unchanged. A headers-first pass fills
+   `messages` with `body_state='metadata'` rows (1,000 per command) so the
+   list is browsable minutes in; bodies follow, and opening a header-only
+   message moves it to the front of the queue. *(Implemented with
+   `BODY.PEEK[HEADER]` parsed by `mail-mime`, not `ENVELOPE`, so headers
+   decode exactly like full messages. REST sources skip the pass: a
+   header fetch costs the same 20 units as a whole message.)*
 4. Scope: IMAP needs `https://mail.google.com/`, a superset of
    `gmail.modify`. Both are restricted scopes, so verification (§7.3) is
    unchanged, but the consent screen then asks to "read, compose, send and

@@ -22,6 +22,8 @@ pub const ACTIVE_POLL: Duration = Duration::from_secs(30);
 pub const BACKGROUND_POLL: Duration = Duration::from_secs(300);
 pub const DRAFT_MIRROR_INTERVAL: Duration = Duration::from_secs(30);
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
+/// Messages per headers-first batch.
+const HEADERS_BATCH: usize = 1_000;
 
 /// Turns engine output into UI events.
 pub(crate) struct EventObserver {
@@ -107,6 +109,13 @@ impl SyncService {
         self.outbox_wake.notify_one();
     }
 
+    /// Fetch these bodies next and wake the backfill.
+    pub async fn prioritize(&self, ids: Vec<mail_domain::MessageId>) -> Result<(), mail_sync::SyncError> {
+        self.engine.prioritize(ids).await?;
+        self.backfill_wake.notify_one();
+        Ok(())
+    }
+
     /// Mirror edited drafts to the server now (the composer closed).
     pub fn flush_drafts(&self) {
         self.drafts_wake.notify_one();
@@ -166,6 +175,18 @@ impl SyncService {
     async fn backfill_loop(self: Arc<Self>) {
         let mut backoff = Duration::from_secs(2);
         loop {
+            // Headers first where the source makes them cheap (IMAP), so
+            // the list fills in minutes; bodies follow (spec §7.4).
+            loop {
+                match self.engine.headers_pass(HEADERS_BATCH).await {
+                    Ok(0) => break,
+                    Ok(_) => continue,
+                    Err(e) => {
+                        tracing::warn!(error = %e, "headers pass failed; bodies continue");
+                        break;
+                    }
+                }
+            }
             match self.engine.backfill_batch(BACKFILL_BATCH).await {
                 Ok(0) => {
                     backoff = Duration::from_secs(2);

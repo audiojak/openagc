@@ -704,6 +704,11 @@ final class AppModel {
             if mailboxID == threads.mailboxID || threads.searchQuery != nil {
                 await threads.apply(hint)
             }
+            // A thread shown with headers only gets its bodies: show them.
+            if reader.isWaitingForBodies, let shown = reader.threadID,
+               hint.invalidate || hint.updated.contains(shown) {
+                await reader.reload()
+            }
         case let .error(error):
             logger.error("core error: \(error.message, privacy: .private)")
             if error.kind == .auth {

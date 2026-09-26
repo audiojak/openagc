@@ -275,6 +275,54 @@ impl BackfillSource for ImapBackfill {
         Ok(out)
     }
 
+    async fn fetch_headers(&self, ids: &[MessageId]) -> ProviderResult<Option<Vec<FetchedMessage>>> {
+        if self.is_refused() || self.over_budget().await {
+            return Ok(None);
+        }
+        let wanted: Vec<u64> = ids.iter().filter_map(|id| u64::from_str_radix(id.as_str(), 16).ok()).collect();
+        let mut state = self.state.lock().await;
+        let mut session = match state.session.take() {
+            Some(s) => s,
+            None => match self.connect().await {
+                Ok(s) => s,
+                Err(_) => return Ok(None),
+            },
+        };
+        if wanted.iter().any(|m| !state.map.contains_key(m)) {
+            match self.load_map(&mut session).await {
+                Ok(map) => state.map = map,
+                Err(_) => return Ok(None),
+            }
+        }
+        let uids: Vec<u32> = wanted.iter().filter_map(|m| state.map.get(m).map(|l| l.uid)).collect();
+        let labels = self.labels.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut out = Vec::with_capacity(uids.len());
+        let mut failed = false;
+        for chunk in uids.chunks(1000) {
+            let set = chunk.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+            let command =
+                format!("UID FETCH {set} (UID X-GM-MSGID X-GM-THRID X-GM-LABELS FLAGS INTERNALDATE BODY.PEEK[HEADER])");
+            let result = for_each_fetch(&mut session, &command, |attrs| {
+                if let Some(mut m) = to_fetched(attrs, &labels) {
+                    // Headers only: no body yet, so sync keeps it queued.
+                    m.body = None;
+                    m.snippet.clear();
+                    out.push(m);
+                }
+            })
+            .await;
+            if result.is_err() {
+                failed = true;
+                break;
+            }
+        }
+        if failed {
+            return Ok(None);
+        }
+        state.session = Some(session);
+        Ok(Some(out))
+    }
+
     fn name(&self) -> &'static str {
         if self.is_refused() { "imap-refused" } else { "imap" }
     }

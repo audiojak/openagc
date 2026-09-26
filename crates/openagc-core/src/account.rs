@@ -73,15 +73,29 @@ impl provider_api::BackfillSource for LabelRefreshingImap {
         &self,
         ids: &[mail_domain::MessageId],
     ) -> provider_api::ProviderResult<Vec<provider_api::FetchedMessage>> {
-        if let Ok(labels) = self.db.read(mail_store::read::list_labels).await {
-            let names = labels.into_iter().map(|l| (l.name, l.id)).collect();
-            *self.labels.write().unwrap_or_else(|e| e.into_inner()) = names;
-        }
+        self.refresh_labels().await;
         self.inner.fetch(ids).await
+    }
+
+    async fn fetch_headers(
+        &self,
+        ids: &[mail_domain::MessageId],
+    ) -> provider_api::ProviderResult<Option<Vec<provider_api::FetchedMessage>>> {
+        self.refresh_labels().await;
+        self.inner.fetch_headers(ids).await
     }
 
     fn name(&self) -> &'static str {
         self.inner.name()
+    }
+}
+
+impl LabelRefreshingImap {
+    async fn refresh_labels(&self) {
+        if let Ok(labels) = self.db.read(mail_store::read::list_labels).await {
+            let names = labels.into_iter().map(|l| (l.name, l.id)).collect();
+            *self.labels.write().unwrap_or_else(|e| e.into_inner()) = names;
+        }
     }
 }
 
@@ -488,6 +502,14 @@ impl Core {
         self.start_sync_with_backfill(provider, imap)
     }
 
+    /// Download these messages' bodies next: the user opened a message
+    /// that only has headers so far (spec §7.4 headers-first).
+    pub async fn prioritize_messages(&self, message_ids: Vec<String>) -> Result<(), CoreError> {
+        let Some(service) = self.sync_service() else { return Ok(()) };
+        let ids = message_ids.into_iter().map(mail_domain::MessageId).collect();
+        runtime::run(async move { service.prioritize(ids).await.map_err(CoreError::from) }).await
+    }
+
     /// How an account's backfill is fetching bodies (Settings shows it).
     pub async fn backfill_status(&self, account_id: String) -> BackfillStatus {
         let service = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).get(&account_id).cloned();
@@ -793,6 +815,7 @@ mod tests {
             subjects.sort();
             assert_eq!(subjects, ["IMAP 1", "IMAP 2"], "bodies came over IMAP");
             assert_eq!(server.body_fetches(), 2);
+            assert_eq!(server.header_fetches(), 2, "headers first");
             assert_eq!(rest.fetch_calls.load(std::sync::atomic::Ordering::SeqCst), 0, "no REST body fetches");
             let status = core.backfill_status("acct".into()).await;
             assert_eq!(status.transport, "imap");
