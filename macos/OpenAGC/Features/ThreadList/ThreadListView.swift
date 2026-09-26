@@ -89,6 +89,12 @@ struct ThreadListView: NSViewRepresentable {
             rows.count
         }
 
+        /// Rows drag out as thread ids, so a sidebar label can take them.
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> (any NSPasteboardWriting)? {
+            guard rows.indices.contains(row) else { return nil }
+            return ThreadDrag.payload(for: rows[row].id) as NSString
+        }
+
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             let view = tableView.makeView(withIdentifier: ThreadRowView.identifier, owner: nil) as? ThreadRowView
                 ?? ThreadRowView()
@@ -161,6 +167,18 @@ struct ThreadListView: NSViewRepresentable {
 
 /// The thread table, with Mail-style single-key shortcuts and a context
 /// menu (spec §14.3). Keys act on the selection.
+/// Thread ids on the drag pasteboard, as prefixed strings so a stray text
+/// drag can never be mistaken for a thread.
+enum ThreadDrag {
+    static let prefix = "openagc-thread:"
+
+    static func payload(for threadID: String) -> String { prefix + threadID }
+
+    static func threadIDs(in strings: [String]) -> [String] {
+        strings.compactMap { $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil }
+    }
+}
+
 final class ThreadTableView: NSTableView {
     weak var model: AppModel?
 

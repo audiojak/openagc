@@ -51,6 +51,15 @@ struct OpenAGCApp: App {
 
     private static func makeCore() -> CoreClient? {
         do {
+            // Snapshots and automation point the app at a throwaway data
+            // directory (`-OpenAGCDataDirectory /tmp/x`) so they can never
+            // open, or start syncing, the user's real accounts.
+            if let override = UserDefaults.standard.string(forKey: "OpenAGCDataDirectory"), !override.isEmpty {
+                let dir = URL(filePath: override, directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                return try CoreClient(dataDirectory: dir, logDirectory: dir.appending(path: "Logs"),
+                                      secrets: KeychainSecretStore(service: "ai.actual.openagc.scratch"))
+            }
             return try CoreClient(dataDirectory: CoreClient.defaultDataDirectory(),
                                   logDirectory: CoreClient.defaultLogDirectory())
         } catch {

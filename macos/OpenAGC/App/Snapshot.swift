@@ -3,7 +3,9 @@ import os
 
 /// Headless UI verification without Screen Recording permission: launched
 /// with `-OpenAGCSnapshot /path.png`, the app renders its own main window
-/// to a PNG and quits. Options (all user defaults, so also launch args):
+/// to a PNG and quits. Always pair it with `-OpenAGCDataDirectory <tmp>`
+/// and `-OpenAGCDemo YES` so no real account is opened (see
+/// scripts/snapshot.sh). Options (all user defaults, so also launch args):
 ///   -OpenAGCSnapshotDelay <seconds>     wait before capturing (default 3)
 ///   -OpenAGCSnapshotSelectFirst YES     select the first thread first
 ///   -OpenAGCSnapshotMailbox <id>        switch mailbox first
@@ -112,7 +114,14 @@ enum Snapshot {
     /// Debugging layouts: the view tree with frames, to stderr.
     private static func dump(_ view: NSView, depth: Int) {
         guard depth < 14 else { return }
-        let line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame.integral) hidden=\(view.isHidden)\n"
+        var detail = ""
+        if let table = view as? NSTableView { detail = " rows=\(table.numberOfRows)" }
+        if let outline = view as? NSOutlineView {
+            let expanded = (0..<outline.numberOfRows).filter { outline.isItemExpanded(outline.item(atRow: $0)) }
+            detail += " expandedRows=\(expanded)"
+        }
+        if let text = view as? NSTextField, !text.stringValue.isEmpty { detail = " \"\(text.stringValue)\"" }
+        let line = String(repeating: "  ", count: depth) + "\(type(of: view)) \(view.frame.integral) hidden=\(view.isHidden)\(detail)\n"
         FileHandle.standardError.write(Data(line.utf8))
         for sub in view.subviews { dump(sub, depth: depth + 1) }
     }

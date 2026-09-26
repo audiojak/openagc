@@ -25,6 +25,12 @@ final class AppModel {
     static let demoThreadCount: UInt32 = 2_000
 
     private(set) var accountState: AccountState = .starting
+
+    /// The open account's id, if any (demo included).
+    var openAccountID: String? {
+        if case .open(let id) = accountState { return id }
+        return nil
+    }
     private(set) var syncDisplay: SyncDisplay = .idle
     /// Set when Google rejected the stored credentials; shows a banner.
     private(set) var needsReauthentication = false
@@ -313,6 +319,12 @@ final class AppModel {
                 try await core.modifyLabels(ids, add: applied ? [labelID] : [], remove: applied ? [] : [labelID])
             }
         }
+    }
+
+    /// Label threads dropped on a sidebar label (they need not be selected).
+    func addLabel(_ labelID: String, toThreads ids: [String]) {
+        guard let core, !ids.isEmpty else { return }
+        Task { await perform { try await core.modifyLabels(ids, add: [labelID], remove: []) } }
     }
 
     func dismissFailedChanges() {
