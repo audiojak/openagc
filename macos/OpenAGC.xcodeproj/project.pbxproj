@@ -134,6 +134,7 @@
 		6106757A4B6B179819362741 /* AgentSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsTests.swift; sourceTree = "<group>"; };
 		6407F10744C6609C6D77A3E9 /* EmailDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailDocument.swift; sourceTree = "<group>"; };
 		662ED4D20063A892C72301EF /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
+		6AF84574CC4178F1C4DEFC88 /* OpenAGC-dev.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "OpenAGC-dev.entitlements"; sourceTree = "<group>"; };
 		6D322E3E16D6E19FF3D99CBF /* agent-system-prompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "agent-system-prompt.md"; sourceTree = "<group>"; };
 		6EA889A74036D5319EED2E94 /* CoreClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClientTests.swift; sourceTree = "<group>"; };
 		700730FD7CE20073EC4E05F4 /* KeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTests.swift; sourceTree = "<group>"; };
@@ -168,6 +169,7 @@
 		D11E72641F92131C1AC579D7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D24E3C75C954D3F4970670D2 /* RichTextEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RichTextEditor.swift; sourceTree = "<group>"; };
 		D5D8587064562266E1C5E1DC /* SearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchTests.swift; sourceTree = "<group>"; };
+		DDF3E6C6A8B1311B3DFB3A14 /* Local.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Local.xcconfig; sourceTree = "<group>"; };
 		DE83811F68C4EBD9E870E49B /* CoreClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreClient.swift; sourceTree = "<group>"; };
 		E4C676A513B753ECEBB6FF97 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		EC1B952488DEE5A94BB9D8BF /* MenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuTests.swift; sourceTree = "<group>"; };
@@ -261,6 +263,7 @@
 				9B2ED3B92D6E529688C7C31B /* Assets.xcassets */,
 				19F04E00E0E6BE9B7678CEDB /* GoogleOAuth.plist */,
 				D11E72641F92131C1AC579D7 /* Info.plist */,
+				6AF84574CC4178F1C4DEFC88 /* OpenAGC-dev.entitlements */,
 				448D8466905D410325058CE5 /* OpenAGC.entitlements */,
 			);
 			path = Resources;
@@ -274,6 +277,14 @@
 				A5846BE9A95C68C7383B2B7C /* SyncStatusView.swift */,
 			);
 			path = Sidebar;
+			sourceTree = "<group>";
+		};
+		71AB5985CBF443B507A5BD07 /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				DDF3E6C6A8B1311B3DFB3A14 /* Local.xcconfig */,
+			);
+			path = macos;
 			sourceTree = "<group>";
 		};
 		7775276806229C17EF4F389C /* Search */ = {
@@ -350,6 +361,7 @@
 			isa = PBXGroup;
 			children = (
 				0648D6962EBB6BAE08ED2B88 /* build */,
+				71AB5985CBF443B507A5BD07 /* macos */,
 			);
 			name = OpenAGC;
 			path = ..;
@@ -711,6 +723,7 @@
 /* Begin XCBuildConfiguration section */
 		05FAFFEA25A5CCAA15674F25 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = DDF3E6C6A8B1311B3DFB3A14 /* Local.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				COMBINE_HIDPI_IMAGES = YES;
@@ -783,6 +796,7 @@
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OPENAGC_ENTITLEMENTS = OpenAGC/Resources/OpenAGC.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_APPROACHABLE_CONCURRENCY = NO;
@@ -796,8 +810,8 @@
 		};
 		2A2E8FBF7DE34D5C24326C4B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = DDF3E6C6A8B1311B3DFB3A14 /* Local.xcconfig */;
 			buildSettings = {
-				CODE_SIGN_IDENTITY = "";
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEFINES_MODULE = YES;
@@ -852,7 +866,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = OpenAGC/Resources/OpenAGC.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(OPENAGC_ENTITLEMENTS)";
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -935,6 +949,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OPENAGC_ENTITLEMENTS = OpenAGC/Resources/OpenAGC.entitlements;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = macosx;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -965,9 +980,10 @@
 		};
 		FAF7D92B66EC68F7FF8C4462 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = DDF3E6C6A8B1311B3DFB3A14 /* Local.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = OpenAGC/Resources/OpenAGC.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(OPENAGC_ENTITLEMENTS)";
 				COMBINE_HIDPI_IMAGES = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;

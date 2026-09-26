@@ -11,6 +11,7 @@ This file provides instructions and context for AI coding agents working on this
 - Only `openagc-core` may depend on UniFFI; dependency direction is enforced by `cargo xtask check-deps`.
 - Never touch real Gmail, Google/Apple accounts, or create Claude cloud routines from automation; test against fakes.
 - Overnight work happens on the `overnight` branch; push after each closed issue.
+- Debug builds are signed with the "OpenAGC Dev" identity when `macos/Local.xcconfig` (from `scripts/dev-signing.sh`, gitignored) exists; ad-hoc rebuilds lose Keychain access to the stored Gmail sign-in.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker

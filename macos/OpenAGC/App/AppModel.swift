@@ -156,9 +156,22 @@ final class AppModel {
             await mailboxes.reload()
             updateBadge()
             await threads.show(mailboxID: selectedMailboxID ?? "INBOX")
-            if accountID != Self.demoAccountID, core.accountHasCredentials(accountID) {
-                try core.startSync()
-                observeLifecycle()
+            if accountID != Self.demoAccountID {
+                // A Keychain that will not hand over the sign-in (for example
+                // after an unsigned rebuild) means "sign in again", not silence.
+                let hasCredentials: Bool
+                do {
+                    hasCredentials = try core.accountHasCredentials(accountID)
+                } catch {
+                    logger.warning("stored sign-in unreadable: \(error.message, privacy: .public)")
+                    hasCredentials = false
+                }
+                if hasCredentials {
+                    try core.startSync()
+                    observeLifecycle()
+                } else {
+                    needsReauthentication = true
+                }
             }
         } catch {
             logger.error("opening account failed: \(error.message, privacy: .private)")

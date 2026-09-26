@@ -295,9 +295,17 @@ impl Core {
         }
     }
 
-    /// Whether an account has stored credentials (so sync can start).
-    pub fn account_has_credentials(&self, account_id: String) -> bool {
-        self.secrets.get(keys::refresh_token(&account_id)).ok().flatten().is_some()
+    /// Whether an account has stored credentials (so sync can start). A
+    /// Keychain that refuses to answer is an error, not "no credentials":
+    /// the user must be told to sign in again rather than see nothing.
+    pub fn account_has_credentials(&self, account_id: String) -> Result<bool, CoreError> {
+        match self.secrets.get(keys::refresh_token(&account_id)) {
+            Ok(token) => Ok(token.is_some()),
+            Err(e) => {
+                tracing::warn!(error = %e, "could not read the stored sign-in from the Keychain");
+                Err(e)
+            }
+        }
     }
 
     /// Remove an account: stop sync, forget its credentials and delete its
@@ -461,6 +469,6 @@ mod tests {
         core.cancel_gmail_sign_in(start.session_id.clone());
         let err = block_on(core.clone().complete_gmail_sign_in(start.session_id)).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::NotFound);
-        assert!(!core.account_has_credentials("nobody".into()));
+        assert!(!core.account_has_credentials("nobody".into()).unwrap());
     }
 }

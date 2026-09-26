@@ -378,8 +378,14 @@ final class CoreClient: Sendable {
         core.cancelGmailSignIn(sessionId: sessionID)
     }
 
-    func accountHasCredentials(_ accountID: String) -> Bool {
-        core.accountHasCredentials(accountId: accountID)
+    func accountHasCredentials(_ accountID: String) throws(CoreClientError) -> Bool {
+        do {
+            return try core.accountHasCredentials(accountId: accountID)
+        } catch let error as CoreError {
+            throw CoreClientError(error)
+        } catch {
+            throw CoreClientError(kind: .internalError, message: String(describing: error))
+        }
     }
 
     func startSync() throws(CoreClientError) {

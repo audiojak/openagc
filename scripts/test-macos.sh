@@ -10,6 +10,8 @@ shift || true
 
 mkdir -p "$ROOT/build"
 cd "$ROOT/macos"
+# Optional per-developer signing overrides (scripts/dev-signing.sh).
+[[ -f Local.xcconfig ]] || printf '// Optional overrides; see scripts/dev-signing.sh\n' > Local.xcconfig
 xcodegen generate --spec project.yml --quiet
 
 set +e

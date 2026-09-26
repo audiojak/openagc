@@ -20,6 +20,18 @@ profile:
 export PATH="/opt/homebrew/opt/rustup/bin:$HOME/.cargo/bin:$PATH"
 ```
 
+If you connect a real Gmail account to a development build, also run
+
+```bash
+./scripts/dev-signing.sh
+```
+
+once. It creates a self-signed "OpenAGC Dev" identity in your login
+Keychain and points Debug builds at it (`macos/Local.xcconfig`, gitignored).
+Without it every rebuild is a new ad-hoc identity, and the Keychain stops
+handing the stored sign-in to the new binary, so the app asks you to sign in
+again after each build.
+
 ## Layout
 
 | Path | What |
