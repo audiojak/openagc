@@ -43,6 +43,9 @@ struct AccountSettings: View {
                 Text("Your own client avoids Google's unverified-app warning. OpenAGC asks only for permission to read and organize mail (gmail.modify).")
                     .foregroundStyle(.secondary)
             }
+            if case .open(let id) = model.accountState, id != AppModel.demoAccountID {
+                SyncWindowSection()
+            }
             Section("Data on this Mac") {
                 HStack {
                     Button("Show Mail Data") {
@@ -59,6 +62,40 @@ struct AccountSettings: View {
             Text("OpenAGC forgets the sign-in. Mail already downloaded stays on this Mac until you delete it.")
         }
     }
+}
+
+/// How far back mail is downloaded (spec §7.4). The inbox and the last 30
+/// days always come down; this bounds the rest.
+struct SyncWindowSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var window: SyncWindow?
+
+    var body: some View {
+        Section {
+            Picker("Download mail from", selection: Binding(
+                get: { window ?? .halfYear },
+                set: { newValue in
+                    window = newValue
+                    Task { try? await model.core?.setSyncWindow(newValue) }
+                }
+            )) {
+                ForEach(SyncWindowSection.choices, id: \.0) { choice in
+                    Text(choice.1).tag(choice.0)
+                }
+            }
+            .disabled(window == nil)
+        } header: {
+            Text("Mail on this Mac")
+        } footer: {
+            Text("The inbox and the last 30 days are always downloaded. Older mail outside this range stays in Gmail and is not searchable here; widening the range downloads it, narrowing keeps what is already here.")
+                .foregroundStyle(.secondary)
+        }
+        .task { window = try? await model.core?.syncWindow() }
+    }
+
+    static let choices: [(SyncWindow, String)] = [
+        (.month, "Last month"), (.halfYear, "Last 6 months"), (.year, "Last year"), (.everything, "Everything"),
+    ]
 }
 
 /// The bring-your-own-client fields, shared with onboarding.

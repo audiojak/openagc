@@ -141,7 +141,12 @@ impl SyncService {
                 });
                 self.tasks.lock().unwrap_or_else(|e| e.into_inner()).push(task);
             }
-            Ok(false) => {}
+            Ok(false) => {
+                if let Err(e) = self.retrying(|| self.engine.ensure_window()).await {
+                    self.fail(e);
+                    return;
+                }
+            }
             Err(e) => {
                 self.fail(e);
                 return;
@@ -171,17 +176,24 @@ impl SyncService {
                     }
                 }
                 Ok(_) => backoff = Duration::from_secs(2),
-                Err(e) if e.is_transient() => {
+                Err(e) if Self::is_fatal(&e) => {
+                    self.fail(e);
+                    return;
+                }
+                Err(e) => {
+                    // Anything else (a bad page, a store hiccup) is retried
+                    // rather than leaving the mailbox half-synced.
                     self.offline_or_error(&e);
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(MAX_BACKOFF);
                 }
-                Err(e) => {
-                    self.fail(e);
-                    return;
-                }
             }
         }
+    }
+
+    /// Errors no retry can fix: the user must sign in or grant access.
+    fn is_fatal(e: &SyncError) -> bool {
+        matches!(e, SyncError::Provider(ProviderError::Unauthorized | ProviderError::Forbidden(_)))
     }
 
     /// Push queued changes as they are made; wake again at the next retry.
@@ -255,15 +267,15 @@ impl SyncService {
                     }
                 }
                 Err(SyncError::ResyncStarted) => self.backfill_wake.notify_one(),
-                Err(e) if e.is_transient() => {
+                Err(e) if Self::is_fatal(&e) => {
+                    self.fail(e);
+                    return;
+                }
+                Err(e) => {
                     self.offline_or_error(&e);
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(MAX_BACKOFF);
                     continue;
-                }
-                Err(e) => {
-                    self.fail(e);
-                    return;
                 }
             }
             // New mail may have queued unfetched ids.
@@ -285,7 +297,7 @@ impl SyncService {
         let mut backoff = Duration::from_secs(2);
         loop {
             match step().await {
-                Err(e) if e.is_transient() => {
+                Err(e) if !Self::is_fatal(&e) => {
                     self.offline_or_error(&e);
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(MAX_BACKOFF);

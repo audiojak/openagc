@@ -11,8 +11,8 @@ pub use attachments::{AttachmentFile, attachment_file, safe_filename};
 pub use compose::{forward_draft, reply_draft, schedule_draft_sync, send_draft};
 pub use convert::to_incoming;
 pub use engine::{
-    BACKFILL_BATCH, ExternalLabelChange, INBOX_PHASES, IncrementalReport, NewMail, PHASES, SyncEngine, SyncObserver,
-    SyncPhase, SyncProgress,
+    BACKFILL_BATCH, ExternalLabelChange, INBOX_PHASES, IncrementalReport, KEY_WINDOW, NewMail, Phase, SyncEngine,
+    SyncObserver, SyncPhase, SyncProgress, SyncWindow, phases_for,
 };
 pub use error::{SyncError, SyncResult};
 pub use outbox::{DrainReport, LocalChange, MAX_ATTEMPTS, apply_local_change, now_millis};

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use mail_domain::{EmailAddress, Label, LabelId, LabelKind, MessageId, ThreadId};
 use mail_store::{ARCHIVE_LABEL, Db, ThreadChanges, consistency, queue, read};
-use mail_sync::{SyncEngine, SyncError, SyncObserver, SyncPhase, SyncProgress};
+use mail_sync::{SyncEngine, SyncError, SyncObserver, SyncPhase, SyncProgress, SyncWindow};
 use provider_api::fake::FakeProvider;
 use provider_api::{FetchedBody, FetchedMessage};
 
@@ -82,6 +82,7 @@ fn assert_consistent(db: &Db) {
 #[tokio::test]
 async fn bootstrap_queues_by_priority_and_backfill_fills_the_store() {
     let (fake, db, recorder, engine) = setup("bootstrap");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
     seed_mailbox(&fake);
     assert!(engine.needs_bootstrap().await.unwrap());
 
@@ -119,6 +120,49 @@ async fn bootstrap_queues_by_priority_and_backfill_fills_the_store() {
     assert!(recorder.changes.lock().unwrap().iter().any(|c| c.mailboxes.contains_key("INBOX")));
     assert_eq!(recorder.progress.lock().unwrap().last().unwrap().phase, SyncPhase::Idle);
     assert_consistent(&db);
+}
+
+#[tokio::test]
+async fn backfill_fetches_newest_first_within_a_phase() {
+    let (fake, db, _recorder, engine) = setup("newest-first");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
+    // Seeded oldest first; the provider lists newest first regardless.
+    fake.seed(message("old", "t1", 300, &[]));
+    fake.seed(message("mid", "t2", 200, &[]));
+    fake.seed(message("new", "t3", 100, &[]));
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    let queued = db.read(|c| queue::peek(c, 10)).await.unwrap();
+    assert_eq!(queued.iter().map(|m| m.as_str()).collect::<Vec<_>>(), vec!["new", "mid", "old"]);
+}
+
+#[tokio::test]
+async fn the_sync_window_bounds_the_backfill_and_can_be_widened_or_narrowed() {
+    let (fake, db, _recorder, engine) = setup("window");
+    seed_mailbox(&fake);
+    assert_eq!(engine.window().await.unwrap(), SyncWindow::HalfYear, "default");
+    engine.bootstrap_prepare().await.unwrap();
+    engine.bootstrap_list_rest().await.unwrap();
+    let queued = |db: &Db| {
+        let q = db.read_blocking(|c| queue::peek(c, 10)).unwrap();
+        q.iter().map(|m| m.as_str().to_owned()).collect::<Vec<_>>()
+    };
+    // 100-day-old mail is inside six months; 900-day-old mail is not.
+    assert_eq!(queued(&db), vec!["inbox-unread", "inbox-read", "recent", "this-year"]);
+
+    engine.set_window(SyncWindow::Month).await.unwrap();
+    assert_eq!(queued(&db), vec!["inbox-unread", "inbox-read", "recent"], "narrowing drops queued older mail");
+
+    engine.set_window(SyncWindow::Everything).await.unwrap();
+    assert_eq!(queued(&db), vec!["inbox-unread", "inbox-read", "recent", "this-year", "ancient"]);
+    assert_eq!(engine.window().await.unwrap(), SyncWindow::Everything);
+
+    // An account from before windows existed gets the default applied once.
+    db.write(|tx| Ok(tx.execute("DELETE FROM sync_state WHERE key = 'sync_window'", [])?)).await.unwrap();
+    engine.ensure_window().await.unwrap();
+    assert_eq!(queued(&db), vec!["inbox-unread", "inbox-read", "recent", "this-year"], "trimmed to six months");
+    engine.ensure_window().await.unwrap();
+    assert_eq!(engine.window().await.unwrap(), SyncWindow::HalfYear);
 }
 
 #[tokio::test]
@@ -176,6 +220,7 @@ async fn mail_arriving_during_bootstrap_is_not_lost() {
 #[tokio::test]
 async fn label_changes_for_unfetched_messages_queue_a_fetch() {
     let (fake, db, _recorder, engine) = setup("unfetched");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
     seed_mailbox(&fake);
     engine.bootstrap_prepare().await.unwrap(); // inbox queued, nothing fetched
     fake.relabel(&MessageId::new("ancient"), &[LabelId::new("STARRED")], &[]);
@@ -190,6 +235,7 @@ async fn label_changes_for_unfetched_messages_queue_a_fetch() {
 #[tokio::test]
 async fn an_expired_cursor_triggers_a_full_resync() {
     let (fake, db, _recorder, engine) = setup("expired");
+    engine.set_window(SyncWindow::Everything).await.unwrap();
     seed_mailbox(&fake);
     engine.bootstrap_prepare().await.unwrap();
     engine.bootstrap_list_rest().await.unwrap();

@@ -35,8 +35,31 @@ pub fn enqueue(tx: &Transaction<'_>, priority: u8, ids: &[MessageId], refetch: b
 }
 
 /// The next `limit` ids, most urgent first. Does not remove them.
+/// Queue ids at the front of the most urgent priority: mail the user just
+/// touched elsewhere, or that just arrived, is fetched before any backlog.
+/// Ids already fetched in full are skipped; queued ones move to the front.
+pub fn enqueue_urgent(tx: &Transaction<'_>, ids: &[MessageId]) -> StoreResult<usize> {
+    let mut exists = tx.prepare_cached("SELECT 1 FROM messages WHERE gmail_id = ?1 AND body_state = 'full'")?;
+    let mut remove = tx.prepare_cached("DELETE FROM backfill_queue WHERE gmail_id = ?1")?;
+    let mut insert = tx.prepare_cached(
+        "INSERT INTO backfill_queue (seq, priority, gmail_id)
+         VALUES ((SELECT COALESCE(MIN(seq), 0) - 1 FROM backfill_queue), 0, ?1)",
+    )?;
+    let mut queued = 0;
+    // Inserted last-to-first so the caller's order is kept at the front.
+    for id in ids.iter().rev() {
+        if exists.exists([id.as_str()])? {
+            continue;
+        }
+        remove.execute([id.as_str()])?;
+        insert.execute([id.as_str()])?;
+        queued += 1;
+    }
+    Ok(queued)
+}
+
 pub fn peek(conn: &Connection, limit: usize) -> StoreResult<Vec<MessageId>> {
-    let mut stmt = conn.prepare_cached("SELECT gmail_id FROM backfill_queue ORDER BY priority, gmail_id LIMIT ?1")?;
+    let mut stmt = conn.prepare_cached("SELECT gmail_id FROM backfill_queue ORDER BY priority, seq LIMIT ?1")?;
     let ids = stmt.query_map([limit as i64], |r| Ok(MessageId(r.get(0)?)))?.collect::<Result<_, _>>()?;
     Ok(ids)
 }
@@ -47,6 +70,12 @@ pub fn remove(tx: &Transaction<'_>, ids: &[MessageId]) -> StoreResult<()> {
         stmt.execute([id.as_str()])?;
     }
     Ok(())
+}
+
+/// Drop everything queued at `priority` or lower urgency (a narrower sync
+/// window); fetched mail is untouched.
+pub fn clear_from_priority(tx: &Transaction<'_>, priority: u8) -> StoreResult<usize> {
+    Ok(tx.execute("DELETE FROM backfill_queue WHERE priority >= ?1", [priority])?)
 }
 
 pub fn len(conn: &Connection) -> StoreResult<u64> {

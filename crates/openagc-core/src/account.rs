@@ -70,6 +70,37 @@ fn random_id() -> Result<String, CoreError> {
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// How far back mail is downloaded (spec §7.4); mirrors `mail_sync::SyncWindow`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum SyncWindow {
+    Month,
+    HalfYear,
+    Year,
+    Everything,
+}
+
+impl From<SyncWindow> for mail_sync::SyncWindow {
+    fn from(w: SyncWindow) -> Self {
+        match w {
+            SyncWindow::Month => Self::Month,
+            SyncWindow::HalfYear => Self::HalfYear,
+            SyncWindow::Year => Self::Year,
+            SyncWindow::Everything => Self::Everything,
+        }
+    }
+}
+
+impl From<mail_sync::SyncWindow> for SyncWindow {
+    fn from(w: mail_sync::SyncWindow) -> Self {
+        match w {
+            mail_sync::SyncWindow::Month => Self::Month,
+            mail_sync::SyncWindow::HalfYear => Self::HalfYear,
+            mail_sync::SyncWindow::Year => Self::Year,
+            mail_sync::SyncWindow::Everything => Self::Everything,
+        }
+    }
+}
+
 impl From<ProviderError> for CoreError {
     fn from(e: ProviderError) -> Self {
         let kind = match &e {
@@ -77,7 +108,7 @@ impl From<ProviderError> for CoreError {
             ProviderError::Forbidden(_) => ErrorKind::PermissionDenied,
             ProviderError::NotFound(_) => ErrorKind::NotFound,
             ProviderError::RateLimited { .. } => ErrorKind::RateLimited,
-            ProviderError::Network(_) | ProviderError::Server { .. } => ErrorKind::Network,
+            ProviderError::Network(_) | ProviderError::Server { .. } | ProviderError::Decode(_) => ErrorKind::Network,
             ProviderError::CursorExpired | ProviderError::Invalid(_) => ErrorKind::Internal,
         };
         CoreError::new(kind, e.to_string())
@@ -220,6 +251,40 @@ impl Core {
     pub fn set_app_active(&self, active: bool) {
         if let Some(service) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
             service.set_active(active);
+        }
+    }
+
+    /// How far back the open account downloads mail (spec §7.4).
+    pub async fn sync_window(&self) -> Result<SyncWindow, CoreError> {
+        let db = self.db()?;
+        runtime::run(async move {
+            let stored = db.read(|c| mail_store::read::sync_state(c, mail_sync::KEY_WINDOW)).await?;
+            Ok(stored.as_deref().and_then(mail_sync::SyncWindow::parse).unwrap_or_default().into())
+        })
+        .await
+    }
+
+    /// Change how far back mail is downloaded. Widening queues the extra
+    /// mail; narrowing stops fetching older mail but keeps what is stored.
+    pub async fn set_sync_window(&self, window: SyncWindow) -> Result<(), CoreError> {
+        let window: mail_sync::SyncWindow = window.into();
+        let service = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        match service {
+            Some(service) => {
+                let engine = service.clone();
+                runtime::run(async move { engine.engine().set_window(window).await.map_err(CoreError::from) }).await?;
+                service.sync_now();
+                Ok(())
+            }
+            None => {
+                let db = self.db()?;
+                runtime::run(async move {
+                    db.write(move |tx| mail_store::read::set_sync_state(tx, mail_sync::KEY_WINDOW, window.as_str()))
+                        .await?;
+                    Ok(())
+                })
+                .await
+            }
         }
     }
 

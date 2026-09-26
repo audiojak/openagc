@@ -12,22 +12,73 @@ use provider_api::{Change, ListFilter, MailProvider, PageToken, Priority, Provid
 use crate::convert::to_incoming;
 use crate::error::{SyncError, SyncResult};
 
-/// Backfill phases, most urgent first (spec §7.4). Each lists message ids
-/// into the queue at its priority.
-pub const PHASES: &[(u8, &[&str], Option<&str>)] = &[
-    (0, &["INBOX"], Some("is:unread")),
-    (1, &["INBOX"], None),
-    (2, &[], Some("newer_than:30d")),
-    (3, &[], Some("newer_than:365d")),
-    (4, &[], None),
-];
+/// How far back the initial sync downloads mail (spec §7.4 amendment).
+/// The inbox and the last 30 days always come down; older mail only within
+/// the window. Everything else stays on the server until the window widens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SyncWindow {
+    Month,
+    #[default]
+    HalfYear,
+    Year,
+    Everything,
+}
+
+impl SyncWindow {
+    pub const ALL: [SyncWindow; 4] = [Self::Month, Self::HalfYear, Self::Year, Self::Everything];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Month => "1m",
+            Self::HalfYear => "6m",
+            Self::Year => "1y",
+            Self::Everything => "all",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|w| w.as_str() == s)
+    }
+}
+
+/// One backfill phase: a priority and the provider list filter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Phase {
+    pub priority: u8,
+    pub labels: &'static [&'static str],
+    pub query: Option<String>,
+}
+
+/// Backfill phases for a window, most urgent first (spec §7.4). Each lists
+/// message ids into the queue at its priority.
+pub fn phases_for(window: SyncWindow) -> Vec<Phase> {
+    let mut phases = vec![
+        Phase { priority: 0, labels: &["INBOX"], query: Some("is:unread".into()) },
+        Phase { priority: 1, labels: &["INBOX"], query: None },
+        Phase { priority: 2, labels: &[], query: Some("newer_than:30d".into()) },
+    ];
+    match window {
+        SyncWindow::Month => {}
+        SyncWindow::HalfYear => phases.push(Phase { priority: 3, labels: &[], query: Some("newer_than:180d".into()) }),
+        SyncWindow::Year => phases.push(Phase { priority: 3, labels: &[], query: Some("newer_than:365d".into()) }),
+        SyncWindow::Everything => {
+            phases.push(Phase { priority: 3, labels: &[], query: Some("newer_than:365d".into()) });
+            phases.push(Phase { priority: 4, labels: &[], query: None });
+        }
+    }
+    phases
+}
+
 /// Phases listed before backfill starts, so the inbox fills first.
 pub const INBOX_PHASES: usize = 2;
+/// Phases every window shares; the rest depend on the window.
+const FIXED_PHASES: usize = 3;
 pub const BACKFILL_BATCH: usize = 50;
 
 const KEY_CURSOR: &str = "history_cursor";
 const KEY_BOOTSTRAPPED: &str = "bootstrap_listed";
 const KEY_EMAIL: &str = "account_email";
+pub const KEY_WINDOW: &str = "sync_window";
 
 /// Receives what sync changed; the core turns it into UI events.
 pub trait SyncObserver: Send + Sync {
@@ -163,20 +214,64 @@ impl SyncEngine {
                 Ok(())
             })
             .await?;
-        for phase in &PHASES[..INBOX_PHASES] {
-            self.list_phase(*phase).await?;
+        let window = self.window().await?;
+        // Record the window so a later default change does not widen it.
+        self.db.write(move |tx| read::set_sync_state(tx, KEY_WINDOW, window.as_str())).await?;
+        let phases = phases_for(window);
+        for phase in &phases[..INBOX_PHASES] {
+            self.list_phase(phase).await?;
         }
         self.report(SyncPhase::Listing).await;
         Ok(())
     }
 
+    /// An account synced before windows existed has none recorded: apply
+    /// the default once, which trims its queue to the window.
+    pub async fn ensure_window(&self) -> SyncResult<()> {
+        if self.db.read(|c| read::sync_state(c, KEY_WINDOW)).await?.is_none() {
+            tracing::info!(window = SyncWindow::default().as_str(), "applying the default sync window");
+            self.set_window(SyncWindow::default()).await?;
+        }
+        Ok(())
+    }
+
     /// Bootstrap step 2 (slow, can run alongside backfill): queue the rest.
     pub async fn bootstrap_list_rest(&self) -> SyncResult<()> {
-        for phase in &PHASES[INBOX_PHASES..] {
-            self.list_phase(*phase).await?;
+        let phases = phases_for(self.window().await?);
+        for phase in &phases[INBOX_PHASES..] {
+            self.list_phase(phase).await?;
         }
         self.db.write(|tx| read::set_sync_state(tx, KEY_BOOTSTRAPPED, "1")).await?;
         self.report(SyncPhase::Backfilling).await;
+        Ok(())
+    }
+
+    /// How far back this account downloads mail.
+    pub async fn window(&self) -> SyncResult<SyncWindow> {
+        let stored = self.db.read(|c| read::sync_state(c, KEY_WINDOW)).await?;
+        Ok(stored.as_deref().and_then(SyncWindow::parse).unwrap_or_default())
+    }
+
+    /// Change the window. Queued fetches beyond the shared phases are
+    /// dropped and the window's own phases re-listed, so widening
+    /// downloads more and narrowing stops downloading older mail. Mail
+    /// already stored is kept either way.
+    pub async fn set_window(&self, window: SyncWindow) -> SyncResult<()> {
+        let bootstrapped = self
+            .db
+            .write(move |tx| {
+                read::set_sync_state(tx, KEY_WINDOW, window.as_str())?;
+                queue::clear_from_priority(tx, FIXED_PHASES as u8)?;
+                read::sync_state(tx, KEY_BOOTSTRAPPED)
+            })
+            .await?
+            .is_some();
+        if bootstrapped {
+            for phase in &phases_for(window)[FIXED_PHASES..] {
+                self.list_phase(phase).await?;
+            }
+            self.report(SyncPhase::Backfilling).await;
+        }
         Ok(())
     }
 
@@ -311,7 +406,7 @@ impl SyncEngine {
                 }
                 // Label changes for messages not stored yet: make sure a
                 // backfill will fetch them with current labels.
-                queue::enqueue(tx, 0, &unknown, false)?;
+                queue::enqueue_urgent(tx, &unknown)?;
                 read::set_sync_state(tx, KEY_CURSOR, &new_cursor)?;
                 // Thread ids for the label changes, while we hold the store.
                 let mut threads: Vec<(MessageId, ThreadId, Vec<LabelId>, bool)> = Vec::new();
@@ -396,25 +491,22 @@ impl SyncEngine {
                 Ok(())
             })
             .await?;
-        for phase in PHASES {
-            self.list_phase_with(*phase, true).await?;
+        for phase in &phases_for(self.window().await?) {
+            self.list_phase_with(phase, true).await?;
         }
         self.db.write(|tx| read::set_sync_state(tx, KEY_BOOTSTRAPPED, "1")).await?;
         Ok(())
     }
 
-    async fn list_phase(&self, phase: (u8, &[&str], Option<&str>)) -> SyncResult<()> {
+    async fn list_phase(&self, phase: &Phase) -> SyncResult<()> {
         self.list_phase_with(phase, false).await
     }
 
-    async fn list_phase_with(
-        &self,
-        (priority, labels, query): (u8, &[&str], Option<&str>),
-        refetch: bool,
-    ) -> SyncResult<()> {
+    async fn list_phase_with(&self, phase: &Phase, refetch: bool) -> SyncResult<()> {
+        let priority = phase.priority;
         let filter = ListFilter {
-            label_ids: labels.iter().map(|l| LabelId::new(*l)).collect(),
-            query: query.map(str::to_owned),
+            label_ids: phase.labels.iter().map(|l| LabelId::new(*l)).collect(),
+            query: phase.query.clone(),
             include_spam_trash: false,
         };
         let mut page: Option<PageToken> = None;

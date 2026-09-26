@@ -19,6 +19,10 @@ pub enum ProviderError {
     Network(String),
     #[error("server error {status}: {message}")]
     Server { status: u16, message: String },
+    /// The body could not be read or decoded (a dropped connection mid
+    /// body looks the same as bad JSON); retried like a network error.
+    #[error("undecodable response: {0}")]
+    Decode(String),
     #[error("unexpected response: {0}")]
     Invalid(String),
     #[error("permission denied: {0}")]
@@ -28,7 +32,7 @@ pub enum ProviderError {
 impl ProviderError {
     /// Worth retrying later with backoff.
     pub fn is_transient(&self) -> bool {
-        matches!(self, Self::RateLimited { .. } | Self::Network(_) | Self::Server { .. })
+        matches!(self, Self::RateLimited { .. } | Self::Network(_) | Self::Server { .. } | Self::Decode(_))
     }
 }
 

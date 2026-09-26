@@ -7,6 +7,9 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
+        // A plain footer rather than a safe-area inset: on macOS 26 the
+        // inset does not push the list's last section up (it drew over it).
+        VStack(spacing: 0) {
         List(selection: $model.selectedMailboxID) {
             Section {
                 ForEach(model.mailboxes.systemMailboxes, id: \.id) { mailbox in
@@ -49,7 +52,9 @@ struct SidebarView: View {
         .task { await model.routines.load() }
         .onChange(of: model.routinesRevision) { Task { await model.routines.load() } }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) { SyncStatusView() }
+        Divider()
+        SyncStatusView()
+        }
     }
 }
 

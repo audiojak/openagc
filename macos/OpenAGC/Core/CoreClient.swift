@@ -396,6 +396,15 @@ final class CoreClient: Sendable {
     func setAppActive(_ active: Bool) { core.setAppActive(active: active) }
     func syncNow() { core.syncNow() }
 
+    /// How far back mail is downloaded (spec §7.4).
+    func syncWindow() async throws(CoreClientError) -> SyncWindow {
+        try await call { try await core.syncWindow() }
+    }
+
+    func setSyncWindow(_ window: SyncWindow) async throws(CoreClientError) {
+        try await call { try await core.setSyncWindow(window: window) }
+    }
+
     func signOut(_ accountID: String) async throws(CoreClientError) {
         try await call { try await core.signOut(accountId: accountID) }
     }
@@ -498,6 +507,7 @@ typealias DraftInfo = OpenAGCCore.DraftInfo
 typealias DraftStatus = OpenAGCCore.DraftStatus
 typealias LabelInfo = OpenAGCCore.LabelInfo
 typealias MailboxInfo = OpenAGCCore.MailboxInfo
+typealias SyncWindow = OpenAGCCore.SyncWindow
 typealias MailboxKind = OpenAGCCore.MailboxKind
 typealias MessageInfo = OpenAGCCore.MessageInfo
 typealias RenderedBody = OpenAGCCore.RenderedBody

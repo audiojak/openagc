@@ -601,6 +601,14 @@ usable during backfill. A token-bucket rate limiter in `provider-gmail`
 enforces 5,500 units/min (leaving headroom for user-initiated calls, which
 take priority over backfill).
 
+**Amendment (2026-09-25).** The first real sync still drew ~10 rate-limit
+responses a minute at 5,500 units/min with 8 fetches in flight. The limiter
+now starts at 5,000 units/min and adapts: a rate-limit response drains it,
+pauses every caller for the `Retry-After` period, and cuts the refill rate
+by 30 % (floor 20 % of nominal); each clean minute raises it 10 % back
+towards nominal. Retries no longer sleep independently, so one 429 no longer
+turns into eight 60-second stalls.
+
 ### 7.3 OAuth **(Verified)**
 
 - Flow: OAuth 2.0 for installed apps — "Desktop app" client type, PKCE
@@ -651,6 +659,23 @@ take priority over backfill).
 
 A first-run screen shows "Syncing your inbox… older mail keeps loading in the
 background" with a progress figure from the queue depth.
+
+**Amendment (2026-09-25, first real mailbox).** Two changes after syncing a
+43,000-message account:
+
+- *Sync window.* Downloading everything is not the default: at 300
+  `messages.get` per minute that mailbox needs 2.4 hours, and neither
+  `format=metadata` nor `threads.get` is cheaper per message. The inbox and
+  the last 30 days always come down; beyond that a per-account window
+  (Settings › Accounts › *Download mail from*: last month, **6 months**
+  (default), last year, everything) bounds phases 3–4. Widening re-lists and
+  queues the extra mail; narrowing drops queued fetches beyond the window and
+  keeps what is stored. Mail outside the window stays on the server and is
+  not searchable locally (server-side search is a follow-up).
+- *Order.* The queue drains in listing order within a priority, i.e. newest
+  first (`backfill_queue.seq`); it used to order by Gmail id, which is oldest
+  first. Fetches triggered by history (mail the user touched elsewhere) go to
+  the front.
 
 **Incremental (steady state)**
 

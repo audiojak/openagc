@@ -74,7 +74,7 @@ impl HttpClient {
         build: impl Fn(&Client) -> RequestBuilder,
     ) -> ProviderResult<T> {
         let response = self.execute(cost, priority, build).await?;
-        response.json::<T>().await.map_err(|e| ProviderError::Invalid(e.to_string()))
+        response.json::<T>().await.map_err(|e| ProviderError::Decode(e.to_string()))
     }
 
     /// Send and return the raw body with its content type.
@@ -129,14 +129,16 @@ impl HttpClient {
             if !error.is_transient() || attempt + 1 >= self.retry.max_attempts {
                 return Err(error);
             }
-            let retry_after = match &error {
-                ProviderError::RateLimited { retry_after } => *retry_after,
-                _ => None,
-            };
-            let delay = self.retry.backoff(attempt, retry_after);
+            attempt += 1;
+            if let ProviderError::RateLimited { retry_after } = &error {
+                // Every caller pauses, not just this one; acquire() waits.
+                tracing::warn!(attempt, ?retry_after, "provider rate limit; pausing all requests");
+                self.limiter.report_rate_limited(*retry_after).await;
+                continue;
+            }
+            let delay = self.retry.backoff(attempt - 1, None);
             tracing::warn!(attempt, ?delay, %error, "retrying provider request");
             tokio::time::sleep(delay).await;
-            attempt += 1;
         }
     }
 }
@@ -153,6 +155,9 @@ async fn classify(response: Response) -> ProviderError {
         .map(Duration::from_secs);
     let body = response.text().await.unwrap_or_default();
     let (message, reasons) = google_error(&body);
+    if status.as_u16() == 429 || (status.as_u16() == 403 && reasons.iter().any(|r| r.contains("ateLimit"))) {
+        tracing::warn!(status = status.as_u16(), ?retry_after, ?reasons, %message, "rate limited by provider");
+    }
     match status.as_u16() {
         429 => ProviderError::RateLimited { retry_after },
         403 if reasons.iter().any(|r| r.contains("RateLimitExceeded") || r == "rateLimitExceeded") => {
