@@ -135,7 +135,7 @@ impl Core {
             })
             .await;
         }
-        self.events.emit(crate::CoreEvent::RoutinesChanged);
+        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
         Ok(session)
     }
 
@@ -178,7 +178,7 @@ impl Core {
             Ok::<_, CoreError>(())
         })
         .await?;
-        self.events.emit(crate::CoreEvent::RoutinesChanged);
+        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
         Ok(())
     }
 
@@ -228,7 +228,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     /// A core whose cloud calls reach a fake `claude`, never the real one.

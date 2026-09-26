@@ -26,14 +26,14 @@ impl Core {
         PathBuf::from(&self.config.data_dir).join("accounts").join(account_id).join("mail.sqlite")
     }
 
-    /// The current account's store.
+    /// The store of the account this work acts on: the task's scoped
+    /// account (an agent session, a background routine) or else the
+    /// window's current one.
     pub(crate) fn db(&self) -> Result<Db, CoreError> {
+        let id =
+            self.effective_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
         let open = self.open_accounts.read().unwrap_or_else(|e| e.into_inner());
-        open.current
-            .as_ref()
-            .and_then(|id| open.stores.get(id))
-            .cloned()
-            .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))
+        open.stores.get(&id).cloned().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "that account is not open"))
     }
 }
 
@@ -160,7 +160,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     fn core(name: &str) -> Arc<Core> {

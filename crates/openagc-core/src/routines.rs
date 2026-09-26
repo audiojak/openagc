@@ -218,7 +218,7 @@ impl Core {
         let target = if dry { PromptTarget::DryRun } else { PromptTarget::Runner(Runner::Local) };
         let prompt = generate_prompt(routine, target);
         self.clone().send_agent_prompt(session.clone(), prompt, crate::agents::PromptContextInfo::default()).await?;
-        self.events.emit(crate::CoreEvent::RoutinesChanged);
+        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
         Ok(session)
     }
 
@@ -298,7 +298,7 @@ impl Core {
             }
         }
         let _ = self.clone().close_agent_session(session.to_owned()).await;
-        self.events.emit(crate::CoreEvent::RoutinesChanged);
+        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
     }
 
     /// Start the scheduler for the open account (spec §11.7).
@@ -360,7 +360,7 @@ impl Core {
                                 Ok(())
                             })
                             .await;
-                        self.events.emit(crate::CoreEvent::RoutinesChanged);
+                        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
                     }
                     last_checked.insert(info.id.clone(), now);
                 }
@@ -433,7 +433,7 @@ impl Core {
             }
         }
         if touched {
-            self.events.emit(crate::CoreEvent::RoutinesChanged);
+            self.account_events().emit(crate::CoreEvent::RoutinesChanged);
         }
     }
 }
@@ -527,7 +527,7 @@ impl Core {
         let now = mail_sync::now_millis();
         runtime::run(async move { Ok::<_, CoreError>(db.write(move |tx| store::mark_undone(tx, run_id, now)).await?) })
             .await?;
-        self.events.emit(crate::CoreEvent::RoutinesChanged);
+        self.account_events().emit(crate::CoreEvent::RoutinesChanged);
         Ok(restored)
     }
 
@@ -552,7 +552,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     #[test]

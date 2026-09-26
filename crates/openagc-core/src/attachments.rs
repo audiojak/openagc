@@ -18,7 +18,8 @@ pub struct AttachmentFileInfo {
 
 impl Core {
     fn attachment_cache_dir(&self) -> Result<PathBuf, CoreError> {
-        let id = self.current_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
+        let id =
+            self.effective_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
         Ok(PathBuf::from(&self.config.data_dir).join("accounts").join(id).join("Attachments"))
     }
 }
@@ -59,7 +60,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     #[test]

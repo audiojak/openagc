@@ -421,14 +421,27 @@ final class AppModel {
 
     private func listenForEvents(from core: CoreClient) {
         eventTask = Task { [weak self] in
-            for await event in core.events {
+            for await tagged in core.events {
                 guard let self else { return }
-                await self.handle(event)
+                await self.handle(tagged)
             }
         }
     }
 
-    private func handle(_ event: CoreClientEvent) async {
+    /// Events for the account on screen, or app-wide ones, update the
+    /// window. Another account's events only announce new mail; its
+    /// counts are read when the avatar menu opens (spec §7.7).
+    func isForWindow(_ tagged: CoreClientEvent.Tagged) -> Bool {
+        guard let account = tagged.accountID else { return true }
+        return account == openAccountID
+    }
+
+    private func handle(_ tagged: CoreClientEvent.Tagged) async {
+        guard isForWindow(tagged) else {
+            if case let .newMail(mail) = tagged.event { notifier.announce(mail) }
+            return
+        }
+        let event = tagged.event
         switch event {
         case let .threadsChanged(mailboxID, hint):
             await mailboxes.reload()

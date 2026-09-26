@@ -115,7 +115,7 @@ impl Core {
     /// inserted `thread_ids`, one event per id, to exercise coalescing.
     pub fn debug_emit_threads_changed(&self, mailbox_id: String, thread_ids: Vec<String>) {
         for id in thread_ids {
-            self.events.emit(CoreEvent::ThreadsChanged {
+            self.account_events().emit(CoreEvent::ThreadsChanged {
                 mailbox_id: mailbox_id.clone(),
                 hint: ChangeHint { inserted: vec![id], ..ChangeHint::default() },
             });
@@ -133,7 +133,7 @@ mod tests {
 
     struct NoopListener;
     impl EventListener for NoopListener {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     fn core() -> Arc<Core> {

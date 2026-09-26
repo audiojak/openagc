@@ -15,6 +15,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::{Core, CoreError, ErrorKind, runtime};
 
+tokio::task_local! {
+    /// The account that work on this task belongs to, when that is not the
+    /// window's current account: an agent session's tool calls, a
+    /// background routine run. Every store and event lookup honours it, so
+    /// such work can never read or change another account's mail
+    /// (spec §7.7). `runtime::run` carries it onto the core runtime.
+    pub(crate) static SCOPED_ACCOUNT: String;
+}
+
+/// The account scoped to this task, if any.
+pub(crate) fn scoped_account() -> Option<String> {
+    SCOPED_ACCOUNT.try_with(Clone::clone).ok()
+}
+
+/// Run `fut` scoped to `account` (or unscoped when `None`).
+pub(crate) async fn scoped<F: std::future::Future>(account: Option<String>, fut: F) -> F::Output {
+    match account {
+        Some(account) => SCOPED_ACCOUNT.scope(account, fut).await,
+        None => fut.await,
+    }
+}
+
 /// The demo mailbox has a directory but is not a user account.
 pub(crate) const DEMO_ACCOUNT_ID: &str = "demo";
 const INDEX_FILE: &str = "index.json";
@@ -150,6 +172,17 @@ fn read_archive_meta(dir: &Path) -> Option<ArchiveMetaName> {
 }
 
 impl Core {
+    /// The account work on this task acts on: the task's scoped account,
+    /// else the window's current one.
+    pub(crate) fn effective_account_id(&self) -> Option<String> {
+        scoped_account().or_else(|| self.current_account_id())
+    }
+
+    /// Events tagged with the effective account.
+    pub(crate) fn account_events(&self) -> crate::EventBus {
+        self.events.for_account(self.effective_account_id())
+    }
+
     pub(crate) fn data_path(&self) -> PathBuf {
         PathBuf::from(&self.config.data_dir)
     }
@@ -387,7 +420,7 @@ mod tests {
     #[derive(Default)]
     struct NoEvents;
     impl crate::EventListener for NoEvents {
-        fn on_event(&self, _event: crate::CoreEvent) {}
+        fn on_event(&self, _account: Option<String>, _event: crate::CoreEvent) {}
     }
 
     #[test]
@@ -448,5 +481,50 @@ mod tests {
         let ids: Vec<String> = block_on(core.list_accounts()).unwrap().into_iter().map(|a| a.id).collect();
         assert_eq!(ids, ["three", "one"]);
         assert!(block_on(core.remove_account(DEMO_ACCOUNT_ID.into())).is_err(), "the demo is not an account");
+    }
+
+    #[derive(Default)]
+    struct Tags(std::sync::Mutex<Vec<(Option<String>, String)>>);
+    impl crate::EventListener for Tags {
+        fn on_event(&self, account: Option<String>, event: crate::CoreEvent) {
+            if let crate::CoreEvent::ThreadsChanged { mailbox_id, .. } = event {
+                self.0.lock().unwrap().push((account, mailbox_id));
+            }
+        }
+    }
+
+    #[test]
+    fn work_scoped_to_an_account_stays_on_it_whatever_the_window_shows() {
+        use futures::executor::block_on;
+        let t = temp("scope");
+        let tags = Arc::new(Tags::default());
+        let core = Core::new(
+            crate::CoreConfig { data_dir: t.0.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            tags.clone(),
+        )
+        .unwrap();
+        block_on(core.clone().set_current_account("alpha".into())).unwrap();
+        block_on(core.debug_seed_demo_mailbox(20)).unwrap();
+        block_on(core.clone().set_current_account("beta".into())).unwrap();
+
+        async fn inbox(core: &Arc<Core>) -> u32 {
+            let boxes = core.list_mailboxes().await.unwrap();
+            boxes.into_iter().find(|m| m.id == "INBOX").map(|m| m.total_count).unwrap_or(0)
+        }
+        let alpha = || Some("alpha".to_owned());
+        assert_eq!(block_on(inbox(&core)), 0, "the window shows beta, which is empty");
+        let scoped_inbox = block_on(scoped(alpha(), inbox(&core)));
+        assert!(scoped_inbox > 0, "scoped work reads alpha");
+
+        // A change made under alpha's scope lands in alpha and says so.
+        let thread = block_on(scoped(alpha(), core.list_threads("INBOX".into(), None, 1))).unwrap().rows.remove(0).id;
+        block_on(scoped(alpha(), core.archive(vec![thread]))).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let seen = tags.0.lock().unwrap().clone();
+        assert!(seen.iter().any(|(a, m)| a.as_deref() == Some("alpha") && m == "INBOX"), "{seen:?}");
+        assert!(seen.iter().all(|(a, _)| a.as_deref() != Some("beta")), "nothing was tagged for the window: {seen:?}");
+        assert_eq!(block_on(scoped(alpha(), inbox(&core))), scoped_inbox - 1);
+        assert_eq!(block_on(inbox(&core)), 0, "beta untouched");
     }
 }

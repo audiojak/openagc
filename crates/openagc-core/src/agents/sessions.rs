@@ -174,16 +174,21 @@ async fn forward(mut rx: mpsc::UnboundedReceiver<(SessionId, AgentEvent)>, event
                 AgentEvent::TurnFailed { .. } => Some(false),
                 _ => None,
             });
+            let account = core.upgrade().and_then(|c| c.agents.session_account(sid.as_str()));
             if let Some(core) = core.upgrade() {
-                core.persist_agent_events(&sid, &list).await;
+                crate::registry::scoped(account.clone(), core.persist_agent_events(&sid, &list)).await;
                 // Routine runs finish when their turn does (off this task, so
                 // the event stream keeps flowing while the run is recorded).
                 if let Some(succeeded) = ended {
                     let session = sid.0.clone();
-                    tokio::spawn(async move { core.routine_turn_ended(&session, succeeded).await });
+                    let account = account.clone();
+                    tokio::spawn(crate::registry::scoped(account, async move {
+                        core.routine_turn_ended(&session, succeeded).await
+                    }));
                 }
             }
             events
+                .for_account(account)
                 .emit(CoreEvent::AgentEvents { session_id: sid.0, events: list.into_iter().map(Into::into).collect() });
         }
     }
@@ -450,6 +455,7 @@ impl Core {
         resume: Option<String>,
     ) -> Result<String, CoreError> {
         let db = self.db()?; // an account must be open: the tools read it
+        let account = self.effective_account_id();
         let socket_path = self.mcp_socket_path()?;
         let resources = self.agents.resources.read().unwrap_or_else(|e| e.into_inner()).clone();
         let rt = self.agent_runtime();
@@ -460,6 +466,9 @@ impl Core {
             None => Scope::Mailbox,
         };
         // Registered before the CLI starts, so its first tool call finds it.
+        if let Some(account) = account {
+            self.agents.bind_account(id.as_str(), account);
+        }
         self.agents.register(id.as_str(), scope, Some(EventSink::new(id.clone(), rt.tx.clone())));
         let (uuid, name, now) = (id.0.clone(), provider.as_str().to_owned(), mail_sync::now_millis());
         runtime::run(async move {

@@ -183,7 +183,7 @@ impl Core {
         let from = EmailAddress::new(None, &self.own_address().await?);
         let db = self.db()?;
         let service = self.accounts.sync_service();
-        let events = self.events.clone();
+        let events = self.account_events();
         runtime::run(async move {
             let changes = mail_sync::send_draft(&db, id, from, service.is_some()).await.map_err(|e| match e {
                 mail_sync::SyncError::Store(mail_store::StoreError::Invalid(m)) => {
@@ -231,7 +231,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     #[test]

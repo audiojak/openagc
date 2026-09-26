@@ -34,7 +34,7 @@ impl Core {
     async fn mutate(&self, change: LocalChange) -> Result<(), CoreError> {
         let service = self.accounts.sync_service();
         let db = self.db()?;
-        let events = self.events.clone();
+        let events = self.account_events();
         runtime::run(async move {
             match service {
                 Some(service) => {
@@ -121,7 +121,7 @@ impl Core {
     /// Forget changes that could not be applied (they were already undone).
     pub async fn clear_failed_changes(&self) -> Result<(), CoreError> {
         let db = self.db()?;
-        let events = self.events.clone();
+        let events = self.account_events();
         runtime::run(async move {
             db.write(|tx| mail_store::outbox::clear_failed(tx).map(|_| ())).await?;
             let c = db.read(mail_store::outbox::counts).await?;
@@ -157,7 +157,7 @@ impl Core {
         }
         let db = self.db()?;
         let service = self.accounts.sync_service();
-        let events = self.events.clone();
+        let events = self.account_events();
         runtime::run(async move {
             let wanted = name.clone();
             let labels = db.read(mail_store::read::list_labels).await?;
@@ -221,7 +221,7 @@ mod tests {
 
     struct Noop;
     impl EventListener for Noop {
-        fn on_event(&self, _: CoreEvent) {}
+        fn on_event(&self, _: Option<String>, _: CoreEvent) {}
     }
 
     fn core(name: &str) -> Arc<Core> {

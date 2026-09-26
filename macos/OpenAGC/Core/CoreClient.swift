@@ -10,7 +10,8 @@ final class CoreClient: Sendable {
 
     /// Events from the core, already coalesced in Rust (spec §4.3). One
     /// consumer; stores fan out on the main actor.
-    let events: AsyncStream<CoreClientEvent>
+    /// Core events with the account each is about (`nil`: app-wide).
+    let events: AsyncStream<CoreClientEvent.Tagged>
 
     convenience init(dataDirectory: URL, logDirectory: URL? = nil,
                      secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
@@ -19,7 +20,7 @@ final class CoreClient: Sendable {
 
     init(dataDirectoryPath: String, logDirectoryPath: String? = nil,
          secrets: KeychainSecretStore = KeychainSecretStore()) throws(CoreClientError) {
-        let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.self, bufferingPolicy: .unbounded)
+        let (stream, continuation) = AsyncStream.makeStream(of: CoreClientEvent.Tagged.self, bufferingPolicy: .unbounded)
         events = stream
         do {
             core = try Core(config: CoreConfig(dataDir: dataDirectoryPath, logDir: logDirectoryPath),
@@ -557,6 +558,12 @@ struct ThreadChangeHint: Sendable, Equatable {
 }
 
 enum CoreClientEvent: Sendable, Equatable {
+    /// An event and the account it is about (spec §7.7).
+    struct Tagged: Sendable, Equatable {
+        let accountID: String?
+        let event: CoreClientEvent
+    }
+
     enum SyncState: Sendable, Equatable { case idle, bootstrapping, syncing, offline, error }
 
     /// A message that just arrived, unread in the Inbox.
@@ -610,13 +617,13 @@ final class PDFTextExtractor: TextExtractor, Sendable {
 
 /// Receives events on a Rust runtime thread and hands them to the stream.
 private final class EventBridge: EventListener, Sendable {
-    private let continuation: AsyncStream<CoreClientEvent>.Continuation
+    private let continuation: AsyncStream<CoreClientEvent.Tagged>.Continuation
 
-    init(_ continuation: AsyncStream<CoreClientEvent>.Continuation) {
+    init(_ continuation: AsyncStream<CoreClientEvent.Tagged>.Continuation) {
         self.continuation = continuation
     }
 
-    func onEvent(event: CoreEvent) {
+    func onEvent(accountId: String?, event: CoreEvent) {
         // Rust warn/error records are logged here rather than delivered to
         // stores; Swift owns unified-logging privacy (spec §17). Rust has
         // already kept secrets and mail content out, and scrubbed addresses
@@ -631,7 +638,7 @@ private final class EventBridge: EventListener, Sendable {
             return
         }
         if let mapped = CoreClientEvent(event) {
-            continuation.yield(mapped)
+            continuation.yield(.init(accountID: accountId, event: mapped))
         }
     }
 }

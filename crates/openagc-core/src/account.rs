@@ -158,7 +158,10 @@ impl Core {
     /// the in-memory fake; the app uses Gmail via `start_sync`).
     pub(crate) fn start_sync_with(self: &Arc<Self>, provider: Arc<dyn MailProvider>) -> Result<(), CoreError> {
         let db = self.db()?;
-        let observer = Arc::new(EventObserver { events: self.events.clone() });
+        // Everything this account's sync reports is tagged with it, so a
+        // background account never updates the window's (spec §7.7).
+        let events = self.account_events();
+        let observer = Arc::new(EventObserver { events: events.clone() });
         let engine = Arc::new(SyncEngine::new(provider, db, observer));
         let weak = Arc::downgrade(self);
         let attribute: crate::sync::ExternalChanges = Arc::new(move |changes| {
@@ -166,7 +169,7 @@ impl Core {
                 runtime::runtime().spawn(async move { core.attribute_routine_changes(changes).await });
             }
         });
-        let service = SyncService::start(engine, self.events.clone(), runtime::runtime().handle(), Some(attribute));
+        let service = SyncService::start(engine, events, runtime::runtime().handle(), Some(attribute));
         if let Some(old) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).replace(service) {
             old.stop();
         }
@@ -385,7 +388,7 @@ mod tests {
     #[derive(Default)]
     struct Recorder(StdMutex<Vec<CoreEvent>>);
     impl EventListener for Recorder {
-        fn on_event(&self, event: CoreEvent) {
+        fn on_event(&self, _account: Option<String>, event: CoreEvent) {
             self.0.lock().unwrap().push(event);
         }
     }
