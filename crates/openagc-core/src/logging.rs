@@ -35,7 +35,9 @@ static INSTALLED: OnceLock<()> = OnceLock::new();
 pub(crate) fn init(log_dir: Option<&Path>, bus: EventBus) {
     *LOG_SINK.lock().unwrap_or_else(|e| e.into_inner()) = Some(bus);
     INSTALLED.get_or_init(|| {
-        let filter = EnvFilter::try_from_env("OPENAGC_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+        // html5ever warns once per message about an unimplemented (and
+        // harmless) parsing corner; that alone rotated the log every minute.
+        let filter = EnvFilter::try_from_env("OPENAGC_LOG").unwrap_or_else(|_| EnvFilter::new("info,html5ever=error"));
         let file_layer = log_dir
             .and_then(|dir| RotatingFile::open(dir).ok())
             .map(|file| tracing_subscriber::fmt::layer().with_writer(file).with_ansi(false).with_target(true));
