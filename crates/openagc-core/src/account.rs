@@ -63,7 +63,7 @@ impl AccountState {
     }
 }
 
-fn client_key(account_id: &str) -> String {
+pub(crate) fn client_key(account_id: &str) -> String {
     format!("oauth.client.{account_id}")
 }
 
@@ -259,6 +259,15 @@ impl Core {
                 client_key(&account_id),
                 serde_json::to_string(&stored).map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?,
             )?;
+            core.register_account(crate::registry::IndexEntry {
+                id: account_id.clone(),
+                kind: crate::registry::AccountKind::Gmail,
+                email: profile.email.clone(),
+                display_name: None,
+                avatar_file: None,
+                added_at: mail_sync::now_millis(),
+            })
+            .await?;
             tracing::info!(account = %account_id, "gmail account connected");
             Ok(ConnectedAccount { account_id, email: profile.email })
         })
@@ -346,24 +355,10 @@ impl Core {
     }
 
     /// Remove an account: stop sync, forget its credentials and delete its
-    /// local mail store. Gmail itself is not touched.
+    /// local mail store. Gmail itself is not touched. Same as
+    /// `remove_account`.
     pub async fn sign_out(&self, account_id: String) -> Result<(), CoreError> {
-        if self.current_account_id().as_deref() == Some(account_id.as_str()) {
-            self.stop_sync();
-            if let Some(account) = self.account.write().unwrap_or_else(|e| e.into_inner()).take() {
-                account.db.close();
-            }
-        }
-        self.secrets.delete(keys::refresh_token(&account_id))?;
-        self.secrets.delete(client_key(&account_id))?;
-        let dir = self.account_db_path(&account_id).parent().map(std::path::Path::to_path_buf);
-        runtime::run(async move {
-            if let Some(dir) = dir {
-                let _ = tokio::fs::remove_dir_all(dir).await;
-            }
-            Ok(())
-        })
-        .await
+        self.remove_account(account_id).await
     }
 }
 

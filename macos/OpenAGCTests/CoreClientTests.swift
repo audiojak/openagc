@@ -37,3 +37,16 @@ struct CoreClientTests {
         }
     }
 }
+
+@MainActor
+struct AccountRegistryFFITests {
+    @Test func aFreshDataDirectoryHasNoAccountsAndTheDemoIsNeverListed() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let core = try CoreClient(dataDirectory: dir)
+        #expect(try await core.accounts().isEmpty)
+        try await core.setCurrentAccount("demo")
+        #expect(core.currentAccountID == "demo")
+        #expect(try await core.accounts().isEmpty, "the demo mailbox is not an account")
+        await #expect(throws: CoreClientError.self) { try await core.removeAccount("demo") }
+    }
+}

@@ -96,6 +96,10 @@ final class AppModel {
             await openDemoMailbox()
         } else if let id = UserDefaults.standard.string(forKey: "accountID") {
             await open(accountID: id)
+        } else if let first = try? await core.accounts().first {
+            // No remembered choice (a fresh preference file): the first account.
+            UserDefaults.standard.set(first.id, forKey: "accountID")
+            await open(accountID: first.id)
         } else {
             accountState = .noAccount
         }

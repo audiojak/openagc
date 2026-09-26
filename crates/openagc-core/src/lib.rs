@@ -16,6 +16,7 @@ pub mod ffi;
 mod logging;
 mod mail;
 mod mutations;
+mod registry;
 mod routines;
 mod runtime;
 pub mod secrets;
@@ -32,6 +33,7 @@ pub use compose::{DraftAttachmentInfo, DraftInfo, DraftStatus};
 pub use error::{CoreError, ErrorKind};
 pub use events::{ChangeHint, CoreEvent, EventBus, EventListener, LogLevel, NewMailInfo, SyncState};
 pub use mutations::OutboxStatus;
+pub use registry::{AccountKind, AccountSummary};
 pub use routines::{RoutineInfo, RoutinePreviewRow, RoutineRunInfo};
 pub use secrets::SecretStore;
 
@@ -52,7 +54,9 @@ pub struct Core {
     config: CoreConfig,
     events: EventBus,
     secrets: Arc<dyn SecretStore>,
-    account: RwLock<Option<mail::Account>>,
+    open_accounts: RwLock<registry::OpenAccounts>,
+    /// Serializes changes to `accounts/index.json`.
+    index_lock: tokio::sync::Mutex<()>,
     accounts: account::AccountState,
     agents: agents::AgentHub,
 }
@@ -75,7 +79,8 @@ impl Core {
             config,
             events,
             secrets,
-            account: RwLock::new(None),
+            open_accounts: RwLock::new(registry::OpenAccounts::default()),
+            index_lock: tokio::sync::Mutex::new(()),
             accounts: Default::default(),
             agents: Default::default(),
         }))

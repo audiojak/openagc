@@ -10,12 +10,6 @@ use mail_store::{Db, StoreError, read};
 use crate::ffi::{LabelInfo, MailboxInfo, RenderedBody, ThreadDetail, ThreadPage};
 use crate::{Core, CoreError, ErrorKind, runtime};
 
-/// An open account: its id and store.
-pub(crate) struct Account {
-    pub id: String,
-    pub db: Db,
-}
-
 impl From<StoreError> for CoreError {
     fn from(e: StoreError) -> Self {
         let kind = match e {
@@ -32,39 +26,27 @@ impl Core {
         PathBuf::from(&self.config.data_dir).join("accounts").join(account_id).join("mail.sqlite")
     }
 
+    /// The current account's store.
     pub(crate) fn db(&self) -> Result<Db, CoreError> {
-        let guard = self.account.read().unwrap_or_else(|e| e.into_inner());
-        guard.as_ref().map(|a| a.db.clone()).ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))
+        let open = self.open_accounts.read().unwrap_or_else(|e| e.into_inner());
+        open.current
+            .as_ref()
+            .and_then(|id| open.stores.get(id))
+            .cloned()
+            .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))
     }
 }
 
-fn valid_account_id(id: &str) -> bool {
+pub(crate) fn valid_account_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 #[uniffi::export]
 impl Core {
     /// Open (creating if needed) the store for `account_id` and make it the
-    /// current account. Idempotent.
+    /// current account. Idempotent. Same as `set_current_account`.
     pub async fn open_account(self: Arc<Self>, account_id: String) -> Result<(), CoreError> {
-        if !valid_account_id(&account_id) {
-            return Err(CoreError::new(ErrorKind::InvalidInput, "account id must be 1-64 of [A-Za-z0-9-]"));
-        }
-        let core = self.clone();
-        runtime::run(async move {
-            if core.account.read().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|a| a.id == account_id) {
-                return Ok(());
-            }
-            let path = core.account_db_path(&account_id);
-            let db = tokio::task::spawn_blocking(move || Db::open(&path))
-                .await
-                .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))??;
-            tracing::info!(account = %account_id, "account opened");
-            *core.account.write().unwrap_or_else(|e| e.into_inner()) = Some(Account { id: account_id, db });
-            core.start_routine_scheduler();
-            Ok(())
-        })
-        .await
+        self.set_current_account(account_id).await
     }
 
     /// Diagnostics / development hook: fill the open account with a
@@ -84,7 +66,7 @@ impl Core {
 
     /// The open account's id, if any.
     pub fn current_account_id(&self) -> Option<String> {
-        self.account.read().unwrap_or_else(|e| e.into_inner()).as_ref().map(|a| a.id.clone())
+        self.open_accounts.read().unwrap_or_else(|e| e.into_inner()).current.clone()
     }
 
     pub async fn list_mailboxes(&self) -> Result<Vec<MailboxInfo>, CoreError> {

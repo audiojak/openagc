@@ -64,6 +64,23 @@ final class CoreClient: Sendable {
         try await call { try await core.openAccount(accountId: accountID) }
     }
 
+    /// The user's accounts in their order (spec §7.7).
+    func accounts() async throws(CoreClientError) -> [AccountSummary] {
+        try await call { try await core.listAccounts() }
+    }
+
+    func setCurrentAccount(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.setCurrentAccount(accountId: accountID) }
+    }
+
+    func removeAccount(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.removeAccount(accountId: accountID) }
+    }
+
+    func moveAccount(_ accountID: String, to position: Int) async throws(CoreClientError) {
+        try await call { try await core.moveAccount(accountId: accountID, position: UInt32(max(0, position))) }
+    }
+
     var currentAccountID: String? { core.currentAccountId() }
 
     func mailboxes() async throws(CoreClientError) -> [MailboxInfo] {
@@ -519,6 +536,8 @@ typealias DraftStatus = OpenAGCCore.DraftStatus
 typealias LabelInfo = OpenAGCCore.LabelInfo
 typealias MailboxInfo = OpenAGCCore.MailboxInfo
 typealias SyncWindow = OpenAGCCore.SyncWindow
+typealias AccountSummary = OpenAGCCore.AccountSummary
+typealias AccountKind = OpenAGCCore.AccountKind
 typealias MailboxKind = OpenAGCCore.MailboxKind
 typealias MessageInfo = OpenAGCCore.MessageInfo
 typealias RenderedBody = OpenAGCCore.RenderedBody
