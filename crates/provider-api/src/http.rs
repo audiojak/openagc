@@ -112,7 +112,10 @@ impl HttpClient {
         loop {
             self.limiter.acquire(cost, priority).await;
             let token = self.tokens.access_token().await?;
-            let result = build(&self.client).bearer_auth(token.expose()).send().await;
+            let request = build(&self.client).bearer_auth(token.expose());
+            tracing::debug!(cost, attempt, "provider request");
+            let result = request.send().await;
+            tracing::debug!(ok = result.is_ok(), "provider response");
             let error = match result {
                 Err(e) => ProviderError::Network(e.to_string()),
                 Ok(response) if response.status().is_success() => return Ok(response),

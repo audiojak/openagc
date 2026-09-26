@@ -282,7 +282,9 @@ impl SyncEngine {
         if ids.is_empty() {
             return Ok(0);
         }
+        tracing::debug!(count = ids.len(), "backfill batch: fetching");
         let fetched = self.provider.fetch_messages(&ids, Priority::Background).await?;
+        tracing::debug!(count = fetched.len(), "backfill batch: storing");
         let incoming: Vec<_> = fetched.into_iter().map(to_incoming).collect();
         let processed = ids.len();
         let changes = self
@@ -511,6 +513,7 @@ impl SyncEngine {
         };
         let mut page: Option<PageToken> = None;
         loop {
+            tracing::debug!(priority, has_page = page.is_some(), "listing phase page");
             let result = self.provider.list_message_ids(&filter, page.take()).await?;
             let ids: Vec<MessageId> = result.ids.into_iter().map(|(id, _)| id).collect();
             self.db.write(move |tx| queue::enqueue(tx, priority, &ids, refetch)).await?;

@@ -127,6 +127,9 @@ impl RateLimiter {
                 let deficit = cost + floor - s.tokens;
                 Duration::from_secs_f64(deficit / s.refill_per_sec)
             };
+            if wait > Duration::from_secs(2) {
+                tracing::debug!(?wait, cost, ?priority, "rate limiter waiting");
+            }
             sleep(wait).await;
         }
     }
@@ -141,6 +144,8 @@ impl RateLimiter {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     #[tokio::test(start_paused = true)]
@@ -194,5 +199,31 @@ mod tests {
         sleep(Duration::from_secs(61)).await;
         limiter.acquire(1, Priority::Interactive).await;
         assert_eq!(limiter.units_per_minute().await, 132);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn concurrent_background_fetches_keep_flowing_at_the_refill_rate() {
+        let limiter = Arc::new(RateLimiter::gmail_default());
+        let start = Instant::now();
+        let mut tasks = Vec::new();
+        for _ in 0..8 {
+            let limiter = limiter.clone();
+            tasks.push(tokio::spawn(async move {
+                for _ in 0..100 {
+                    limiter.acquire(20, Priority::Background).await;
+                }
+            }));
+        }
+        let all = async {
+            for t in tasks {
+                t.await.unwrap();
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(600), all)
+            .await
+            .expect("16,000 units at 5,000/min must finish in minutes, not hang");
+        let took = start.elapsed();
+        // 16,000 units: 4,000 burst above the reserve, then 12,000 at 83.3/s ≈ 144 s.
+        assert!(took >= Duration::from_secs(140) && took <= Duration::from_secs(150), "{took:?}");
     }
 }
