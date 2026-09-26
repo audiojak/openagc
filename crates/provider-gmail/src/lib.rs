@@ -6,6 +6,7 @@
 //! with bounded concurrency rather than through the multipart batch
 //! endpoint: batching does not reduce quota cost, which is the real limit.
 
+pub mod imap;
 #[cfg(any(test, feature = "fake-imap"))]
 pub mod imap_fake;
 pub mod oauth;

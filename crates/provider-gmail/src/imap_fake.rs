@@ -185,6 +185,9 @@ async fn serve(stream: TcpStream, state: Arc<Mutex<State>>) -> std::io::Result<(
                     if items.contains("FLAGS") {
                         parts.push(format!("FLAGS ({})", m.flags.join(" ")));
                     }
+                    if items.contains("INTERNALDATE") {
+                        parts.push("INTERNALDATE \"01-Sep-2025 10:00:00 +0000\"".to_owned());
+                    }
                     if items.contains("RFC822.SIZE") {
                         parts.push(format!("RFC822.SIZE {}", m.raw.len()));
                     }
