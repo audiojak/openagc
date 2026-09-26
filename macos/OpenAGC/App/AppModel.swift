@@ -149,7 +149,7 @@ final class AppModel {
     /// Sign in to Gmail: again as the open account, or (`adding`) as a new
     /// one, in which case Google shows its account chooser and a cancelled
     /// sign-in returns to the account that was open (spec §7.7).
-    func signIn(with client: GoogleClientConfiguration, adding: Bool = false) async {
+    func signIn(with client: GoogleClientConfiguration, adding: Bool = false, fullAccess: Bool = false) async {
         guard let core, client.isUsable else { return }
         let previous = openAccountID
         if adding, let previous { placeByAccount[previous] = (selectedMailboxID, selectedThreadID) }
@@ -157,7 +157,8 @@ final class AppModel {
         accountState = .signingIn
         do {
             let start = try await core.beginGmailSignIn(clientID: client.clientID, clientSecret: client.clientSecret,
-                                                        loginHint: adding ? nil : accountEmail)
+                                                        loginHint: adding ? nil : accountEmail,
+                                                        fullAccess: fullAccess)
             signInSession = start.sessionID
             NSWorkspace.shared.open(start.authorizationURL)
             let account = try await core.completeGmailSignIn(start.sessionID)
@@ -183,6 +184,19 @@ final class AppModel {
             } else {
                 accountState = .noAccount
             }
+        }
+    }
+
+    /// Faster download over IMAP for an account (spec §7.4): on means
+    /// signing in again with full mail access; off stops using it.
+    func setFasterDownload(_ on: Bool, for accountID: String) async {
+        guard let core else { return }
+        if on {
+            await switchAccount(to: accountID)
+            await signIn(with: .effective(), fullAccess: true)
+        } else {
+            try? await core.disableIMAP(accountID)
+            await reloadAccounts()
         }
     }
 

@@ -64,6 +64,8 @@ pub struct AccountSummary {
     pub position: u32,
     /// Unread threads in the Inbox, for the avatar menu and the Dock.
     pub inbox_unread: u32,
+    /// Backfill may use IMAP (full mail access was granted).
+    pub imap_enabled: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,6 +80,10 @@ pub(crate) struct IndexEntry {
     pub avatar_file: Option<String>,
     #[serde(default)]
     pub added_at: i64,
+    /// Full mail access was granted, so backfill may use IMAP. `None`
+    /// leaves an existing value alone when re-registering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imap: Option<bool>,
 }
 
 /// Stores that are open, and the current one.
@@ -141,6 +147,7 @@ fn scan(data_dir: &Path) -> Vec<IndexEntry> {
                     display_name: None,
                     avatar_file: None,
                     added_at,
+                    imap: None,
                 },
             ));
             continue;
@@ -155,7 +162,15 @@ fn scan(data_dir: &Path) -> Vec<IndexEntry> {
         if let Some(email) = email {
             found.push((
                 created,
-                IndexEntry { id, kind: AccountKind::Gmail, email, display_name: None, avatar_file: None, added_at },
+                IndexEntry {
+                    id,
+                    kind: AccountKind::Gmail,
+                    email,
+                    display_name: None,
+                    avatar_file: None,
+                    added_at,
+                    imap: None,
+                },
             ));
         }
     }
@@ -205,6 +220,9 @@ impl Core {
                         }
                         if entry.avatar_file.is_some() {
                             existing.avatar_file = entry.avatar_file;
+                        }
+                        if entry.imap.is_some() {
+                            existing.imap = entry.imap;
                         }
                     }
                     None => entries.push(entry),
@@ -304,6 +322,7 @@ impl Core {
                         avatar_path,
                         position: i as u32,
                         inbox_unread: 0,
+                        imap_enabled: e.imap.unwrap_or(false),
                     }
                 })
                 .collect())
@@ -394,8 +413,30 @@ impl Core {
             display_name,
             avatar_file: None,
             added_at: mail_sync::now_millis(),
+            imap: None,
         })
         .await
+    }
+
+    /// Stop using IMAP for an account's backfill (turning it on means
+    /// signing in again with full mail access). Takes effect when its sync
+    /// next starts.
+    pub async fn disable_imap(&self, account_id: String) -> Result<(), CoreError> {
+        let data_dir = self.data_path();
+        let entry = {
+            let _guard = self.index_lock.lock().await;
+            runtime::run(async move {
+                tokio::task::spawn_blocking(move || load_index(&data_dir))
+                    .await
+                    .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))
+            })
+            .await?
+            .into_iter()
+            .find(|e| e.id == account_id)
+        };
+        let Some(mut entry) = entry else { return Err(CoreError::new(ErrorKind::NotFound, "no such account")) };
+        entry.imap = Some(false);
+        self.register_account(entry).await
     }
 
     /// Move an account to `position` in the list (the avatar menu order and
@@ -508,6 +549,7 @@ mod tests {
                 display_name: None,
                 avatar_file: None,
                 added_at: 0,
+                imap: None,
             }))
             .unwrap();
         }
@@ -519,12 +561,35 @@ mod tests {
             display_name: Some("Two".into()),
             avatar_file: None,
             added_at: 0,
+            imap: None,
         }))
         .unwrap();
         let list = block_on(core.list_accounts()).unwrap();
         assert_eq!(list.iter().map(|a| a.id.as_str()).collect::<Vec<_>>(), ["one", "two", "three"]);
         assert_eq!(list[1].display_name.as_deref(), Some("Two"));
         assert_eq!(list.iter().map(|a| a.position).collect::<Vec<_>>(), [0, 1, 2]);
+
+        // The IMAP grant is recorded, kept by later registrations that do
+        // not mention it, and can be turned off.
+        let mut granted = IndexEntry {
+            id: "one".into(),
+            kind: AccountKind::Gmail,
+            email: "one@example.com".into(),
+            display_name: None,
+            avatar_file: None,
+            added_at: 0,
+            imap: Some(true),
+        };
+        block_on(core.register_account(granted.clone())).unwrap();
+        granted.imap = None;
+        block_on(core.register_account(granted)).unwrap();
+        let imap = |core: &Arc<Core>| {
+            block_on(core.list_accounts()).unwrap().iter().find(|a| a.id == "one").unwrap().imap_enabled
+        };
+        assert!(imap(&core));
+        block_on(core.disable_imap("one".into())).unwrap();
+        assert!(!imap(&core));
+        assert!(block_on(core.disable_imap("nobody".into())).is_err());
 
         block_on(core.move_account("three".into(), 0)).unwrap();
         let order: Vec<String> = block_on(core.list_accounts()).unwrap().into_iter().map(|a| a.id).collect();

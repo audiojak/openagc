@@ -299,10 +299,13 @@ impl Core {
 #[uniffi::export]
 impl Core {
     /// Begin Gmail sign-in: returns the URL Swift opens in the browser.
+    /// `full_access` also asks for `https://mail.google.com/`, which faster
+    /// download over IMAP needs (spec §7.4 IMAP amendment); off by default.
     pub async fn begin_gmail_sign_in(
         &self,
         client: OAuthClientConfig,
         login_hint: Option<String>,
+        full_access: bool,
     ) -> Result<SignInStart, CoreError> {
         if client.client_id.trim().is_empty() {
             return Err(CoreError::new(ErrorKind::InvalidInput, "an OAuth client ID is required"));
@@ -312,7 +315,8 @@ impl Core {
             client_secret: client.client_secret.clone().filter(|s| !s.is_empty()).map(Redacted::new),
         };
         let pending =
-            runtime::run(async move { Ok(oauth::begin(&oauth_client, login_hint.as_deref()).await?) }).await?;
+            runtime::run(async move { Ok(oauth::begin(&oauth_client, login_hint.as_deref(), full_access).await?) })
+                .await?;
         let session_id = random_id()?;
         let url = pending.url.clone();
         self.accounts.pending.lock().unwrap_or_else(|e| e.into_inner()).insert(session_id.clone(), (pending, client));
@@ -346,6 +350,7 @@ impl Core {
                 )
             })?;
             let identity = tokens.id_token.as_deref().and_then(oauth::identity_from_id_token).unwrap_or_default();
+            let grants_imap = tokens.grants_imap();
             let source = GoogleTokenSource::new(client, Redacted::new(refresh.clone()));
             source.prime(tokens.access_token, tokens.expires_in).await;
             let gmail = GmailProvider::new(source)?;
@@ -379,6 +384,7 @@ impl Core {
                 display_name: identity.name.clone(),
                 avatar_file,
                 added_at: mail_sync::now_millis(),
+                imap: Some(grants_imap),
             })
             .await?;
             tracing::info!(account = %account_id, "gmail account connected");
@@ -743,13 +749,17 @@ mod tests {
             Arc::new(Recorder::default()),
         )
         .unwrap();
-        let err =
-            block_on(core.begin_gmail_sign_in(OAuthClientConfig { client_id: " ".into(), client_secret: None }, None))
-                .unwrap_err();
+        let err = block_on(core.begin_gmail_sign_in(
+            OAuthClientConfig { client_id: " ".into(), client_secret: None },
+            None,
+            false,
+        ))
+        .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         let start = block_on(core.begin_gmail_sign_in(
             OAuthClientConfig { client_id: "id.apps.googleusercontent.com".into(), client_secret: Some("s".into()) },
             None,
+            false,
         ))
         .unwrap();
         assert!(start.authorization_url.starts_with("https://accounts.google.com/"));

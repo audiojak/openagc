@@ -132,6 +132,12 @@ struct AccountRow: View {
                     }
                 }
                 .disabled(window == nil)
+                Toggle(isOn: Binding(get: { account.imapEnabled },
+                                     set: { on in Task { await model.setFasterDownload(on, for: account.id) } })) {
+                    Text("Download faster over IMAP")
+                    Text("Asks Google for full mail access, which IMAP needs. OpenAGC still never deletes mail permanently.")
+                }
+                .disabled(signedIn != true)
             }
         }
         .padding(.vertical, 2)

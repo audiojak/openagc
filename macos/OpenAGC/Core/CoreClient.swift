@@ -104,6 +104,10 @@ final class CoreClient: Sendable {
 
     func cancelImport(_ accountID: String) { core.cancelImport(accountId: accountID) }
 
+    func disableIMAP(_ accountID: String) async throws(CoreClientError) {
+        try await call { try await core.disableImap(accountId: accountID) }
+    }
+
     func isArchive(_ accountID: String) -> Bool { core.accountIsArchive(accountId: accountID) }
 
     /// Development/test hook: a listed account with a synthetic mailbox and
@@ -416,10 +420,13 @@ final class CoreClient: Sendable {
     }
 
     /// Start Gmail sign-in; open the returned URL in the user's browser.
-    func beginGmailSignIn(clientID: String, clientSecret: String?, loginHint: String? = nil) async throws(CoreClientError) -> SignInStart {
+    /// `fullAccess` also asks Google for full mail access, which faster
+    /// download over IMAP needs (spec §7.4).
+    func beginGmailSignIn(clientID: String, clientSecret: String?, loginHint: String? = nil,
+                          fullAccess: Bool = false) async throws(CoreClientError) -> SignInStart {
         let start = try await call {
             try await core.beginGmailSignIn(client: OAuthClientConfig(clientId: clientID, clientSecret: clientSecret),
-                                            loginHint: loginHint)
+                                            loginHint: loginHint, fullAccess: fullAccess)
         }
         guard let url = URL(string: start.authorizationUrl) else {
             throw CoreClientError(kind: .internalError, message: "invalid authorization URL")

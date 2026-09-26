@@ -25,7 +25,8 @@ struct AccountAvatarTests {
 struct AccountMenuTests {
     private func summary(_ id: String, email: String, name: String? = nil, unread: UInt32 = 0,
                          kind: AccountKind = .gmail) -> AccountSummary {
-        AccountSummary(id: id, kind: kind, email: email, displayName: name, avatarPath: nil, position: 0, inboxUnread: unread)
+        AccountSummary(id: id, kind: kind, email: email, displayName: name, avatarPath: nil, position: 0, inboxUnread: unread,
+                       imapEnabled: false)
     }
 
     @Test func menuTitlesShowNameAddressAndUnread() {

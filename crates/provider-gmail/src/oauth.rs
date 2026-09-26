@@ -25,6 +25,10 @@ use tokio::time::Instant;
 pub const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 pub const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 pub const SCOPE: &str = "https://www.googleapis.com/auth/gmail.modify openid profile";
+/// With full mail access, which IMAP requires (spec §7.4 IMAP amendment).
+/// Asked for only when the user turns on faster download for an account.
+pub const SCOPE_WITH_IMAP: &str = "https://mail.google.com/ openid profile";
+pub const FULL_MAIL_SCOPE: &str = "https://mail.google.com/";
 
 /// Refresh this long before the access token actually expires.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
@@ -48,6 +52,16 @@ pub struct TokenResponse {
     /// Present when `openid` was granted.
     #[serde(default)]
     pub id_token: Option<String>,
+    /// The scopes actually granted, space-separated.
+    #[serde(default)]
+    pub scope: Option<String>,
+}
+
+impl TokenResponse {
+    /// Whether full mail access (IMAP) was granted.
+    pub fn grants_imap(&self) -> bool {
+        self.scope.as_deref().is_some_and(|s| s.split(' ').any(|x| x == FULL_MAIL_SCOPE))
+    }
 }
 
 /// Who signed in, from the ID token (spec §7.7).
@@ -141,14 +155,15 @@ pub fn code_challenge(verifier: &str) -> String {
 }
 
 /// Bind the loopback listener and build the authorization URL.
-pub async fn begin(client: &OAuthClient, login_hint: Option<&str>) -> ProviderResult<PendingAuthorization> {
-    begin_with(client, AUTH_URL, login_hint).await
+pub async fn begin(client: &OAuthClient, login_hint: Option<&str>, imap: bool) -> ProviderResult<PendingAuthorization> {
+    begin_with(client, AUTH_URL, login_hint, if imap { SCOPE_WITH_IMAP } else { SCOPE }).await
 }
 
 pub async fn begin_with(
     client: &OAuthClient,
     auth_url: &str,
     login_hint: Option<&str>,
+    scope: &str,
 ) -> ProviderResult<PendingAuthorization> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| ProviderError::Network(e.to_string()))?;
     let port = listener.local_addr().map_err(|e| ProviderError::Network(e.to_string()))?.port();
@@ -161,7 +176,7 @@ pub async fn begin_with(
         q.append_pair("client_id", &client.client_id)
             .append_pair("redirect_uri", &redirect_uri)
             .append_pair("response_type", "code")
-            .append_pair("scope", SCOPE)
+            .append_pair("scope", scope)
             .append_pair("code_challenge", &code_challenge(&verifier))
             .append_pair("code_challenge_method", "S256")
             .append_pair("state", &state)
@@ -392,7 +407,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_authorization_url_carries_pkce_state_and_offline_access() {
-        let pending = begin(&client(), Some("me@example.com")).await.unwrap();
+        let pending = begin(&client(), Some("me@example.com"), false).await.unwrap();
         let url = url::Url::parse(&pending.url).unwrap();
         let q: std::collections::HashMap<String, String> = url.query_pairs().into_owned().collect();
         assert_eq!(url.host_str(), Some("accounts.google.com"));
@@ -407,10 +422,11 @@ mod tests {
         assert!(q["state"].len() >= 32);
         assert!(q["scope"].split(' ').any(|s| s == "openid") && q["scope"].split(' ').any(|s| s == "profile"));
 
-        let adding = begin(&client(), None).await.unwrap();
+        let adding = begin(&client(), None, true).await.unwrap();
         let q: std::collections::HashMap<String, String> =
             url::Url::parse(&adding.url).unwrap().query_pairs().into_owned().collect();
         assert_eq!(q["prompt"], "consent select_account", "adding: Google shows its account chooser");
+        assert_eq!(q["scope"], SCOPE_WITH_IMAP, "full mail access only when asked for");
         assert!(!q.contains_key("login_hint"));
     }
 
@@ -492,7 +508,7 @@ mod tests {
 
     #[tokio::test]
     async fn the_loopback_listener_returns_the_code_and_ignores_other_requests() {
-        let pending = begin(&client(), None).await.unwrap();
+        let pending = begin(&client(), None, false).await.unwrap();
         let redirect = pending.redirect_uri.clone();
         let state =
             url::Url::parse(&pending.url).unwrap().query_pairs().find(|(k, _)| k == "state").unwrap().1.into_owned();
@@ -507,7 +523,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_mismatched_state_is_rejected() {
-        let pending = begin(&client(), None).await.unwrap();
+        let pending = begin(&client(), None, false).await.unwrap();
         let redirect = pending.redirect_uri.clone();
         let waiter = tokio::spawn(pending.wait_for_code(Duration::from_secs(10)));
         let page = hit(&redirect, "/callback?code=x&state=forged").await;
@@ -517,7 +533,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_denied_consent_is_reported() {
-        let pending = begin(&client(), None).await.unwrap();
+        let pending = begin(&client(), None, false).await.unwrap();
         let redirect = pending.redirect_uri.clone();
         let state =
             url::Url::parse(&pending.url).unwrap().query_pairs().find(|(k, _)| k == "state").unwrap().1.into_owned();
@@ -528,7 +544,7 @@ mod tests {
 
     #[tokio::test]
     async fn waiting_times_out() {
-        let pending = begin(&client(), None).await.unwrap();
+        let pending = begin(&client(), None, false).await.unwrap();
         let err = pending.wait_for_code(Duration::from_millis(50)).await.unwrap_err();
         assert!(matches!(err, ProviderError::Invalid(ref m) if m.contains("timed out")));
     }

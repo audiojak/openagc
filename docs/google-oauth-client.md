@@ -26,7 +26,9 @@ five minutes, and your mail still goes only from Google to your Mac.
 5. Under **Data access**, add the scopes
    `https://www.googleapis.com/auth/gmail.modify`, `openid` and
    `.../auth/userinfo.profile`. The last two are non-sensitive; they give
-   OpenAGC your name and picture for the account switcher.
+   OpenAGC your name and picture for the account switcher. If you want
+   *Download faster over IMAP* (Settings › Accounts), also add
+   `https://mail.google.com/`: IMAP only works with full mail access.
 
 ## 3. Create the client
 

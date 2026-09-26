@@ -742,10 +742,14 @@ UID-ordered stream, newest last. Concretely:
    `body_state='metadata'` so the list is browsable minutes in.
 4. Scope: IMAP needs `https://mail.google.com/`, a superset of
    `gmail.modify`. Both are restricted scopes, so verification (§7.3) is
-   unchanged, but the consent screen wording changes; the request is made
-   once and the token serves both paths. If IMAP `AUTHENTICATE` fails (a
-   Workspace admin can disable IMAP), the engine logs it once and stays on
-   REST.
+   unchanged, but the consent screen then asks to "read, compose, send and
+   permanently delete all your email". *(Implementation decision,
+   2026-09-26: opt-in per account, Settings › Accounts › Download faster
+   over IMAP, which signs in again with `mail.google.com` instead of
+   `gmail.modify`; the default stays least-privilege, and a Cloud project
+   must list the scope before it can be granted.)* The granted scopes are
+   recorded per account. If IMAP `AUTHENTICATE` fails (a Workspace admin
+   can disable IMAP), the engine logs it once and stays on REST.
 5. Budget: the source tracks bytes per day and yields to REST at 2,000 MB.
    Incremental fetches (new mail from history) stay on REST: they are few
    and latency matters more than units there.

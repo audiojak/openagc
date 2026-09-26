@@ -218,6 +218,7 @@ impl Core {
             display_name: None,
             avatar_file: None,
             added_at: mail_sync::now_millis(),
+            imap: None,
         })
         .await?;
 
