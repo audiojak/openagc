@@ -704,6 +704,60 @@ Conflict rule: server wins for labels/read state on the next history sync;
 the outbox is drained *before* history is applied so local intent is not
 overwritten while in flight.
 
+**Amendment (2026-09-26): bulk backfill over IMAP.** Planned; the REST
+backfill stays as the fallback and the only path for incremental sync.
+
+*Why.* The REST API charges 20 units per `messages.get` whatever the format,
+and the first real mailbox showed the per-user quota below the documented
+6,000 units/min. Even the six-month window is hours of backfill; the
+"everything" setting will always feel broken over REST. Gmail's IMAP
+endpoint has no unit quota, only bandwidth (~2,500 MB per user per day) and
+15 concurrent connections, and an `ENVELOPE`/`BODYSTRUCTURE` fetch is
+nearly free, which also makes a headers-first sync possible.
+
+*Design: hybrid.* IMAP is used for bulk download only. History
+(`history.list`), all writes and the outbox stay on REST, because Gmail IMAP
+has no change log (no `CONDSTORE`/`QRESYNC`) and the API's ids are the
+source of truth. The two join on Gmail's IMAP extensions: `X-GM-MSGID` and
+`X-GM-THRID` are the API's message and thread ids (decimal over IMAP, hex in
+the API), `X-GM-LABELS` carries the labels, and `[Gmail]/All Mail` is one
+UID-ordered stream, newest last. Concretely:
+
+1. `provider-gmail` gains an `ImapBackfill` (async IMAP over TLS, XOAUTH2)
+   behind a `BackfillSource` trait; `MailProvider::fetch_messages` remains
+   the REST implementation. The engine asks the backfill source for the
+   queued ids; the IMAP source resolves them with `UID SEARCH X-GM-MSGID`
+   in batches and fetches `BODY.PEEK[]` for up to 200 messages per command
+   on up to 4 connections, honouring the 15-connection cap with headroom.
+   Attachment parts larger than 1 MB are skipped via `BODYSTRUCTURE` and
+   fetched on demand over REST as today.
+2. The raw RFC 822 bytes go through `mail_mime::parse` into the same
+   `IncomingMessage` the REST path produces, so the store, sanitizer and
+   search see no difference. `X-GM-LABELS` plus `\Seen`/`\Flagged` map to
+   label ids (`UNREAD`, `STARRED`); system labels use the API names.
+3. Listing stays on REST (`messages.list` is 5 units per 500 ids), so the
+   window and priority phases are unchanged. Optionally a headers-first
+   pass (`ENVELOPE` for the whole window) fills `messages` with
+   `body_state='metadata'` so the list is browsable minutes in.
+4. Scope: IMAP needs `https://mail.google.com/`, a superset of
+   `gmail.modify`. Both are restricted scopes, so verification (§7.3) is
+   unchanged, but the consent screen wording changes; the request is made
+   once and the token serves both paths. If IMAP `AUTHENTICATE` fails (a
+   Workspace admin can disable IMAP), the engine logs it once and stays on
+   REST.
+5. Budget: the source tracks bytes per day and yields to REST at 2,000 MB.
+   Incremental fetches (new mail from history) stay on REST: they are few
+   and latency matters more than units there.
+
+*Testing.* Fakes only: a fake IMAP server in-process (a small
+`tokio`-based responder that speaks the subset used: `CAPABILITY`,
+`AUTHENTICATE XOAUTH2`, `SELECT`, `UID SEARCH`, `UID FETCH`, `LOGOUT`),
+plus the existing `FakeProvider` for the REST half. No test ever connects
+to `imap.gmail.com`.
+
+*Not in scope.* IMAP as the sole provider (non-Gmail accounts), IDLE push,
+and label writes over IMAP.
+
 ### 7.5 Sending and threading **(Verified)**
 
 Outgoing mail is built with `mail-builder`: `multipart/alternative` with
