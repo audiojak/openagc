@@ -163,7 +163,7 @@ impl Core {
         let db = self.db()?;
         let now = mail_sync::now_millis();
         runtime::run(async move { Ok(db.write(move |tx| drafts::discard(tx, id, now)).await?) }).await?;
-        if let Some(service) = self.accounts.sync_service() {
+        if let Some(service) = self.sync_service() {
             service.outbox_changed();
         }
         Ok(())
@@ -172,7 +172,7 @@ impl Core {
     /// A composer closed: mirror its edits to the server now rather than
     /// at the next 30 s tick. Does nothing without a connected account.
     pub fn flush_drafts(&self) {
-        if let Some(service) = self.accounts.sync_service() {
+        if let Some(service) = self.sync_service() {
             service.flush_drafts();
         }
     }
@@ -182,7 +182,7 @@ impl Core {
     pub async fn send_draft(&self, id: i64) -> Result<(), CoreError> {
         let from = EmailAddress::new(None, &self.own_address().await?);
         let db = self.db()?;
-        let service = self.accounts.sync_service();
+        let service = self.sync_service();
         let events = self.account_events();
         runtime::run(async move {
             let changes = mail_sync::send_draft(&db, id, from, service.is_some()).await.map_err(|e| match e {

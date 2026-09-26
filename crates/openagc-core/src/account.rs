@@ -54,12 +54,38 @@ struct StoredClient {
 #[derive(Default)]
 pub(crate) struct AccountState {
     pending: Mutex<HashMap<String, (PendingAuthorization, OAuthClientConfig)>>,
-    sync: Mutex<Option<Arc<SyncService>>>,
+    /// One sync service per account; every signed-in account syncs in the
+    /// background, whichever the window shows (spec §7.7).
+    sync: Mutex<HashMap<String, Arc<SyncService>>>,
 }
 
 impl AccountState {
+    fn all(&self) -> Vec<Arc<SyncService>> {
+        self.sync.lock().unwrap_or_else(|e| e.into_inner()).values().cloned().collect()
+    }
+
+    fn take(&self, account_id: &str) -> Option<Arc<SyncService>> {
+        self.sync.lock().unwrap_or_else(|e| e.into_inner()).remove(account_id)
+    }
+}
+
+impl Core {
+    /// The sync service of the account this work acts on (scoped or current).
     pub(crate) fn sync_service(&self) -> Option<Arc<SyncService>> {
-        self.sync.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        let id = self.effective_account_id()?;
+        self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).get(&id).cloned()
+    }
+
+    /// Whether an account's sync is running.
+    pub(crate) fn is_syncing(&self, account_id: &str) -> bool {
+        self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).contains_key(account_id)
+    }
+
+    /// Stop one account's sync (removal, sign-in again).
+    pub(crate) fn stop_sync_for(&self, account_id: &str) {
+        if let Some(service) = self.accounts.take(account_id) {
+            service.stop();
+        }
     }
 }
 
@@ -164,13 +190,20 @@ impl Core {
         let observer = Arc::new(EventObserver { events: events.clone() });
         let engine = Arc::new(SyncEngine::new(provider, db, observer));
         let weak = Arc::downgrade(self);
+        let scoped_for_attribution = self.effective_account_id();
         let attribute: crate::sync::ExternalChanges = Arc::new(move |changes| {
             if let Some(core) = weak.upgrade() {
-                runtime::runtime().spawn(async move { core.attribute_routine_changes(changes).await });
+                let account = scoped_for_attribution.clone();
+                runtime::runtime().spawn(crate::registry::scoped(account, async move {
+                    core.attribute_routine_changes(changes).await
+                }));
             }
         });
+        let account =
+            self.effective_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
         let service = SyncService::start(engine, events, runtime::runtime().handle(), Some(attribute));
-        if let Some(old) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).replace(service) {
+        let old = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).insert(account, service);
+        if let Some(old) = old {
             old.stop();
         }
         Ok(())
@@ -285,20 +318,60 @@ impl Core {
     pub fn start_sync(self: Arc<Self>) -> Result<(), CoreError> {
         let account_id =
             self.current_account_id().ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no account is open"))?;
+        // Restarts a running sync: after signing in again the token changed.
         let provider = self.gmail_provider(&account_id)?;
         self.start_sync_with(provider)
     }
 
+    /// Start syncing every Gmail account that has a stored sign-in, in the
+    /// background (spec §7.7). Accounts already syncing are left alone; an
+    /// account whose sign-in cannot be read is skipped and listed in the
+    /// result so the app can ask for a sign-in when it is shown.
+    pub async fn start_all_sync(self: Arc<Self>) -> Result<Vec<String>, CoreError> {
+        let core = self.clone();
+        runtime::run(async move {
+            let data_dir = core.data_path();
+            let entries = tokio::task::spawn_blocking(move || crate::registry::load_index(&data_dir))
+                .await
+                .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?;
+            let mut needs_sign_in = Vec::new();
+            for entry in entries.into_iter().filter(|e| e.kind == crate::registry::AccountKind::Gmail) {
+                if core.is_syncing(&entry.id) {
+                    continue;
+                }
+                let provider = match core.gmail_provider(&entry.id) {
+                    Ok(provider) => provider,
+                    Err(e) => {
+                        tracing::warn!(account = %entry.id, error = %e, "not syncing: no usable sign-in");
+                        needs_sign_in.push(entry.id);
+                        continue;
+                    }
+                };
+                core.store_for(&entry.id).await?;
+                let started =
+                    crate::registry::SCOPED_ACCOUNT.sync_scope(entry.id.clone(), || core.start_sync_with(provider));
+                if let Err(e) = started {
+                    tracing::warn!(account = %entry.id, error = %e, "could not start sync");
+                }
+            }
+            Ok(needs_sign_in)
+        })
+        .await
+    }
+
+    /// Stop every account's sync (quitting, tests).
     pub fn stop_sync(&self) {
-        if let Some(service) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).take() {
+        let all: Vec<_> =
+            self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).drain().map(|(_, s)| s).collect();
+        for service in all {
             service.stop();
         }
     }
 
-    /// The app became active or inactive; adjusts the poll interval and
-    /// syncs immediately on activation.
+    /// The app became active or inactive; adjusts every account's poll
+    /// interval and syncs immediately on activation.
     pub fn set_app_active(&self, active: bool) {
-        if let Some(service) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        for service in self.accounts.all() {
             service.set_active(active);
         }
     }
@@ -317,7 +390,7 @@ impl Core {
     /// mail; narrowing stops fetching older mail but keeps what is stored.
     pub async fn set_sync_window(&self, window: SyncWindow) -> Result<(), CoreError> {
         let window: mail_sync::SyncWindow = window.into();
-        let service = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let service = self.sync_service();
         match service {
             Some(service) => {
                 let engine = service.clone();
@@ -339,7 +412,7 @@ impl Core {
 
     /// Sync now (foreground, wake from sleep, network regained, ⌘R).
     pub fn sync_now(&self) {
-        if let Some(service) = self.accounts.sync.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        for service in self.accounts.all() {
             service.sync_now();
         }
     }
@@ -414,6 +487,65 @@ mod tests {
             std::thread::sleep(Duration::from_millis(25));
         }
         panic!("timed out waiting for {what}");
+    }
+
+    #[derive(Default)]
+    struct Tagged(StdMutex<Vec<(Option<String>, CoreEvent)>>);
+    impl EventListener for Tagged {
+        fn on_event(&self, account: Option<String>, event: CoreEvent) {
+            self.0.lock().unwrap().push((account, event));
+        }
+    }
+
+    #[test]
+    fn every_account_syncs_in_the_background_into_its_own_store() {
+        let dir = std::env::temp_dir().join(format!("openagc-core-multisync-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let tagged = Arc::new(Tagged::default());
+        let core = Core::new(
+            CoreConfig { data_dir: dir.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            tagged.clone(),
+        )
+        .unwrap();
+        let work = Arc::new(FakeProvider::new("work@example.com", 1_790_000_000_000, 50));
+        work.seed(message("w1", &["INBOX"]));
+        work.seed(message("w2", &["INBOX", "UNREAD"]));
+        let home = Arc::new(FakeProvider::new("home@example.com", 1_790_000_000_000, 50));
+        home.seed(message("h1", &["INBOX"]));
+        for (id, fake) in [("work", work.clone()), ("home", home.clone())] {
+            block_on(core.store_for(id)).unwrap();
+            crate::registry::SCOPED_ACCOUNT.sync_scope(id.to_owned(), || core.start_sync_with(fake)).unwrap();
+        }
+        // The window shows work; home syncs behind it.
+        block_on(core.clone().set_current_account("work".into())).unwrap();
+        let inbox = |account: &str| {
+            block_on(crate::registry::scoped(Some(account.to_owned()), core.list_threads("INBOX".into(), None, 10)))
+                .map(|p| p.rows.len())
+                .unwrap_or(0)
+        };
+        wait_for("both accounts bootstrapped", || inbox("work") == 2 && inbox("home") == 1);
+
+        home.deliver(message("h2", &["INBOX", "UNREAD"]));
+        core.sync_now();
+        wait_for("home picks up new mail while not shown", || inbox("home") == 2);
+        assert_eq!(inbox("work"), 2, "work did not see home's mail");
+        wait_for("home's new mail announced, tagged home", || {
+            tagged
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|(a, e)| a.as_deref() == Some("home") && matches!(e, CoreEvent::NewMail { .. }))
+        });
+        let events = tagged.0.lock().unwrap().clone();
+        assert!(
+            events.iter().all(|(a, e)| !matches!(e, CoreEvent::ThreadsChanged { .. }) || a.is_some()),
+            "every change is tagged with its account"
+        );
+        core.stop_sync();
+        assert!(!core.is_syncing("work") && !core.is_syncing("home"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

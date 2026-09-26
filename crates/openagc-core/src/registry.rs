@@ -226,9 +226,13 @@ impl Core {
             return Ok(db.clone());
         }
         let path = self.account_db_path(account_id);
-        let db = tokio::task::spawn_blocking(move || Db::open(&path))
-            .await
-            .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))??;
+        let db = runtime::run(async move {
+            tokio::task::spawn_blocking(move || Db::open(&path))
+                .await
+                .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?
+                .map_err(CoreError::from)
+        })
+        .await?;
         tracing::info!(account = %account_id, "account opened");
         let mut open = self.open_accounts.write().unwrap_or_else(|e| e.into_inner());
         // Another caller may have opened it meanwhile; keep the first.
@@ -296,7 +300,8 @@ impl Core {
                 open.current = Some(account_id);
                 changed
             };
-            if changed {
+            // One scheduler serves every account; start it once.
+            if changed && core.agents.scheduler.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
                 core.start_routine_scheduler();
             }
             Ok(())
@@ -311,9 +316,7 @@ impl Core {
         if !crate::mail::valid_account_id(&account_id) || account_id == DEMO_ACCOUNT_ID {
             return Err(CoreError::new(ErrorKind::InvalidInput, "not a removable account"));
         }
-        if self.current_account_id().as_deref() == Some(account_id.as_str()) {
-            self.stop_sync();
-        }
+        self.stop_sync_for(&account_id);
         self.close_store(&account_id);
         self.secrets.delete(crate::secrets::keys::refresh_token(&account_id))?;
         self.secrets.delete(crate::account::client_key(&account_id))?;
@@ -470,7 +473,8 @@ mod tests {
         block_on(core.clone().set_current_account("one".into())).unwrap();
         block_on(core.clone().set_current_account("two".into())).unwrap();
         assert_eq!(core.current_account_id().as_deref(), Some("two"));
-        assert_eq!(core.open_accounts.read().unwrap().stores.len(), 2);
+        let open: Vec<String> = core.open_accounts.read().unwrap().stores.keys().cloned().collect();
+        assert!(open.contains(&"one".to_owned()) && open.contains(&"two".to_owned()), "{open:?}");
 
         // Removal deletes the store, the credentials and the entry.
         secrets.set(crate::secrets::keys::refresh_token("two"), "token".into()).unwrap();

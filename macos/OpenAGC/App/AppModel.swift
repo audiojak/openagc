@@ -183,6 +183,8 @@ final class AppModel {
                 if hasCredentials {
                     try core.startSync()
                     observeLifecycle()
+                    // The other accounts sync behind this one (spec §7.7).
+                    Task { _ = try? await core.startAllSync() }
                 } else {
                     needsReauthentication = true
                     reauthenticationReason = .savedSignInUnavailable

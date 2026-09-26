@@ -32,7 +32,7 @@ fn threads(ids: Vec<String>) -> Result<Vec<ThreadId>, CoreError> {
 
 impl Core {
     async fn mutate(&self, change: LocalChange) -> Result<(), CoreError> {
-        let service = self.accounts.sync_service();
+        let service = self.sync_service();
         let db = self.db()?;
         let events = self.account_events();
         runtime::run(async move {
@@ -156,7 +156,7 @@ impl Core {
             return Err(CoreError::new(ErrorKind::InvalidInput, format!("{name} is a system label")));
         }
         let db = self.db()?;
-        let service = self.accounts.sync_service();
+        let service = self.sync_service();
         let events = self.account_events();
         runtime::run(async move {
             let wanted = name.clone();

@@ -421,6 +421,12 @@ final class CoreClient: Sendable {
         }
     }
 
+    /// Start every signed-in account's sync in the background; returns the
+    /// accounts whose sign-in could not be read (spec §7.7).
+    func startAllSync() async throws(CoreClientError) -> [String] {
+        try await call { try await core.startAllSync() }
+    }
+
     func stopSync() { core.stopSync() }
     func setAppActive(_ active: Bool) { core.setAppActive(active: active) }
     func syncNow() { core.syncNow() }

@@ -305,10 +305,16 @@ impl Core {
     pub(crate) fn start_routine_scheduler(self: &Arc<Self>) {
         let weak = Arc::downgrade(self);
         let task = runtime::runtime().spawn(async move {
-            let mut last_checked: HashMap<String, i64> = HashMap::new();
+            // Per account: routine ids are only unique within a store.
+            let mut last_checked: HashMap<String, HashMap<String, i64>> = HashMap::new();
             loop {
                 let Some(core) = weak.upgrade() else { return };
-                core.scheduler_tick(&mut last_checked, mail_sync::now_millis()).await;
+                // Local routines run for every account, not just the one on
+                // screen (spec §7.7), each scoped to its own store.
+                for account in core.scheduled_accounts().await {
+                    let checked = last_checked.entry(account.clone()).or_default();
+                    crate::registry::scoped(Some(account), core.scheduler_tick(checked, mail_sync::now_millis())).await;
+                }
                 drop(core);
                 tokio::time::sleep(TICK).await;
             }
@@ -316,6 +322,34 @@ impl Core {
         if let Some(old) = self.agents.scheduler.lock().unwrap_or_else(|e| e.into_inner()).replace(task) {
             old.abort();
         }
+    }
+
+    /// Accounts whose local routines the scheduler runs: every listed
+    /// account plus the one on screen (the demo mailbox, in development).
+    async fn scheduled_accounts(&self) -> Vec<String> {
+        let data_dir = self.data_path();
+        let mut ids: Vec<String> = runtime::run(async move {
+            tokio::task::spawn_blocking(move || crate::registry::load_index(&data_dir))
+                .await
+                .map_err(|e| crate::CoreError::new(crate::ErrorKind::Internal, e.to_string()))
+        })
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|e| e.id)
+        .collect();
+        if let Some(current) = self.current_account_id()
+            && !ids.contains(&current)
+        {
+            ids.push(current);
+        }
+        let mut open = Vec::new();
+        for id in ids {
+            if self.store_for(&id).await.is_ok() {
+                open.push(id);
+            }
+        }
+        open
     }
 
     /// One look at the clock: run local routines that came due since the

@@ -34,7 +34,7 @@ impl Core {
             .map_err(|_| CoreError::new(ErrorKind::InvalidInput, format!("bad attachment id {attachment_id:?}")))?;
         let db = self.db()?;
         let cache = self.attachment_cache_dir()?;
-        let service = self.accounts.sync_service();
+        let service = self.sync_service();
         runtime::run(async move {
             let provider = service.as_ref().map(|s| s.engine().provider());
             let file = mail_sync::attachment_file(&db, provider, &cache, id).await?;
