@@ -2,6 +2,7 @@
 //! §7.5, §14.4). Every parser bug fix adds a fixture under `fixtures/`.
 
 mod build;
+pub mod mbox;
 mod parse;
 mod sanitize;
 mod text;
