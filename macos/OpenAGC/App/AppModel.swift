@@ -3,6 +3,7 @@ import Foundation
 import Network
 import Observation
 import os
+import UniformTypeIdentifiers
 
 /// App-wide state: the core, the open account, and what is selected.
 /// Routes core events to the stores that care (spec §14.2).
@@ -70,6 +71,10 @@ final class AppModel {
     var agent: AgentStore { openAccountID.flatMap { agentStores[$0] } ?? fallbackAgent }
     /// Imports by archive account, latest status (spec §7.8).
     private(set) var imports: [String: ImportStatus] = [:]
+    /// The import being set up (the sheet), then the one running (the
+    /// progress sheet).
+    var importDraft: ImportDraft?
+    var runningImport: String?
     /// The user's accounts in their order, with Inbox unread counts.
     private(set) var accounts: [AccountSummary] = []
     /// Where each account's window was (mailbox, thread), restored on switch.
@@ -328,6 +333,58 @@ final class AppModel {
         if let thread = place?.thread, threads.rows.contains(where: { $0.id == thread }) {
             selectedThreadID = thread
         }
+    }
+
+    // MARK: Import (spec §7.8)
+
+    /// File › Import Mailbox…: pick an .mbox file or a folder of them.
+    func beginImport() async {
+        let panel = NSOpenPanel()
+        panel.title = "Import Mailbox"
+        panel.message = "Choose an .mbox file, or a folder of them (for example from Google Takeout)."
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [UTType(filenameExtension: "mbox") ?? .data, .folder]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        await prepareImport(path: url.path)
+    }
+
+    /// Look at the mailbox and open the import sheet with suggestions.
+    func prepareImport(path: String) async {
+        guard let core else { return }
+        do {
+            let scan = try await core.scanMailbox(path)
+            importDraft = ImportDraft(path: path, scan: scan, name: scan.suggestedName,
+                                      addresses: scan.suggestedAddress ?? "")
+        } catch {
+            importDraft = ImportDraft(path: path, scan: nil, name: "", addresses: "", error: error.message)
+        }
+    }
+
+    /// Start the import the sheet describes; the progress sheet follows it
+    /// and the new account opens when it is done.
+    func confirmImport() async {
+        guard let core, let draft = importDraft, draft.scan != nil else { return }
+        do {
+            let id = try await core.startImport(path: draft.path, name: draft.name, myAddresses: draft.addressList)
+            importDraft = nil
+            runningImport = id
+        } catch {
+            importDraft?.error = error.message
+        }
+    }
+
+    func cancelRunningImport() {
+        guard let id = runningImport else { return }
+        core?.cancelImport(id)
+    }
+
+    /// Close the progress sheet; show the imported account if it has mail.
+    func finishImport(show: Bool) async {
+        guard let id = runningImport else { return }
+        runningImport = nil
+        if show { await switchAccount(to: id) }
     }
 
     /// Tag notifications with their account; the label only matters when

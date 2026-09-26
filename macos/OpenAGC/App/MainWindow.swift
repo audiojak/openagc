@@ -19,6 +19,13 @@ struct MainWindow: View {
             }
         }
         .focusedSceneValue(\.isMailWindow, true)
+        .sheet(item: Binding(get: { model.importDraft }, set: { model.importDraft = $0 })) { draft in
+            ImportMailboxSheet(draft: draft)
+        }
+        .sheet(item: Binding(get: { model.runningImport.map(RunningImport.init) }, set: { if $0 == nil { model.runningImport = nil } })) { running in
+            ImportProgressSheet(accountID: running.id)
+                .interactiveDismissDisabled()
+        }
         .task { if model.accountState == .starting { await model.start() } }
         .onAppear {
             model.openComposer = { openWindow(id: "compose", value: $0) }
@@ -111,4 +118,8 @@ private struct ReauthenticationBanner: View {
         .padding(.vertical, 8)
         .background(.yellow.opacity(0.15))
     }
+}
+
+private struct RunningImport: Identifiable {
+    let id: String
 }

@@ -65,4 +65,48 @@ struct ArchiveAccountTests {
         #expect(model.threads.rows.count == 1, "the received message is in the Inbox")
         #expect(core.isArchive(id))
     }
+
+    @Test func theImportSheetSuggestsANameAndAddressAndTheNewAccountOpensWhenDone() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appending(path: "Work 2019.mbox")
+        try Self.mbox(at: file)
+        let model = AppModel(core: try CoreClient(dataDirectory: dir.appending(path: "data")),
+                             defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        await model.start(openDemo: true)
+
+        await model.prepareImport(path: file.path)
+        let draft = try #require(model.importDraft)
+        #expect(draft.name == "Work 2019")
+        #expect(draft.addressList == ["owner@example.com"])
+        model.importDraft?.name = "Work archive"
+        await model.confirmImport()
+        #expect(model.importDraft == nil)
+        let id = try #require(model.runningImport)
+        try await waitUntil { model.imports[id]?.done == true }
+        await model.finishImport(show: true)
+        #expect(model.runningImport == nil)
+        #expect(model.openAccountID == id)
+        #expect(model.accounts.first { $0.id == id }?.email == "Work archive")
+    }
+
+    @Test func aPathWithNoMailboxesExplainsWhy() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let model = AppModel(core: try CoreClient(dataDirectory: dir.appending(path: "data")),
+                             defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        await model.prepareImport(path: dir.path)
+        #expect(model.importDraft?.scan == nil)
+        #expect(model.importDraft?.error?.contains("no .mbox files") == true)
+    }
+
+    @Test func draftsParseAddressesAndEstimateTime() {
+        let draft = ImportDraft(path: "/x", scan: nil, name: "x", addresses: "a@example.com, b@example.com; not-an-address")
+        #expect(draft.addressList == ["a@example.com", "b@example.com"])
+        #expect(ImportDraft.estimate(bytes: 10_000_000) == "under a minute")
+        #expect(ImportDraft.estimate(bytes: 400_000_000) == "about 10 minutes")
+        #expect(ImportDraft.estimate(bytes: 9_600_000_000) == "about 4 hours")
+    }
 }

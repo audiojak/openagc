@@ -859,7 +859,8 @@ draft. It exists to be read, searched, sorted and reasoned over.
   tools work; nothing is fetched on demand because there is nowhere to
   fetch from.
 
-**Import.** *File › Import Mailbox…* accepts an `.mbox` file or a folder
+**Import.** *File › Import Mailbox…* (no shortcut: ⌘⇧I is already *Load
+Remote Images*) accepts an `.mbox` file or a folder
 of them (Takeout splits large exports). A sheet asks for the account name,
 the user's addresses (for `SENT` and reply detection) and shows size and an
 estimate. The import runs on the core runtime: a streaming mbox reader
