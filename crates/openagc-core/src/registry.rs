@@ -84,6 +84,10 @@ pub(crate) struct IndexEntry {
     /// leaves an existing value alone when re-registering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub imap: Option<bool>,
+    /// The user named the account in Settings: the Google profile's name
+    /// no longer replaces `display_name`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub named_by_user: bool,
 }
 
 /// An account directory no listed account owns.
@@ -175,6 +179,7 @@ fn scan(data_dir: &Path) -> Vec<IndexEntry> {
                     avatar_file: None,
                     added_at,
                     imap: None,
+                    named_by_user: false,
                 },
             ));
             continue;
@@ -197,6 +202,7 @@ fn scan(data_dir: &Path) -> Vec<IndexEntry> {
                     avatar_file: None,
                     added_at,
                     imap: None,
+                    named_by_user: false,
                 },
             ));
         }
@@ -242,7 +248,7 @@ impl Core {
                     Some(existing) => {
                         existing.email = entry.email;
                         existing.kind = entry.kind;
-                        if entry.display_name.is_some() {
+                        if entry.display_name.is_some() && !existing.named_by_user {
                             existing.display_name = entry.display_name;
                         }
                         if entry.avatar_file.is_some() {
@@ -317,6 +323,46 @@ impl Core {
 
 #[uniffi::export]
 impl Core {
+    /// Rename an account (Settings › Accounts). A Gmail account's name is
+    /// shown beside its address and stays when the Google profile changes;
+    /// an empty name goes back to the profile's. An imported mailbox's name
+    /// is the name it is listed by, and cannot be empty.
+    pub async fn rename_account(&self, account_id: String, name: String) -> Result<(), CoreError> {
+        let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+        if name.chars().count() > 100 {
+            return Err(CoreError::new(ErrorKind::InvalidInput, "a name can be at most 100 characters"));
+        }
+        let data_dir = self.data_path();
+        let _guard = self.index_lock.lock().await;
+        runtime::run(async move {
+            tokio::task::spawn_blocking(move || {
+                let mut entries = load_index(&data_dir);
+                let entry = entries
+                    .iter_mut()
+                    .find(|e| e.id == account_id)
+                    .ok_or_else(|| CoreError::new(ErrorKind::NotFound, "no such account"))?;
+                match entry.kind {
+                    AccountKind::Archive => {
+                        if name.is_empty() {
+                            return Err(CoreError::new(ErrorKind::InvalidInput, "an imported mailbox needs a name"));
+                        }
+                        // Its own file too, which rebuilds the index.
+                        crate::archive::rename_meta(&accounts_dir(&data_dir).join(&account_id), &name)?;
+                        entry.email = name;
+                    }
+                    AccountKind::Gmail => {
+                        entry.named_by_user = !name.is_empty();
+                        entry.display_name = (!name.is_empty()).then_some(name);
+                    }
+                }
+                save_index(&data_dir, &entries).map_err(|e| CoreError::new(ErrorKind::Storage, e.to_string()))
+            })
+            .await
+            .map_err(|e| CoreError::new(ErrorKind::Internal, e.to_string()))?
+        })
+        .await
+    }
+
     /// The user's accounts in their order (the demo mailbox is not one).
     pub async fn list_accounts(&self) -> Result<Vec<AccountSummary>, CoreError> {
         let data_dir = self.data_path();
@@ -463,6 +509,7 @@ impl Core {
             avatar_file: None,
             added_at: mail_sync::now_millis(),
             imap: None,
+            named_by_user: false,
         })
         .await
     }
@@ -625,6 +672,65 @@ mod tests {
     }
 
     #[test]
+    fn accounts_are_renamed_and_a_gmail_name_outlasts_the_profile() {
+        use futures::executor::block_on;
+        let t = temp("rename");
+        let core = Core::new(
+            crate::CoreConfig { data_dir: t.0.to_string_lossy().into_owned(), log_dir: None },
+            Arc::new(crate::secrets::MemorySecrets::default()),
+            Arc::new(NoEvents),
+        )
+        .unwrap();
+        let gmail = |name: Option<&str>| IndexEntry {
+            id: "work".into(),
+            kind: AccountKind::Gmail,
+            email: "me@work.com".into(),
+            display_name: name.map(Into::into),
+            avatar_file: None,
+            added_at: 0,
+            imap: None,
+            named_by_user: false,
+        };
+        block_on(core.register_account(gmail(Some("Profile Name")))).unwrap();
+        block_on(core.rename_account("work".into(), "  Work   mail ".into())).unwrap();
+        let name = |core: &Core| block_on(core.list_accounts()).unwrap()[0].display_name.clone();
+        assert_eq!(name(&core).as_deref(), Some("Work mail"));
+        // The next profile refresh does not undo it.
+        block_on(core.register_account(gmail(Some("Profile Name")))).unwrap();
+        assert_eq!(name(&core).as_deref(), Some("Work mail"));
+        // Cleared: the profile's name comes back with the next refresh.
+        block_on(core.rename_account("work".into(), " ".into())).unwrap();
+        assert_eq!(name(&core), None);
+        block_on(core.register_account(gmail(Some("Profile Name")))).unwrap();
+        assert_eq!(name(&core).as_deref(), Some("Profile Name"));
+
+        // An imported mailbox: its listed name and its own file.
+        std::fs::create_dir_all(accounts_dir(&t.0).join("arc")).unwrap();
+        std::fs::write(
+            accounts_dir(&t.0).join("arc/account.json"),
+            br#"{"kind":"archive","name":"Old mail","source_path":"x"}"#,
+        )
+        .unwrap();
+        block_on(core.register_account(IndexEntry {
+            id: "arc".into(),
+            kind: AccountKind::Archive,
+            email: "Old mail".into(),
+            display_name: None,
+            avatar_file: None,
+            added_at: 0,
+            imap: None,
+            named_by_user: false,
+        }))
+        .unwrap();
+        block_on(core.rename_account("arc".into(), "2019 archive".into())).unwrap();
+        let listed = block_on(core.list_accounts()).unwrap();
+        assert_eq!(listed.iter().find(|a| a.id == "arc").unwrap().email, "2019 archive");
+        assert_eq!(crate::archive::read_meta(&accounts_dir(&t.0).join("arc")).unwrap().name, "2019 archive");
+        assert!(block_on(core.rename_account("arc".into(), "".into())).is_err(), "a mailbox needs a name");
+        assert!(block_on(core.rename_account("nope".into(), "x".into())).is_err());
+    }
+
+    #[test]
     fn accounts_are_registered_listed_reordered_switched_and_removed() {
         use crate::SecretStore;
         use futures::executor::block_on;
@@ -646,6 +752,7 @@ mod tests {
                 avatar_file: None,
                 added_at: 0,
                 imap: None,
+                named_by_user: false,
             }))
             .unwrap();
         }
@@ -658,6 +765,7 @@ mod tests {
             avatar_file: None,
             added_at: 0,
             imap: None,
+            named_by_user: false,
         }))
         .unwrap();
         let list = block_on(core.list_accounts()).unwrap();
@@ -675,6 +783,7 @@ mod tests {
             avatar_file: None,
             added_at: 0,
             imap: Some(true),
+            named_by_user: false,
         };
         block_on(core.register_account(granted.clone())).unwrap();
         granted.imap = None;

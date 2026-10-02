@@ -960,13 +960,17 @@ agent sessions and Keychain items. New pieces:
 **UI (§14.3 addendum).** An avatar button in the sidebar header, left of
 the search field's row. Clicking it opens a menu: one row per account
 (avatar, display name, address, unread count), a check mark on the current
-one, then *Add Account…* and *Accounts Settings…*. Keyboard: `⌃1`–`⌃9`
+one, then *Add Account…*, *Create an Account from an Archived Mailbox…*
+(§7.8) and *Accounts Settings…*. Keyboard: `⌃1`–`⌃9`
 switch by position; `⌃⌥A` opens the menu. The Dock badge sums unread
 across accounts; the app menu's *Accounts* submenu mirrors the button.
 Notifications name the account when more than one exists and switch to it
 when clicked. Settings › Accounts lists every account with its own sign-in
-state, sync window and *Remove…*; removing the current account switches to
-the next.
+state, sync window, name and *Remove…*; removing the current account
+switches to the next. A Gmail account's name shows beside its address and,
+once the user sets it, stays when the Google profile changes (empty goes
+back to the profile's); an imported mailbox's name is the name it is
+listed by (amended 2026-10-02).
 
 **Not in scope.** A unified inbox, moving mail between accounts, per-account
 signatures beyond what the composer already does, and non-Gmail accounts
@@ -1005,8 +1009,9 @@ draft. It exists to be read, searched, sorted and reasoned over.
   tools work; nothing is fetched on demand because there is nowhere to
   fetch from.
 
-**Import.** *File › Import Mailbox…* (no shortcut: ⌘⇧I is already *Load
-Remote Images*) accepts an `.mbox` file or a folder
+**Import.** *Accounts › Create an Account from an Archived Mailbox…*, also
+in Settings › Accounts (moved from *File › Import Mailbox…* on 2026-10-02,
+since it adds an account; no shortcut: ⌘⇧I is already *Load Remote Images*) accepts an `.mbox` file or a folder
 of them (Takeout splits large exports). A sheet asks for the account name,
 the user's addresses (for `SENT` and reply detection) and shows size and an
 estimate. The import runs on the core runtime: a streaming mbox reader

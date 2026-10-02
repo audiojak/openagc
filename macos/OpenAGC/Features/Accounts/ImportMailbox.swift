@@ -26,14 +26,14 @@ struct ImportDraft: Identifiable, Equatable {
     }
 }
 
-/// File › Import Mailbox…: name the archive and say which addresses are
+/// Accounts › Create an Account from an Archived Mailbox…: name the archive and say which addresses are
 /// yours (spec §7.8).
 struct ImportMailboxSheet: View {
     @Environment(AppModel.self) private var model
     @State var draft: ImportDraft
 
     var body: some View {
-        Dialog(title: "Import Mailbox",
+        Dialog(title: "Create an Account from an Archived Mailbox",
                message: "The mail becomes its own account: searchable and ready for the agent, but it cannot send, and nothing is uploaded.") {
             if let scan = draft.scan {
                 LabeledContent("From") {

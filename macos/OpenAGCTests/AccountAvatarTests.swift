@@ -66,3 +66,17 @@ struct ToolbarAvatarTests {
         #expect(image.size.width >= 20)
     }
 }
+
+struct AccountNameTests {
+    @Test func theEditableNameIsTheProfileNameOrTheMailboxName() {
+        let gmail = AccountSummary(id: "a", kind: .gmail, email: "me@x.com", displayName: "Me", avatarPath: nil,
+                                   position: 0, inboxUnread: 0, imapEnabled: false)
+        #expect(AccountRow.editableName(gmail) == "Me")
+        let unnamed = AccountSummary(id: "b", kind: .gmail, email: "me@x.com", displayName: nil, avatarPath: nil,
+                                     position: 0, inboxUnread: 0, imapEnabled: false)
+        #expect(AccountRow.editableName(unnamed) == "")
+        let archive = AccountSummary(id: "c", kind: .archive, email: "2019 archive", displayName: nil, avatarPath: nil,
+                                     position: 0, inboxUnread: 0, imapEnabled: false)
+        #expect(AccountRow.editableName(archive) == "2019 archive")
+    }
+}

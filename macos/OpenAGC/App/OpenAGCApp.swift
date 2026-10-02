@@ -147,12 +147,6 @@ struct MailCommands: Commands {
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
         }
-        CommandGroup(after: .newItem) {
-            Divider() // menu
-            // No shortcut: ⌘⇧I is Load Remote Images (spec §7.8 note).
-            Button("Import Mailbox…") { Task { await model.beginImport() } }
-                .disabled(model.runningImport != nil)
-        }
         CommandGroup(after: .textEditing) {
             Button("Search Mail") { model.focusSearch() }
                 .keyboardShortcut("f")

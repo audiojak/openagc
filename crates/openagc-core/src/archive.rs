@@ -96,6 +96,14 @@ fn write_meta(dir: &Path, meta: &ArchiveMeta) -> Result<(), CoreError> {
     std::fs::write(dir.join(META_FILE), bytes).map_err(|e| CoreError::new(ErrorKind::Storage, e.to_string()))
 }
 
+/// Rename an imported mailbox in its own file.
+pub(crate) fn rename_meta(dir: &Path, name: &str) -> Result<(), CoreError> {
+    let mut meta =
+        read_meta(dir).ok_or_else(|| CoreError::new(ErrorKind::NotFound, "the mailbox's details are missing"))?;
+    meta.name = name.to_owned();
+    write_meta(dir, &meta)
+}
+
 /// What an archive cannot do, in one sentence for errors and the agent.
 pub(crate) const CANNOT_SEND: &str =
     "This account is an imported mailbox: it cannot draft, reply, forward or send mail.";
@@ -227,6 +235,7 @@ impl Core {
             avatar_file: None,
             added_at: mail_sync::now_millis(),
             imap: None,
+            named_by_user: false,
         })
         .await?;
 

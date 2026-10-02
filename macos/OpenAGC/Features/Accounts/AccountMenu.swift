@@ -65,6 +65,10 @@ struct AccountMenuItems: View {
         if !model.accounts.isEmpty { Divider() } // menu
         Button("Add Account…") { Task { await model.addAccount() } } // no-help: menu item
             .disabled(!GoogleClientConfiguration.effective().isUsable)
+        // An imported mailbox is an account of its own (spec §7.8); no
+        // shortcut: ⌘⇧I is Load Remote Images.
+        Button("Create an Account from an Archived Mailbox…") { Task { await model.beginImport() } } // no-help: menu item
+            .disabled(model.runningImport != nil)
         Button("Accounts Settings…", action: openSettings) // no-help: menu item
     }
 

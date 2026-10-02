@@ -711,10 +711,11 @@ final class AppModel {
 
     // MARK: Import (spec §7.8)
 
-    /// File › Import Mailbox…: pick an .mbox file or a folder of them.
+    /// Accounts › Create an Account from an Archived Mailbox…: pick an .mbox
+    /// file or a folder of them.
     func beginImport() async {
         let panel = NSOpenPanel()
-        panel.title = "Import Mailbox"
+        panel.title = "Create an Account from an Archived Mailbox"
         panel.message = "Choose an .mbox file, or a folder of them (for example from Google Takeout)."
         panel.canChooseFiles = true
         panel.canChooseDirectories = true

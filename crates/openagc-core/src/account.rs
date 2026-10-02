@@ -602,6 +602,7 @@ impl Core {
                 avatar_file,
                 added_at: mail_sync::now_millis(),
                 imap: Some(grants_imap),
+                named_by_user: false,
             })
             .await?;
             tracing::info!(account = %account_id, "gmail account connected");

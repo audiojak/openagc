@@ -204,6 +204,11 @@ final class CoreClient: Sendable {
         try await call { try await core.removeOrphanedStore(accountId: id) }
     }
 
+    /// Rename an account; for Gmail an empty name goes back to the profile's.
+    func renameAccount(_ accountID: String, to name: String) async throws(CoreClientError) {
+        try await call { try await core.renameAccount(accountId: accountID, name: name) }
+    }
+
     func moveAccount(_ accountID: String, to position: Int) async throws(CoreClientError) {
         try await call { try await core.moveAccount(accountId: accountID, position: UInt32(max(0, position))) }
     }

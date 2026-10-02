@@ -30,6 +30,9 @@ struct AccountSettings: View {
                     Button("Add Account…") { Task { await model.addAccount() } }
                         .hoverHelp("Sign in to another Gmail account")
                         .disabled(!GoogleClientConfiguration.effective().isUsable)
+                    Button("Create an Account from an Archived Mailbox…") { Task { await model.beginImport() } }
+                        .hoverHelp("Make a read-only account from an .mbox file, such as a Google Takeout export")
+                        .disabled(model.runningImport != nil)
                 case .signingIn:
                     HStack {
                         ProgressView().controlSize(.small)
@@ -117,6 +120,9 @@ struct AccountRow: View {
     @State private var bodyWindow: BodyWindow?
     @State private var signedIn: Bool?
     @State private var backfill: BackfillStatus?
+    @State private var name = ""
+    @State private var nameError: String?
+    @FocusState private var nameFocused: Bool
 
     /// Above this many messages, suggest IMAP to accounts without it.
     static let suggestIMAPAbove: UInt64 = 20_000
@@ -134,6 +140,23 @@ struct AccountRow: View {
         case "imap-refused": return "Over the Gmail API (IMAP was refused)"
         case nil, "none": return "Over IMAP when syncing"
         default: return "Over the Gmail API"
+        }
+    }
+
+    /// The name as it can be changed: an archive's is its listed name.
+    static func editableName(_ account: AccountSummary) -> String {
+        account.kind == .archive ? account.email : account.displayName ?? ""
+    }
+
+    private func rename() async {
+        guard let core = model.core, name != Self.editableName(account) else { return }
+        do {
+            try await core.renameAccount(account.id, to: name)
+            nameError = nil
+            await model.reloadAccounts()
+        } catch {
+            nameError = error.message
+            name = Self.editableName(account)
         }
     }
 
@@ -171,6 +194,19 @@ struct AccountRow: View {
                 }
                 Button("Remove…", role: .destructive, action: onRemove)
                     .hoverHelp("Remove this account from OpenAGC; Gmail itself is not changed")
+            }
+            TextField("Name", text: $name,
+                      prompt: Text(account.kind == .archive ? "A name for this mailbox" : "Your name from Google"))
+                .focused($nameFocused)
+                .onSubmit { Task { await rename() } }
+                .onChange(of: nameFocused) { _, focused in if !focused { Task { await rename() } } }
+                .hoverHelp(account.kind == .archive ? "What this mailbox is called in OpenAGC"
+                           : "Shown beside the address in OpenAGC; leave empty to use your Google profile's name")
+                .onAppear { name = Self.editableName(account) }
+                .onChange(of: account.displayName) { name = Self.editableName(account) }
+                .onChange(of: account.email) { name = Self.editableName(account) }
+            if let nameError {
+                Text(nameError).font(.caption).foregroundStyle(Tone.failure)
             }
             if account.kind == .gmail {
                 Picker("Download mail from", selection: Binding(
