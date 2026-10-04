@@ -7,6 +7,8 @@ import SwiftUI
 struct RichTextEditor: NSViewRepresentable {
     @Binding var text: NSAttributedString
     var focusOnAppear = false
+    /// Tab leaves the body for this, instead of typing a tab.
+    var onTab: (() -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
 
@@ -33,6 +35,7 @@ struct RichTextEditor: NSViewRepresentable {
         textView.setAccessibilityLabel("Message body")
         textView.textStorage?.setAttributedString(Self.display(text))
         context.coordinator.lastText = text
+        context.coordinator.onTab = onTab
         if focusOnAppear {
             DispatchQueue.main.async { textView.window?.makeFirstResponder(textView) }
         }
@@ -41,6 +44,7 @@ struct RichTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         guard let textView = scroll.documentView as? NSTextView else { return }
+        context.coordinator.onTab = onTab
         // Only replace the text when it changed from outside (a draft load).
         if text !== context.coordinator.lastText, !text.isEqual(to: textView.attributedString()) {
             textView.textStorage?.setAttributedString(Self.display(text))
@@ -59,9 +63,17 @@ struct RichTextEditor: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var text: Binding<NSAttributedString>
         var lastText: NSAttributedString?
+        var onTab: (() -> Void)?
 
         init(text: Binding<NSAttributedString>) {
             self.text = text
+        }
+
+        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard selector == #selector(NSResponder.insertTab(_:)), let onTab else { return false }
+            textView.window?.makeFirstResponder(nil)
+            onTab()
+            return true
         }
 
         func textDidChange(_ notification: Notification) {

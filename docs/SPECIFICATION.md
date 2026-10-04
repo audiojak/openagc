@@ -1918,6 +1918,16 @@ HTML inside `<blockquote>` with a "On <date>, <name> wrote:" line.
 Autosave to `drafts` every 2 s of idleness; Gmail draft sync through the
 outbox every 30 s or on close.
 
+**Amendment (2026-10-02): answering with the conversation in view.** A
+reply's window shows the conversation above the draft, in a pane that can
+be resized or hidden: the latest message open, earlier ones as rows that
+open when clicked, as in the reader (drafts left out). A forward keeps the
+original under the draft. Writing help's field is as large as the main
+window's prompt and grows with what is typed (⌥Return for a new line).
+Tab in the body goes to writing help. In the main window, Tab from a
+mailbox in the sidebar puts the keyboard in its thread list, so the arrows
+move between messages (nothing is opened until one is chosen).
+
 **Amendment (2026-09-28): drafts from the Drafts mailbox.** Drafts sync
 through Gmail's drafts list (`drafts.list`) on every incremental round,
 since Gmail's change history leaves drafts out and the sync window

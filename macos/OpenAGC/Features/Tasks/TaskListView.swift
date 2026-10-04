@@ -261,8 +261,9 @@ final class TaskListKeys {
     }
 }
 
-/// Finds the table view a row is drawn in, for `TaskListKeys`.
-private struct TableProbe: NSViewRepresentable {
+/// Finds the table view a row is drawn in, for `TaskListKeys` (the task
+/// list's keys, and Tab in the sidebar).
+struct TableProbe: NSViewRepresentable {
     let keys: TaskListKeys
 
     func makeNSView(context: Context) -> ProbeView {

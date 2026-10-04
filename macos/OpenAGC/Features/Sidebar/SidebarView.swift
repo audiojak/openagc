@@ -5,6 +5,8 @@ struct SidebarView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var expansion = LabelExpansion()
+    /// Tab in the sidebar moves to the thread list (found by `TableProbe`).
+    @State private var keys = TaskListKeys()
     /// Lines a routine's activity up under its name, past the icon.
     private static let activityIndent: CGFloat = 26
 
@@ -17,6 +19,7 @@ struct SidebarView: View {
             Section("Favorites") {
                 ForEach(model.mailboxes.favorites, id: \.id) { mailbox in
                     MailboxRow(mailbox: mailbox)
+                        .background(TableProbe(keys: keys))
                 }
                 // Tasks made from email (spec §14.8); the badge counts those
                 // due today or overdue.
@@ -68,6 +71,16 @@ struct SidebarView: View {
             }
         }
         .task { await model.routines.load() }
+        .onAppear {
+            keys.start { event in
+                // Tab (not ⇧Tab) from a mailbox: into its list of threads.
+                guard event.keyCode == 48, !event.modifierFlags.contains(.shift),
+                      !model.isGuide, !model.isTaskList else { return false }
+                model.focusThreadList()
+                return true
+            }
+        }
+        .onDisappear { keys.stop() }
         .task(id: model.openAccountID) { expansion.load(account: model.openAccountID) }
         .onChange(of: model.routinesRevision) { Task { await model.routines.load() } }
         .listStyle(.sidebar)

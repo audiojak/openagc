@@ -28,7 +28,9 @@ enum EmailDocument {
     /// the date, a short To line (all of it on hover) and, once open, the
     /// body. Collapsed cards show one line of the message instead. A draft
     /// is an outlined, unfilled card marked "Draft", its time "Saved …".
-    static func thread(_ messages: [Message], isDark: Bool) -> String {
+    /// `onlyLatestOpen`: the composer's view of the thread being answered,
+    /// where only the latest message starts open.
+    static func thread(_ messages: [Message], isDark: Bool, onlyLatestOpen: Bool = false) -> String {
         var out = """
         <!doctype html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="\(contentSecurityPolicy)">
@@ -36,7 +38,8 @@ enum EmailDocument {
         <style>\(stylesheet)</style></head><body>
         """
         for (index, message) in messages.enumerated() {
-            let expanded = isExpanded(message, index: index, count: messages.count)
+            let expanded = onlyLatestOpen ? index == messages.count - 1
+                : isExpanded(message, index: index, count: messages.count)
             out += "<details class=\"msg\(message.isDraft ? " draft" : "")\"\(expanded ? " open" : "") id=\"m-\(escape(message.id))\"><summary>"
             out += "<div class=\"avatar\" style=\"background:\(avatarColor(message.fromEmail))\" aria-hidden=\"true\">"
             out += "\(escape(initials(name: message.fromName, email: message.fromEmail)))</div>"

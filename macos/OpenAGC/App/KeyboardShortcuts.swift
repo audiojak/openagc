@@ -37,6 +37,8 @@ enum KeyboardShortcutGuide {
             .init(keys: "⌘F", action: "Search mail", inThreadList: false),
             .init(keys: "⌘1 – ⌘6", action: "Inbox, Starred, Sent, Drafts, Archive, Trash", inThreadList: false),
             .init(keys: "⌃1 – ⌃9", action: "Switch account", inThreadList: false),
+            .init(keys: "⇥", action: "From the sidebar to the list of messages; in a message you write, to writing help",
+                  inThreadList: false),
         ]),
         Group(title: "In the thread list", shortcuts: [
             .init(keys: "↑ ↓  or  j k", action: "Previous or next thread", inThreadList: true),

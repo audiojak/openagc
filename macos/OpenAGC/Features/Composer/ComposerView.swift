@@ -76,17 +76,36 @@ struct ComposerView: View {
             if let error = store.saveError {
                 Banner(error, systemImage: "exclamationmark.triangle.fill", intent: .caution)
             }
-            if !store.quotedHTML.isEmpty, showsQuote {
+            if let threadID = store.threadID, store.inReplyTo != nil {
+                // A reply: the conversation above it, the latest message
+                // open and earlier ones as rows; the divider draggable.
+                if showsQuote {
+                    VSplitView {
+                        VStack(spacing: 0) {
+                            ComposerThreadPane(threadID: threadID)
+                            conversationToggle
+                        }
+                        .frame(minHeight: 160, idealHeight: 360, maxHeight: .infinity)
+                        .layoutPriority(1)
+                        bodyEditor(store)
+                            .frame(minHeight: 120, idealHeight: 180, maxHeight: .infinity)
+                    }
+                } else {
+                    conversationToggle
+                    bodyEditor(store)
+                        .frame(maxHeight: .infinity)
+                }
+            } else if !store.quotedHTML.isEmpty, showsQuote {
                 // The editor and the original, the divider between them
                 // draggable.
                 VSplitView {
-                    RichTextEditor(text: $store.body, focusOnAppear: !store.to.isEmpty)
+                    bodyEditor(store)
                         .frame(minHeight: 120, maxHeight: .infinity)
                     quote(store)
                         .frame(minHeight: 90, idealHeight: 260, maxHeight: .infinity)
                 }
             } else {
-                RichTextEditor(text: $store.body, focusOnAppear: !store.to.isEmpty)
+                bodyEditor(store)
                     .frame(maxHeight: .infinity)
                 if !store.quotedHTML.isEmpty {
                     quoteToggle
@@ -160,6 +179,32 @@ struct ComposerView: View {
         }
     }
 
+    /// The message body; Tab goes to writing help, as Return goes to a new
+    /// line (spec §14.5).
+    private func bodyEditor(_ store: ComposerStore) -> some View {
+        @Bindable var store = store
+        return RichTextEditor(text: $store.body, focusOnAppear: !store.to.isEmpty, onTab: { assistantFocused = true })
+    }
+
+    /// Shows or hides the conversation above a reply.
+    private var conversationToggle: some View {
+        HStack {
+            Button {
+                showsQuote.toggle()
+            } label: {
+                Label(showsQuote ? "Hide Conversation" : "Show Conversation",
+                      systemImage: showsQuote ? "chevron.up" : "chevron.down")
+                    .font(.callout)
+            }
+            .hoverHelp(showsQuote ? "Hide the conversation you are answering" : "Show the conversation you are answering")
+            .buttonStyle(.borderless)
+            Spacer()
+        }
+        .padding(.horizontal, Space.xl)
+        .padding(.vertical, Space.s)
+        .overlay(alignment: .bottom) { InsetRule() }
+    }
+
     private func row(_ label: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(spacing: 0) {
             // Top, not first-baseline: asking the recipient token field for
@@ -214,9 +259,12 @@ struct ComposerView: View {
         return VStack(alignment: .leading, spacing: Space.xs) {
             HStack(spacing: Space.m) {
                 Image(systemName: "sparkles").foregroundStyle(.tint)
+                // As large as the main window's prompt, and it grows with
+                // what is typed (⌥Return for a new line).
                 TextField(ready ? "Ask \(name) to write or change this message…" : "\(name) is not set up (Settings › Agents)",
-                          text: $assistant.instruction)
+                          text: $assistant.instruction, axis: .vertical)
                     .textFieldStyle(.plain)
+                    .lineLimit(1...6)
                     .focused($assistantFocused)
                     .onSubmit { run() }
                     .disabled(!ready || assistant.state == .working)
@@ -237,14 +285,21 @@ struct ComposerView: View {
                 .hoverHelp("Ideas to ask for; choosing one puts it in the box")
                 if assistant.state == .working {
                     ProgressView().controlSize(.small)
-                    Button("Stop") { assistant.cancel() }
+                    Button("Stop", systemImage: "stop.circle.fill") { assistant.cancel() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
                         .hoverHelp("Stop the agent writing")
                 } else {
-                    Button("Write") { run() }
+                    Button("Write", systemImage: "arrow.up.circle.fill") { run() }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
                         .disabled(!ready || assistant.instruction.trimmingCharacters(in: .whitespaces).isEmpty)
                         .hoverHelp("Have \(name) write this into the message (Return)")
                 }
             }
+            .font(.body)
+            .controlSize(.regular)
+            .glassCapsule()
             switch assistant.state {
             case .done:
                 HStack(spacing: Space.m) {

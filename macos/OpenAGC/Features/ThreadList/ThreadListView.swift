@@ -45,6 +45,14 @@ struct ThreadListView: NSViewRepresentable {
         let store = model.threads
         context.coordinator.update(rows: store.rows, generation: store.generation,
                                    selected: model.selectedThreadIDs.union(model.selectedThreadID.map { [$0] } ?? []))
+        // Tab from the sidebar: the keyboard comes here. Nothing is selected
+        // for it (opening a thread marks it read); ↓ picks the first.
+        if context.coordinator.focusRequests != model.threadListFocusRequests {
+            context.coordinator.focusRequests = model.threadListFocusRequests
+            if let table = context.coordinator.table {
+                DispatchQueue.main.async { table.window?.makeFirstResponder(table) }
+            }
+        }
     }
 
     @MainActor
@@ -54,9 +62,11 @@ struct ThreadListView: NSViewRepresentable {
         private var generation = -1
         private var applyingSelection = false
         weak var table: NSTableView?
+        var focusRequests: Int
 
         init(model: AppModel) {
             self.model = model
+            focusRequests = model.threadListFocusRequests
         }
 
         func update(rows newRows: [ThreadRow], generation newGeneration: Int, selected: Set<String>) {

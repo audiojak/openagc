@@ -23,6 +23,17 @@ struct EmailDocumentTests {
         #expect(html.contains(#"<details class="msg" open id="m-d""#))
     }
 
+    @Test func theComposersViewOpensOnlyTheLatestAndLeavesOutDrafts() {
+        var draft = message("e")
+        draft.isDraft = true
+        let shown = ComposerThreadPane.shown([message("a"), message("b", read: false), message("c"), draft])
+        #expect(shown.map(\.id) == ["a", "b", "c"], "this reply's own draft is not part of the conversation")
+        let html = EmailDocument.thread(shown, isDark: false, onlyLatestOpen: true)
+        #expect(html.contains(#"<details class="msg" id="m-a">"#))
+        #expect(html.contains(#"<details class="msg" id="m-b">"#), "even unread, an earlier message is a row")
+        #expect(html.contains(#"<details class="msg" open id="m-c""#))
+    }
+
     @Test func styledMailGetsPaperInDarkModeOnly() {
         let styled = message("s", html: ##"<table bgcolor="#fff"><tr><td>x</td></tr></table>"##)
         #expect(EmailDocument.thread([styled], isDark: true).contains(#"class="body paper""#))

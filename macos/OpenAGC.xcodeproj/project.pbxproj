@@ -124,6 +124,7 @@
 		E84BD27D7D2BF39707A7E276 /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601938BEED9E6F66CF748199 /* AccountSettings.swift */; };
 		E991FF75DB10C51B9C0451D9 /* GuideDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA37C6A95F6AA5461FD7B016 /* GuideDetailView.swift */; };
 		F1C67B7F56BB5793575AA7DB /* ReaderStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46BFDFDE09CC5207A0A048D0 /* ReaderStore.swift */; };
+		F270849A448CA16CDC060789 /* ComposerThreadPane.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62CAA118064885B07120D8E9 /* ComposerThreadPane.swift */; };
 		F55DCE790C44258F12C510F2 /* CoreEventTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0EEA46B16CBE10362B13CC /* CoreEventTests.swift */; };
 		F65AA400F8604C8278AAF409 /* GuideDecisionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49C1A1D559658C07CBA5E7BD /* GuideDecisionsView.swift */; };
 		F79978E7E6CDFE26B5F9C6D8 /* MessageToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A39D166713933009D25A50F /* MessageToolbar.swift */; };
@@ -217,6 +218,7 @@
 		601938BEED9E6F66CF748199 /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
 		6106757A4B6B179819362741 /* AgentSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSettingsTests.swift; sourceTree = "<group>"; };
 		614E12523CE68610CC7D5C14 /* ThreadWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadWindow.swift; sourceTree = "<group>"; };
+		62CAA118064885B07120D8E9 /* ComposerThreadPane.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerThreadPane.swift; sourceTree = "<group>"; };
 		6407F10744C6609C6D77A3E9 /* EmailDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmailDocument.swift; sourceTree = "<group>"; };
 		662ED4D20063A892C72301EF /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
 		66E8DBF47559E5EC82041284 /* UndoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoTests.swift; sourceTree = "<group>"; };
@@ -627,6 +629,7 @@
 				045C8138124940FF93D5F90B /* ComposerAssistant.swift */,
 				AF46AFEDFFFF3F8D14FFDF02 /* ComposerHTML.swift */,
 				C05AE95A75189A1675986338 /* ComposerStore.swift */,
+				62CAA118064885B07120D8E9 /* ComposerThreadPane.swift */,
 				2A5694ECC8EA36F2A4119F98 /* ComposerView.swift */,
 				00C8234BE90C43AB48FCA078 /* DraftClient.swift */,
 				8ABFBCC58A855BB41D27E0B4 /* RecipientField.swift */,
@@ -910,6 +913,7 @@
 				16A834C86559A500A03CD574 /* ComposerAssistant.swift in Sources */,
 				19B0A731E8F5C40EA437828C /* ComposerHTML.swift in Sources */,
 				A183D5AC94021A65ABDCCBDD /* ComposerStore.swift in Sources */,
+				F270849A448CA16CDC060789 /* ComposerThreadPane.swift in Sources */,
 				69662C039B9C1E122F754EDE /* ComposerView.swift in Sources */,
 				36A454FB046BB704125EF7F3 /* CoreClient.swift in Sources */,
 				16F271E116BA5AD078A38B81 /* DraftClient.swift in Sources */,

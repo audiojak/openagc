@@ -10,6 +10,10 @@ struct MessageWebView: NSViewRepresentable {
     let allowRemoteImages: Bool
     /// Inline images by content id; the page reloads when more arrive.
     var inlineImages: [String: InlineImage] = [:]
+    /// Open on the last message (the composer's view of a thread) rather
+    /// than the top. The page itself still runs no script: this is the
+    /// app's own call, after each load.
+    var scrollToLatest = false
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -44,6 +48,7 @@ struct MessageWebView: NSViewRepresentable {
         let imagesChanged = coordinator.loadedInlineImages != Set(images.keys)
         coordinator.loadedInlineImages = Set(images.keys)
         guard html != coordinator.loadedHTML || remoteChanged || imagesChanged else { return }
+        coordinator.scrollToLatest = scrollToLatest
         coordinator.loadedHTML = html
         coordinator.suspiciousLinks = LinkSafety.mismatchedLinks(in: html)
         // A fixed, opaque base URL: nothing in the document can resolve
@@ -58,6 +63,19 @@ struct MessageWebView: NSViewRepresentable {
         var loadedHTML = ""
         var loadedInlineImages: Set<String> = []
         var suspiciousLinks: [String: String] = [:]
+        var scrollToLatest = false
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // Each load (bodies and images arriving reload the page) starts
+            // at the top again.
+            guard scrollToLatest else { return }
+            // A short message sits at the bottom with the earlier rows above it;
+            // a long one starts at its top.
+            webView.evaluateJavaScript("""
+                var m = document.querySelectorAll('details.msg');
+                if (m.length) { var e = m[m.length - 1]; e.scrollIntoView(e.offsetHeight + 24 > window.innerHeight); }
+                """)
+        }
 
         func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction) async -> WKNavigationActionPolicy {
             // Our own loadHTMLString is the only navigation allowed.

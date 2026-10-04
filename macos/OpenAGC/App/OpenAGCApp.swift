@@ -46,7 +46,7 @@ struct OpenAGCApp: App {
                     .environment(model)
             }
         }
-        .defaultSize(width: 720, height: 560)
+        .defaultSize(width: 760, height: 760)
         .commandsRemoved()
 
         WindowGroup("Message", id: "thread", for: ThreadWindowRequest.self) { $request in

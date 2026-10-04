@@ -568,6 +568,14 @@ final class AppModel {
         searchFocusRequests += 1
     }
 
+    /// Bumped to put the keyboard in the thread list (Tab from the sidebar),
+    /// so the arrows move between messages.
+    private(set) var threadListFocusRequests = 0
+
+    func focusThreadList() {
+        threadListFocusRequests += 1
+    }
+
     /// Bumped when routines change, so their views reload.
     private(set) var routinesRevision = 0
     /// Bumped when a task was added, changed or removed (spec §14.8).
